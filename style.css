@@ -1,0 +1,878 @@
+/* ==========================================================================
+   Focus Timer (Android-First & Responsive Web) - Stylesheet
+   ========================================================================== */
+
+:root {
+  --bg-main: #0c0e14;
+  --bg-surface: #141822;
+  --bg-surface-elevated: #1c2230;
+  --bg-surface-highlight: #252d40;
+  
+  --primary: #10b981;          /* Emerald Focus */
+  --primary-glow: rgba(16, 185, 129, 0.25);
+  --primary-hover: #059669;
+
+  --accent-cyan: #06b6d4;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --locked-color: #8b5cf6;
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(16, 185, 129, 0.4);
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  overflow-x: hidden;
+  background-image: radial-gradient(circle at 50% 20%, rgba(16, 185, 129, 0.07) 0%, transparent 65%);
+}
+
+/* Container constrained to mobile phone aspect ratio or centered on tablet/desktop */
+.app-container {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 24px 16px;
+  position: relative;
+}
+
+/* ==========================================================================
+   Header: Hard Stop Bar
+   ========================================================================== */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+}
+
+.app-brand {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hard-stop-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  gap: 8px;
+}
+
+.pill-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.hard-stop-input {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.hard-stop-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+/* Schedule Status Banner */
+.status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  transition: all 0.25s ease;
+}
+
+.status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+
+.status-banner.compressed .status-indicator {
+  background-color: var(--warning);
+  box-shadow: 0 0 8px var(--warning);
+}
+
+/* ==========================================================================
+   Focus Timer Hero & Rotary Wheel
+   ========================================================================== */
+
+.timer-viewport {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.wheel-container {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none; /* Crucial for Android rotary wheel touch dragging */
+  cursor: grab;
+}
+
+.wheel-container:active {
+  cursor: grabbing;
+}
+
+.rotary-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Outer rotatable bezel - physically turns when dragged */
+.rotary-dial-group {
+  cursor: grab;
+}
+
+.rotary-dial-group:active {
+  cursor: grabbing;
+}
+
+.bezel-rim {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 2;
+  stroke-dasharray: 6 8;
+}
+
+.dial-tick {
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.dial-tick.major {
+  stroke: var(--accent-cyan);
+  stroke-width: 3.5;
+}
+
+.track-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 10;
+}
+
+.track-progress {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 816.81; /* 2 * PI * 130 */
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.25s ease, stroke 0.25s ease;
+  filter: drop-shadow(0 0 10px var(--primary-glow));
+}
+
+/* The Revolving Circle that rotates 360 deg around timer */
+.revolving-circle-group {
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.revolving-circle-group:active {
+  cursor: grabbing;
+}
+
+.revolving-glow {
+  fill: var(--primary);
+  opacity: 0.55;
+  filter: blur(6px);
+  transition: none; /* Instant tracking to eliminate cursor lag */
+}
+
+.revolving-circle {
+  fill: #ffffff;
+  stroke: var(--primary);
+  stroke-width: 4.5;
+  filter: drop-shadow(0 0 10px var(--primary));
+  transition: none; /* Instant tracking to eliminate cursor lag */
+}
+
+/* Scrubbing & Dragging overrides: completely disable transitions */
+.is-scrubbing .revolving-circle,
+.is-scrubbing .revolving-glow,
+.is-scrubbing .track-progress,
+.is-dragging-dial .rotary-dial-group {
+  transition: none !important;
+}
+
+/* Center Display inside circle */
+.timer-center-display {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  padding: 30px;
+}
+
+.task-category-chip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.12);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  margin-bottom: 6px;
+}
+
+.digital-clock {
+  font-family: var(--font-mono);
+  font-size: 3.4rem;
+  font-weight: 700;
+  letter-spacing: -2px;
+  color: #ffffff;
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.12);
+  margin-bottom: 6px;
+}
+
+.active-task-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+/* Tags describing the task */
+.task-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  max-width: 190px;
+}
+
+.task-tag {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+/* Rotary Wheel Delta Preview Badge */
+.rotary-preview-badge {
+  position: absolute;
+  bottom: 35px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  color: #0c0e14;
+  box-shadow: 0 4px 12px var(--primary-glow);
+  animation: pulse 1s infinite alternate;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.08); }
+}
+
+/* Rotary Confirmation Pill */
+.rotary-confirm-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  margin-top: 12px;
+  gap: 12px;
+  font-size: 0.82rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-confirm-yes, .btn-confirm-no {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-confirm-yes {
+  background: var(--primary);
+  color: #0c0e14;
+}
+
+.btn-confirm-no {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+}
+
+/* Warning Alert Card */
+.warning-alert-card {
+  width: 100%;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.warning-title {
+  color: #fca5a5;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.warning-desc {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* ==========================================================================
+   Primary Control Buttons
+   ========================================================================== */
+
+.timer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 24px;
+  width: 100%;
+}
+
+.control-btn {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-secondary {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-secondary:active {
+  transform: scale(0.92);
+  background: var(--bg-surface-highlight);
+  color: var(--text-main);
+}
+
+.control-btn.btn-exit-mode {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.control-btn.btn-exit-mode:active {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.btn-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.btn-primary {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #0c0e14;
+  box-shadow: 0 8px 24px var(--primary-glow);
+}
+
+.btn-primary:active {
+  transform: scale(0.94);
+  background: var(--primary-hover);
+}
+
+/* Finished Early Action */
+.secondary-actions {
+  margin-top: 18px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-finish-early {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  color: #34d399;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-finish-early:hover, .btn-finish-early:active {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #34d399;
+  transform: scale(0.98);
+}
+
+.finish-early-icon {
+  font-size: 0.9rem;
+}
+
+/* ==========================================================================
+   Task Pipeline Drawer / Sheet
+   ========================================================================== */
+
+.task-drawer {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.drawer-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.task-count-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+}
+
+.btn-drawer-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 0.25s ease;
+}
+
+.task-drawer.collapsed .btn-drawer-toggle {
+  transform: rotate(-90deg);
+}
+
+.task-drawer.collapsed .drawer-content {
+  display: none;
+}
+
+/* Add Task Form: Clean 2-Row Design */
+.add-task-form {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.input-task-title {
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.input-task-title:focus {
+  border-color: var(--border-focus);
+}
+
+.form-grid-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input-field-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-task-min {
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 20px 8px 8px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.input-suffix {
+  position: absolute;
+  right: 6px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.input-task-cat, .input-task-fixed {
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  outline: none;
+}
+
+.input-task-fixed {
+  font-family: var(--font-mono);
+}
+
+.form-bottom-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input-task-tags {
+  flex: 1;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.btn-add-task {
+  background: var(--primary);
+  color: #0c0e14;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.btn-add-task:hover {
+  background: var(--primary-hover);
+}
+
+.card-end-badge {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.card-end-badge.immovable {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.15);
+}
+
+/* Task Item List */
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.task-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+}
+
+.task-card.active {
+  border-color: var(--primary);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+/* Explicit Status Highlights: Completed = Green, Current = Yellow, Pending = Red */
+.task-card.task-completed {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: #10b981 !important;
+  border-left: 5px solid #10b981 !important;
+}
+
+.task-card.task-completed .card-title {
+  color: #a7f3d0;
+}
+
+.task-card.task-current {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: #f59e0b !important;
+  border-left: 5px solid #f59e0b !important;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.18);
+}
+
+.task-card.task-current .card-title {
+  color: #fde68a;
+  font-weight: 700;
+}
+
+.task-card.task-pending {
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  border-left: 5px solid #ef4444 !important;
+}
+
+.task-card.task-pending .card-title {
+  color: #fca5a5;
+}
+
+/* Task Status Pill */
+.task-status-pill {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.task-status-pill.completed {
+  background: rgba(16, 185, 129, 0.22);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.task-status-pill.current {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.task-status-pill.pending {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.task-card.locked {
+  border-right: 3px solid var(--locked-color);
+}
+
+.card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.card-time-slot {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+}
+
+.card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.duration-badge {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.duration-badge.compressed {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.btn-icon-action {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s;
+}
+
+.btn-icon-action:hover, .btn-icon-action:active {
+  color: var(--text-main);
+}
+
+.btn-icon-action.locked {
+  color: var(--locked-color);
+}
+
+/* Utilities */
+.hidden {
+  display: none !important;
+}
