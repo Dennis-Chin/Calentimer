@@ -1,7 +1,7 @@
 {
-  "name": "Hard-Stop Study Timer",
+  "name": "Calentimer - Hard-Stop Focus Timer",
   "short_name": "Calentimer",
-  "description": "Modular Hard-Stop Study Timer with time-compression math",
+  "description": "Modular Hard-Stop Study Timer with time-compression math and interactive rotary dial",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0c0e14",
@@ -11,7 +11,19 @@
     {
       "src": "icon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }

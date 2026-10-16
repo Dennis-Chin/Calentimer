@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Hard-Stop Study Timer</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="icon-512.png">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +22,10 @@
     <header class="app-header">
       <div class="header-left">
         <span class="app-brand">Calentimer</span>
+        <button class="btn-notif-pill" id="btnNotifToggle" title="Enable Android notifications">
+          <span class="notif-icon">🔔</span>
+          <span class="notif-text" id="notifStatusText">Alerts</span>
+        </button>
       </div>
       <div class="hard-stop-pill" id="hardStopPill">
         <span class="pill-label">HARD STOP</span>

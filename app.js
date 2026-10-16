@@ -8,12 +8,16 @@
 import { TimerRuntime, TimerStatus } from './timerRuntime.js';
 import { taskStore } from './taskStore.js';
 import { audioManager } from './audioManager.js';
+import { mobileServices } from './mobileServices.js';
 import { formatMinutesToTime } from './schedulerEngine.js';
 
 // DOM Elements
 const hardStopInput = document.getElementById('hardStopInput');
 const statusBanner = document.getElementById('statusBanner');
 const statusText = document.getElementById('statusText');
+
+const btnNotifToggle = document.getElementById('btnNotifToggle');
+const notifStatusText = document.getElementById('notifStatusText');
 
 const wheelContainer = document.getElementById('wheelContainer');
 const rotaryDialGroup = document.getElementById('rotaryDialGroup');
@@ -88,8 +92,22 @@ function initApp() {
   updateScheduleUI(runtime.currentSchedule);
   updateActiveTaskDisplay();
   updateResetButtonUI();
+  updateNotifToggleUI();
   renderClockTime(runtime.getActiveTask()?.allocatedDuration * 60 || 1500);
   updateWheelProgress(0);
+}
+
+function updateNotifToggleUI() {
+  if (!btnNotifToggle || !notifStatusText) return;
+  if (mobileServices.hasNotificationPermission()) {
+    btnNotifToggle.classList.add('granted');
+    notifStatusText.textContent = 'Alerts On';
+    btnNotifToggle.title = 'Android notification panel countdown enabled';
+  } else {
+    btnNotifToggle.classList.remove('granted');
+    notifStatusText.textContent = 'Alerts';
+    btnNotifToggle.title = 'Tap to enable Android notification panel alerts';
+  }
 }
 
 /**
@@ -129,6 +147,17 @@ function setupRuntimeEvents() {
       updateWheelProgress(data.progressRatio);
     }
 
+    // Android notification panel live countdown update
+    if (runtime.status === TimerStatus.RUNNING) {
+      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      mobileServices.updateLiveNotification({
+        activeTask: data.activeTask,
+        remainingSeconds: data.remainingSeconds,
+        nextTask,
+        isPaused: false
+      });
+    }
+
     // Dynamic intuitive text explaining the reclaim bonus
     if (finishEarlyText) {
       const remainingMin = Math.floor(data.remainingSeconds / 60);
@@ -147,11 +176,19 @@ function setupRuntimeEvents() {
 
   runtime.on('taskComplete', (data) => {
     audioManager.playTaskCompleteChime();
+    mobileServices.hapticCelebration();
+    const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+    mobileServices.notifyTaskComplete({
+      completedTask: data.task,
+      nextTask
+    });
     updateActiveTaskDisplay();
     renderTaskList(runtime.currentSchedule?.tasks || []);
   });
 
   runtime.on('allTasksCompleted', () => {
+    mobileServices.disableWakeLock();
+    mobileServices.clearLiveNotification();
     updateActiveTaskDisplay();
     updateResetButtonUI();
     renderTaskList(runtime.currentSchedule?.tasks || []);
@@ -165,9 +202,32 @@ function setupRuntimeEvents() {
     if (status === TimerStatus.RUNNING) {
       iconPlay.classList.add('hidden');
       iconPause.classList.remove('hidden');
+      mobileServices.enableWakeLock();
+      const activeTask = runtime.getActiveTask();
+      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      mobileServices.updateLiveNotification({
+        activeTask,
+        remainingSeconds: runtime.getRemainingSeconds(),
+        nextTask,
+        isPaused: false
+      });
+    } else if (status === TimerStatus.PAUSED) {
+      iconPlay.classList.remove('hidden');
+      iconPause.classList.add('hidden');
+      mobileServices.disableWakeLock();
+      const activeTask = runtime.getActiveTask();
+      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      mobileServices.updateLiveNotification({
+        activeTask,
+        remainingSeconds: runtime.getRemainingSeconds(),
+        nextTask,
+        isPaused: true
+      });
     } else {
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
+      mobileServices.disableWakeLock();
+      mobileServices.clearLiveNotification();
     }
     updateResetButtonUI();
     renderTaskList(runtime.currentSchedule?.tasks || []);
@@ -364,6 +424,7 @@ function setupRotaryWheel() {
     if (targetRemainingSec !== lastScrubbedSecond) {
       lastScrubbedSecond = targetRemainingSec;
       audioManager.playRotaryTick();
+      mobileServices.hapticTick();
       runtime.seek(targetRemainingSec);
     }
   }
@@ -436,6 +497,7 @@ function setupRotaryWheel() {
 
       if (Math.abs(pendingMinuteAdjustment - lastAudibleMinuteTick) >= 1) {
         audioManager.playRotaryTick();
+        mobileServices.hapticTick();
         lastAudibleMinuteTick = pendingMinuteAdjustment;
       }
 
@@ -509,6 +571,7 @@ function setupRotaryWheel() {
 
   // Confirmation actions
   btnConfirmAdjust.addEventListener('click', () => {
+    mobileServices.hapticTap();
     rotaryConfirmPill.classList.add('hidden');
     if (pendingMinuteAdjustment !== 0) {
       // 1. Adjust active task duration and re-compress all other tasks in the pipeline
@@ -533,6 +596,7 @@ function setupRotaryWheel() {
   });
 
   btnCancelAdjust.addEventListener('click', () => {
+    mobileServices.hapticTap();
     rotaryConfirmPill.classList.add('hidden');
     pendingMinuteAdjustment = 0;
     currentDialRotationDeg = 0;
@@ -581,6 +645,8 @@ function updateResetButtonUI() {
 }
 
 function resetWholeDay() {
+  mobileServices.disableWakeLock();
+  mobileServices.clearLiveNotification();
   runtime.reset();
   currentDialRotationDeg = 0;
   if (rotaryDialGroup) {
@@ -595,7 +661,30 @@ function resetWholeDay() {
 }
 
 function setupControls() {
+  if (btnNotifToggle) {
+    btnNotifToggle.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      const granted = await mobileServices.requestNotificationPermission();
+      updateNotifToggleUI();
+      if (granted && runtime) {
+        const activeTask = runtime.getActiveTask();
+        if (activeTask) {
+          const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+          mobileServices.updateLiveNotification({
+            activeTask,
+            remainingSeconds: runtime.status === TimerStatus.IDLE
+              ? (activeTask.allocatedDuration || 25) * 60
+              : runtime.getRemainingSeconds(),
+            nextTask,
+            isPaused: runtime.status !== TimerStatus.RUNNING
+          });
+        }
+      }
+    });
+  }
+
   btnPlayPause.addEventListener('click', () => {
+    mobileServices.hapticTap();
     if (runtime.status === TimerStatus.RUNNING) {
       runtime.pause();
     } else {
@@ -607,6 +696,7 @@ function setupControls() {
   // - While timer is running -> Exit button: stops current task, resets timer for that task, reverts to Reset button
   // - While timer is not running -> Reset button: resets the whole day of events
   btnStopTime.addEventListener('click', () => {
+    mobileServices.hapticTap();
     if (runtime.status === TimerStatus.RUNNING) {
       runtime.resetCurrentTask();
       updateActiveTaskDisplay();
@@ -621,10 +711,12 @@ function setupControls() {
   });
 
   btnSkipTask.addEventListener('click', () => {
+    mobileServices.hapticTap();
     runtime.skipCurrentTask();
   });
 
   btnFinishEarly.addEventListener('click', () => {
+    mobileServices.hapticTap();
     runtime.completeCurrentTaskEarly();
   });
 
