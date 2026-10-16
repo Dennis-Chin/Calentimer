@@ -175,6 +175,32 @@ export class TaskStore {
     });
     this.saveTasks(tasks);
   }
+
+  /**
+   * Retrieves whether user wants a confirmation modal when adjusting dial.
+   * Default is false (auto-apply without confirmation).
+   * @returns {boolean}
+   */
+  getConfirmAdjustments() {
+    try {
+      const val = localStorage.getItem('calentimer_confirm_adjustments');
+      if (val !== null) {
+        return val === 'true';
+      }
+    } catch (e) {}
+    return false; // Default: false (do NOT prompt for confirmation)
+  }
+
+  /**
+   * Sets whether user wants a confirmation modal when adjusting dial.
+   * @param {boolean} value 
+   */
+  setConfirmAdjustments(value) {
+    try {
+      localStorage.setItem('calentimer_confirm_adjustments', value ? 'true' : 'false');
+      this._notify();
+    } catch (e) {}
+  }
 }
 
 export const taskStore = new TaskStore();

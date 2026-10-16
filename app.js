@@ -87,6 +87,7 @@ function initApp() {
   setupControls();
   setupRotaryWheel();
   setupTaskPipeline();
+  setupNavigationAndModals();
 
   // Initial render
   updateScheduleUI(runtime.currentSchedule);
@@ -119,8 +120,8 @@ function renderDialTicks() {
   for (let i = 0; i < 60; i++) {
     const isMajor = i % 5 === 0;
     const angleRad = (i * 6 - 90) * (Math.PI / 180);
-    const r1 = isMajor ? 138 : 143;
-    const r2 = 149;
+    const r1 = isMajor ? 133 : 139;
+    const r2 = 151;
     const x1 = 160 + r1 * Math.cos(angleRad);
     const y1 = 160 + r1 * Math.sin(angleRad);
     const x2 = 160 + r2 * Math.cos(angleRad);
@@ -366,10 +367,12 @@ function setupRotaryWheel() {
 
   let lastScrubbedSecond = -1;
 
-  // Continuous scrubbing state (wraps across 0 / 12 o'clock adding minutes)
+  // Green line scrubbing state (countdown reduction scrubber)
   let scrubStartAngleRad = 0;
-  let accumulatedScrubAngleDeltaDeg = 0;
-  let baseSecondsAtScrubStart = 0;
+  let baseRemainingSecAtScrubStart = 0;
+  let initialBeadDegAtStart = 0;
+  let currentBeadDeg = 0;
+  let activeTotalSec = 0;
 
   // Outer dial state
   let dialStartAngleRad = 0;
@@ -377,46 +380,60 @@ function setupRotaryWheel() {
   let baseDialSeconds = 0;
 
   // -------------------------------------------------------------
-  // Mode 1: Scrub Green Line Handle (1-second precision seek)
-  // Tracks cursor directly with ZERO lag. Wrapping past 0 adds/subtracts minutes!
+  // Mode 1: Scrub Green Line Handle (Countdown reduction scrubber)
+  // 360 degrees around center = timer counts down to 0!
+  // Strictly used to reduce time. Dragging to a location leaves it in that position.
   // -------------------------------------------------------------
   function onScrubStart(e) {
     e.stopPropagation();
     isScrubbingGreenLine = true;
     document.body.classList.add('is-scrubbing');
-    scrubStartAngleRad = getAngleFromEvent(e);
-    accumulatedScrubAngleDeltaDeg = 0;
-    baseSecondsAtScrubStart = runtime.status === TimerStatus.IDLE
-      ? (runtime.getActiveTask()?.allocatedDuration || 25) * 60
-      : runtime.getRemainingSeconds();
-    lastScrubbedSecond = baseSecondsAtScrubStart;
 
-    // Immediately snap visual circle to cursor position (no lag)
-    updateCircleToAngle(scrubStartAngleRad);
+    scrubStartAngleRad = getAngleFromEvent(e);
+
+    const activeTask = runtime.getActiveTask();
+    activeTotalSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60;
+    baseRemainingSecAtScrubStart = runtime.status === TimerStatus.IDLE
+      ? activeTotalSec
+      : runtime.getRemainingSeconds();
+
+    // The starting angular position of the bead corresponds to current elapsed progress
+    const currentProgress = activeTotalSec > 0
+      ? Math.max(0, Math.min(1, (activeTotalSec - baseRemainingSecAtScrubStart) / activeTotalSec))
+      : 0;
+    initialBeadDegAtStart = currentProgress * 360;
+    currentBeadDeg = initialBeadDegAtStart;
+    lastScrubbedSecond = baseRemainingSecAtScrubStart;
+
+    // Instantly orient to angle
+    const angleRad = (currentBeadDeg - 90) * (Math.PI / 180);
+    updateCircleToAngle(angleRad);
   }
 
   function handleScrubMove(e) {
     if (!isScrubbingGreenLine) return;
 
     const currentAngleRad = getAngleFromEvent(e);
-    // Instant visual update - directly follows cursor on every frame!
-    updateCircleToAngle(currentAngleRad);
+    let delta = (currentAngleRad - scrubStartAngleRad) * (180 / Math.PI);
 
-    let diff = (currentAngleRad - scrubStartAngleRad) * (180 / Math.PI);
-
-    // Normalize wrap-around across -180 / +180
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
+    // Normalize angular step across -180 / +180
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
 
     scrubStartAngleRad = currentAngleRad;
-    accumulatedScrubAngleDeltaDeg += diff;
 
-    // 6 degrees of rotation = 1 second of time.
-    // 360 degrees = 60 seconds (1 full minute added/subtracted)!
-    // Turning counter-clockwise (diff < 0) adds time past 0.
-    // Turning clockwise (diff > 0) fast-forwards/consumes time.
-    const secondsDelta = -Math.round(accumulatedScrubAngleDeltaDeg / 6);
-    const targetRemainingSec = Math.max(0, baseSecondsAtScrubStart + secondsDelta);
+    // Green dot is strictly used to REDUCE time:
+    // It can move clockwise from initialBeadDegAtStart towards 360 deg (0 seconds).
+    // It cannot move counter-clockwise past where it started (cannot increase time).
+    currentBeadDeg = Math.min(360, Math.max(initialBeadDegAtStart, currentBeadDeg + delta));
+
+    // Progress ratio from 0 to 1 across 360 degrees
+    const progressRatio = currentBeadDeg / 360;
+    const targetRemainingSec = Math.max(0, Math.round(activeTotalSec * (1 - progressRatio)));
+
+    // Instantly update visual bead position and track arc
+    const angleRad = (currentBeadDeg - 90) * (Math.PI / 180);
+    updateCircleToAngle(angleRad);
 
     // Live update digital clock as you drag
     renderClockTime(targetRemainingSec);
@@ -425,7 +442,6 @@ function setupRotaryWheel() {
       lastScrubbedSecond = targetRemainingSec;
       audioManager.playRotaryTick();
       mobileServices.hapticTick();
-      runtime.seek(targetRemainingSec);
     }
   }
 
@@ -433,9 +449,12 @@ function setupRotaryWheel() {
     if (!isScrubbingGreenLine) return;
     isScrubbingGreenLine = false;
     document.body.classList.remove('is-scrubbing');
+
     if (lastScrubbedSecond >= 0) {
       runtime.seek(lastScrubbedSecond);
     }
+    const finalRatio = activeTotalSec > 0 ? (activeTotalSec - (lastScrubbedSecond >= 0 ? lastScrubbedSecond : 0)) / activeTotalSec : 0;
+    updateWheelProgress(Math.min(1, Math.max(0, finalRatio)));
   }
 
   // Bind scrub listeners to green line handle and track
@@ -510,6 +529,31 @@ function setupRotaryWheel() {
     }
   }
 
+  function applyPendingDialAdjustment() {
+    rotaryConfirmPill.classList.add('hidden');
+    if (pendingMinuteAdjustment !== 0) {
+      mobileServices.hapticTap();
+      // 1. Adjust active task duration and re-compress all other tasks in the pipeline
+      runtime.adjustActiveTaskDuration(pendingMinuteAdjustment);
+
+      // 2. Persist updated task plannedDuration into taskStore
+      const activeTask = runtime.getActiveTask();
+      if (activeTask) {
+        taskStore.updateTask(activeTask.id, { plannedDuration: activeTask.plannedDuration });
+      }
+
+      // 3. Reset wheel angle and update UI displays
+      currentDialRotationDeg = 0;
+      if (rotaryDialGroup) {
+        rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
+      }
+      updateActiveTaskDisplay();
+      renderClockTime(runtime.status === TimerStatus.IDLE ? (runtime.getActiveTask()?.allocatedDuration * 60 || 1500) : runtime.getRemainingSeconds());
+      updateWheelProgress(runtime.getProgress());
+      pendingMinuteAdjustment = 0;
+    }
+  }
+
   function onDialEnd() {
     if (!isDraggingOuterDial) return;
     isDraggingOuterDial = false;
@@ -517,15 +561,22 @@ function setupRotaryWheel() {
     rotaryPreviewBadge.classList.add('hidden');
 
     if (pendingMinuteAdjustment !== 0) {
-      const previewSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
-      const sign = pendingMinuteAdjustment > 0 ? '+' : '';
-      const previewMins = Math.floor(previewSeconds / 60);
-      const previewSecs = previewSeconds % 60;
-      const formattedTime = `${String(previewMins).padStart(2, '0')}:${String(previewSecs).padStart(2, '0')}`;
+      const needsConfirmation = taskStore.getConfirmAdjustments();
 
-      rotaryConfirmText.textContent = `Apply ${formattedTime} (${sign}${pendingMinuteAdjustment}m)?`;
-      rotaryConfirmPill.classList.remove('hidden');
-      renderClockTime(previewSeconds);
+      if (needsConfirmation) {
+        const previewSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
+        const sign = pendingMinuteAdjustment > 0 ? '+' : '';
+        const previewMins = Math.floor(previewSeconds / 60);
+        const previewSecs = previewSeconds % 60;
+        const formattedTime = `${String(previewMins).padStart(2, '0')}:${String(previewSecs).padStart(2, '0')}`;
+
+        rotaryConfirmText.textContent = `Apply ${formattedTime} (${sign}${pendingMinuteAdjustment}m)?`;
+        rotaryConfirmPill.classList.remove('hidden');
+        renderClockTime(previewSeconds);
+      } else {
+        // Auto-apply immediately without asking for confirmation (default)
+        applyPendingDialAdjustment();
+      }
     } else {
       currentDialRotationDeg = 0;
       if (rotaryDialGroup) {
@@ -571,28 +622,7 @@ function setupRotaryWheel() {
 
   // Confirmation actions
   btnConfirmAdjust.addEventListener('click', () => {
-    mobileServices.hapticTap();
-    rotaryConfirmPill.classList.add('hidden');
-    if (pendingMinuteAdjustment !== 0) {
-      // 1. Adjust active task duration and re-compress all other tasks in the pipeline
-      runtime.adjustActiveTaskDuration(pendingMinuteAdjustment);
-
-      // 2. Persist updated task plannedDuration into taskStore
-      const activeTask = runtime.getActiveTask();
-      if (activeTask) {
-        taskStore.updateTask(activeTask.id, { plannedDuration: activeTask.plannedDuration });
-      }
-
-      // 3. Reset wheel angle and update UI displays
-      currentDialRotationDeg = 0;
-      if (rotaryDialGroup) {
-        rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
-      }
-      updateActiveTaskDisplay();
-      renderClockTime(runtime.status === TimerStatus.IDLE ? (runtime.getActiveTask()?.allocatedDuration * 60 || 1500) : runtime.getRemainingSeconds());
-      updateWheelProgress(runtime.getProgress());
-      pendingMinuteAdjustment = 0;
-    }
+    applyPendingDialAdjustment();
   });
 
   btnCancelAdjust.addEventListener('click', () => {
@@ -867,6 +897,180 @@ function renderTaskList(tasks) {
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ==========================================
+// Navigation Drawer, Settings & Calendar Modals
+// ==========================================
+function setupNavigationAndModals() {
+  const btnOpenNav = document.getElementById('btnOpenNav');
+  const btnCloseNav = document.getElementById('btnCloseNav');
+  const navDrawerBackdrop = document.getElementById('navDrawerBackdrop');
+  const navDrawer = document.getElementById('navDrawer');
+
+  const navItemTimer = document.getElementById('navItemTimer');
+  const navItemCalendar = document.getElementById('navItemCalendar');
+  const navItemSettings = document.getElementById('navItemSettings');
+
+  const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+  const btnCloseSettings = document.getElementById('btnCloseSettings');
+  const toggleConfirmAdjust = document.getElementById('toggleConfirmAdjust');
+
+  const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
+  const btnCloseCalendar = document.getElementById('btnCloseCalendar');
+  const calendarTimelineList = document.getElementById('calendarTimelineList');
+
+  function openDrawer() {
+    if (navDrawer && navDrawerBackdrop) {
+      navDrawer.classList.add('open');
+      navDrawerBackdrop.classList.remove('hidden');
+      navDrawer.setAttribute('aria-hidden', 'false');
+      mobileServices.hapticTap();
+    }
+  }
+
+  function closeDrawer() {
+    if (navDrawer && navDrawerBackdrop) {
+      navDrawer.classList.remove('open');
+      navDrawerBackdrop.classList.add('hidden');
+      navDrawer.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function openSettings() {
+    closeDrawer();
+    if (toggleConfirmAdjust) {
+      toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
+    }
+    if (settingsModalBackdrop) {
+      settingsModalBackdrop.classList.remove('hidden');
+    }
+    mobileServices.hapticTap();
+  }
+
+  function closeSettings() {
+    if (settingsModalBackdrop) {
+      settingsModalBackdrop.classList.add('hidden');
+    }
+  }
+
+  function openCalendar() {
+    closeDrawer();
+    renderCalendarModal();
+    if (calendarModalBackdrop) {
+      calendarModalBackdrop.classList.remove('hidden');
+    }
+    mobileServices.hapticTap();
+  }
+
+  function closeCalendar() {
+    if (calendarModalBackdrop) {
+      calendarModalBackdrop.classList.add('hidden');
+    }
+  }
+
+  function renderCalendarModal() {
+    if (!calendarTimelineList) return;
+    calendarTimelineList.innerHTML = '';
+
+    const tasks = runtime?.currentSchedule?.tasks || [];
+    if (tasks.length === 0) {
+      calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
+      return;
+    }
+
+    const activeIdx = runtime ? runtime.activeTaskIndex : 0;
+    const isRunning = runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED);
+
+    tasks.forEach((task, idx) => {
+      let statusClass = 'pending';
+      let statusBadge = 'Upcoming';
+
+      if (task.isCompleted || (isRunning && idx < activeIdx)) {
+        statusClass = 'completed';
+        statusBadge = '✓ Done';
+      } else if (isRunning && idx === activeIdx) {
+        statusClass = 'current';
+        statusBadge = '▶ Active';
+      }
+
+      const item = document.createElement('div');
+      item.className = `calendar-block ${statusClass}`;
+      item.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="calendar-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
+          <span style="font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;${
+            statusClass === 'completed'
+              ? 'background:rgba(16,185,129,0.2);color:var(--primary);'
+              : statusClass === 'current'
+              ? 'background:rgba(245,158,11,0.2);color:#f59e0b;'
+              : 'background:rgba(255,255,255,0.08);color:var(--text-dim);'
+          }">${statusBadge}</span>
+        </div>
+        <div class="calendar-block-title">${escapeHtml(task.title)}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);display:flex;gap:8px;">
+          <span>${task.allocatedDuration || task.plannedDuration}m</span>
+          <span>•</span>
+          <span>${escapeHtml(task.category || 'General')}</span>
+          ${task.isImmovable ? '<span style="color:var(--locked-color);font-weight:600">• Fixed</span>' : ''}
+        </div>
+      `;
+      calendarTimelineList.appendChild(item);
+    });
+  }
+
+  // Drawer events
+  if (btnOpenNav) btnOpenNav.addEventListener('click', openDrawer);
+  if (btnCloseNav) btnCloseNav.addEventListener('click', closeDrawer);
+  if (navDrawerBackdrop) navDrawerBackdrop.addEventListener('click', closeDrawer);
+
+  // Drawer items
+  if (navItemTimer) {
+    navItemTimer.addEventListener('click', () => {
+      closeDrawer();
+      closeSettings();
+      closeCalendar();
+      navItemTimer.classList.add('active');
+      if (navItemCalendar) navItemCalendar.classList.remove('active');
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (navItemCalendar) {
+    navItemCalendar.addEventListener('click', () => {
+      openCalendar();
+      navItemCalendar.classList.add('active');
+      if (navItemTimer) navItemTimer.classList.remove('active');
+    });
+  }
+
+  if (navItemSettings) {
+    navItemSettings.addEventListener('click', () => {
+      openSettings();
+    });
+  }
+
+  // Settings modal
+  if (btnCloseSettings) btnCloseSettings.addEventListener('click', closeSettings);
+  if (settingsModalBackdrop) {
+    settingsModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === settingsModalBackdrop) closeSettings();
+    });
+  }
+  if (toggleConfirmAdjust) {
+    toggleConfirmAdjust.addEventListener('change', () => {
+      taskStore.setConfirmAdjustments(toggleConfirmAdjust.checked);
+      mobileServices.hapticTap();
+    });
+  }
+
+  // Calendar modal
+  if (btnCloseCalendar) btnCloseCalendar.addEventListener('click', closeCalendar);
+  if (calendarModalBackdrop) {
+    calendarModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === calendarModalBackdrop) closeCalendar();
+    });
+  }
 }
 
 // Start application
