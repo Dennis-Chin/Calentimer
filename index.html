@@ -18,7 +18,7 @@
 <body>
   <div class="app-container">
     
-    <!-- Top Header: Menu, Brand, Notifications & Hard Stop -->
+    <!-- Top Header: Menu, Brand & Notifications -->
     <header class="app-header">
       <div class="header-left">
         <button class="btn-menu" id="btnOpenNav" title="Open Navigation Menu" aria-label="Open Navigation Menu">
@@ -29,21 +29,25 @@
           </svg>
         </button>
         <span class="app-brand">Calentimer</span>
+      </div>
+      <div class="header-right">
         <button class="btn-notif-pill" id="btnNotifToggle" title="Enable Android notifications">
           <span class="notif-icon">🔔</span>
           <span class="notif-text" id="notifStatusText">Alerts</span>
         </button>
       </div>
-      <div class="hard-stop-pill" id="hardStopPill">
+    </header>
+
+    <!-- Schedule Control Bar: Hard Stop & Status -->
+    <div class="schedule-control-bar">
+      <div class="hard-stop-pill" id="hardStopPill" title="Hard Stop Deadline: automatically compresses tasks to fit this time">
         <span class="pill-label">HARD STOP</span>
         <input type="time" id="hardStopInput" class="hard-stop-input" value="15:00">
       </div>
-    </header>
-
-    <!-- Schedule Status Pill -->
-    <div class="status-banner" id="statusBanner">
-      <span class="status-indicator"></span>
-      <span id="statusText">All tasks fit on schedule</span>
+      <div class="status-banner" id="statusBanner">
+        <span class="status-indicator"></span>
+        <span id="statusText">All tasks fit on schedule</span>
+      </div>
     </div>
 
     <!-- Main Focus Timer Hero Section -->
