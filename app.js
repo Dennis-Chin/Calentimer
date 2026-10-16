@@ -82,6 +82,7 @@ function initApp() {
     tasks: tasks
   });
 
+  initTheme();
   renderDialTicks();
   setupRuntimeEvents();
   setupControls();
@@ -815,7 +816,7 @@ function renderTaskList(tasks) {
 
     if (isAllCompleted || (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
       statusClass = 'task-completed';
-      statusBadge = '<span class="task-status-pill completed">✓ COMPLETED</span>';
+      statusBadge = '<span class="task-status-pill completed">✓ DONE</span>';
     } else if (idx === activeIdx && !isAllCompleted) {
       statusClass = 'task-current';
       statusBadge = '<span class="task-status-pill current">▶ CURRENT</span>';
@@ -824,7 +825,7 @@ function renderTaskList(tasks) {
       statusBadge = '<span class="task-status-pill pending">⏳ NOT DONE</span>';
     }
 
-    card.className = `task-card ${statusClass} ${task.isLocked || isImmovable ? 'locked' : ''}`;
+    card.className = `task-card ${statusClass} ${task.isLocked || isImmovable ? 'is-locked-task' : ''}`;
 
     const isCompressed = task.allocatedDuration < task.plannedDuration;
     const durationText = isCompressed
@@ -836,41 +837,58 @@ function renderTaskList(tasks) {
       : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
 
     card.innerHTML = `
-      <div class="card-left">
-        <div class="card-title-row">
-          <span class="card-title">${escapeHtml(task.title)}</span>
-          ${statusBadge}
-          <span class="card-end-badge ${isImmovable ? 'immovable' : ''}">
-            ${isImmovable ? '🔒 FIXED END' : 'HARD STOP'}: ${task.endTime}
-          </span>
+      <div class="task-card-left">
+        ${statusBadge}
+        <button class="task-emoji-btn" data-action="pick-emoji" data-id="${task.id}" title="Tap to change emoji">
+          ${task.emoji || '📌'}
+        </button>
+      </div>
+
+      <div class="task-card-content" data-action="edit-task" data-id="${task.id}" title="Tap to edit task options">
+        <div class="task-card-title-row">
+          <span class="task-card-title">${escapeHtml(task.title)}</span>
+          ${task.isLocked || isImmovable ? '<span class="task-padlock-badge" title="Locked duration & time">🔒</span>' : ''}
         </div>
-        <div class="card-meta-row">
-          <span class="card-time-slot">${task.startTime || ''} → ${task.endTime || ''}</span>
-          <span>•</span>
-          <span>${escapeHtml(task.category || 'General')}</span>
-          ${isImmovable ? '<span style="color:var(--locked-color);font-weight:600">• Fixed</span>' : ''}
+        <div class="task-card-time-row">
+          <span class="task-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
+          <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
         </div>
       </div>
-      <div class="card-right">
+
+      <div class="task-card-right">
         <div class="duration-badge ${isCompressed ? 'compressed' : ''}">
           ${durationText}
         </div>
-        <button class="btn-icon-action ${task.isLocked || isImmovable ? 'locked' : ''}" data-action="toggle-lock" data-id="${task.id}" title="${lockTitle}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            ${task.isLocked || isImmovable
-              ? '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>'
-              : '<path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>'
-            }
-          </svg>
-        </button>
-        <button class="btn-icon-action" data-action="delete" data-id="${task.id}" title="Delete task">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+        <div class="task-card-actions">
+          <button class="btn-icon-action ${task.isLocked || isImmovable ? 'locked' : ''}" data-action="toggle-lock" data-id="${task.id}" title="${lockTitle}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              ${task.isLocked || isImmovable
+                ? '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>'
+                : '<path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>'
+              }
+            </svg>
+          </button>
+          <button class="btn-icon-action" data-action="delete" data-id="${task.id}" title="Delete task">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
       </div>
     `;
+
+    // Emoji click
+    card.querySelector('[data-action="pick-emoji"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openEmojiPicker(task.id);
+    });
+
+    // Edit task click
+    card.querySelector('[data-action="edit-task"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTaskEditModal(task.id);
+    });
 
     // Lock toggle event
     card.querySelector('[data-action="toggle-lock"]').addEventListener('click', (e) => {
@@ -879,6 +897,7 @@ function renderTaskList(tasks) {
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
+      mobileServices.hapticTap();
     });
 
     // Delete event
@@ -888,6 +907,7 @@ function renderTaskList(tasks) {
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
+      mobileServices.hapticTap();
     });
 
     taskListContainer.appendChild(card);
@@ -897,6 +917,116 @@ function renderTaskList(tasks) {
 function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ==========================================
+// Theme Management (Default/System, Light, Dark)
+// ==========================================
+function initTheme() {
+  const currentTheme = taskStore.getTheme();
+  applyTheme(currentTheme);
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (taskStore.getTheme() === 'system') {
+        applyTheme('system');
+      }
+    });
+  }
+}
+
+function applyTheme(theme) {
+  let resolvedTheme = theme;
+  if (theme === 'system') {
+    resolvedTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+      ? 'light'
+      : 'dark';
+  }
+  document.documentElement.setAttribute('data-theme', resolvedTheme);
+
+  const segmentBtns = document.querySelectorAll('.theme-segment-btn');
+  segmentBtns.forEach(btn => {
+    if (btn.getAttribute('data-theme-val') === theme) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+// ==========================================
+// Emoji Picker Modal Logic
+// ==========================================
+const CURATED_EMOJIS = ['📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃', '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌'];
+let currentEmojiTaskId = null;
+
+function openEmojiPicker(taskId) {
+  currentEmojiTaskId = taskId;
+  const grid = document.getElementById('emojiPickerGrid');
+  if (grid) {
+    grid.innerHTML = '';
+    CURATED_EMOJIS.forEach(emoji => {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-pick-btn';
+      btn.type = 'button';
+      btn.textContent = emoji;
+      btn.addEventListener('click', () => {
+        if (currentEmojiTaskId) {
+          taskStore.updateTask(currentEmojiTaskId, { emoji });
+          runtime.initialTasks = taskStore.getTasks();
+          runtime.recalculate();
+          updateActiveTaskDisplay();
+          renderTaskList(runtime.currentSchedule?.tasks || []);
+          closeEmojiPicker();
+          mobileServices.hapticTap();
+        }
+      });
+      grid.appendChild(btn);
+    });
+  }
+  document.getElementById('emojiPickerModalBackdrop')?.classList.remove('hidden');
+  mobileServices.hapticTap();
+}
+
+function closeEmojiPicker() {
+  document.getElementById('emojiPickerModalBackdrop')?.classList.add('hidden');
+  currentEmojiTaskId = null;
+}
+
+// ==========================================
+// Task Edit Modal Logic
+// ==========================================
+let currentEditTaskId = null;
+
+function openTaskEditModal(taskId) {
+  const tasks = taskStore.getTasks();
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  currentEditTaskId = taskId;
+
+  const editTaskId = document.getElementById('editTaskId');
+  const editTaskTitle = document.getElementById('editTaskTitle');
+  const editTaskDuration = document.getElementById('editTaskDuration');
+  const editTaskCategory = document.getElementById('editTaskCategory');
+  const editTaskFixedTime = document.getElementById('editTaskFixedTime');
+  const editTaskIsLocked = document.getElementById('editTaskIsLocked');
+  const editTaskHeaderEmoji = document.getElementById('editTaskHeaderEmoji');
+
+  if (editTaskId) editTaskId.value = task.id;
+  if (editTaskTitle) editTaskTitle.value = task.title || '';
+  if (editTaskDuration) editTaskDuration.value = task.plannedDuration || 25;
+  if (editTaskCategory) editTaskCategory.value = task.category || '';
+  if (editTaskFixedTime) editTaskFixedTime.value = task.fixedStartTime || '';
+  if (editTaskIsLocked) editTaskIsLocked.checked = Boolean(task.isLocked);
+  if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = task.emoji || '📝';
+
+  document.getElementById('taskEditModalBackdrop')?.classList.remove('hidden');
+  mobileServices.hapticTap();
+}
+
+function closeTaskEditModal() {
+  document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+  currentEditTaskId = null;
 }
 
 // ==========================================
@@ -920,6 +1050,81 @@ function setupNavigationAndModals() {
   const btnCloseCalendar = document.getElementById('btnCloseCalendar');
   const calendarTimelineList = document.getElementById('calendarTimelineList');
 
+  // Theme segmented buttons in Settings
+  const themeSegmentBtns = document.querySelectorAll('.theme-segment-btn');
+  themeSegmentBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selectedTheme = btn.getAttribute('data-theme-val');
+      taskStore.setTheme(selectedTheme);
+      applyTheme(selectedTheme);
+      mobileServices.hapticTap();
+    });
+  });
+
+  // Task Edit Modal events
+  const btnCloseTaskEdit = document.getElementById('btnCloseTaskEdit');
+  const taskEditModalBackdrop = document.getElementById('taskEditModalBackdrop');
+  const formEditTask = document.getElementById('formEditTask');
+  const btnDeleteTaskFromModal = document.getElementById('btnDeleteTaskFromModal');
+
+  if (btnCloseTaskEdit) btnCloseTaskEdit.addEventListener('click', closeTaskEditModal);
+  if (taskEditModalBackdrop) {
+    taskEditModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === taskEditModalBackdrop) closeTaskEditModal();
+    });
+  }
+
+  if (formEditTask) {
+    formEditTask.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!currentEditTaskId) return;
+      const title = document.getElementById('editTaskTitle').value.trim();
+      const plannedDuration = parseInt(document.getElementById('editTaskDuration').value, 10) || 25;
+      const category = document.getElementById('editTaskCategory').value.trim() || 'General';
+      const fixedStartTime = document.getElementById('editTaskFixedTime').value || null;
+      const isLocked = document.getElementById('editTaskIsLocked').checked || Boolean(fixedStartTime);
+
+      taskStore.updateTask(currentEditTaskId, {
+        title,
+        plannedDuration,
+        category,
+        fixedStartTime,
+        isLocked
+      });
+
+      runtime.initialTasks = taskStore.getTasks();
+      runtime.recalculate();
+      updateActiveTaskDisplay();
+      renderTaskList(runtime.currentSchedule?.tasks || []);
+      closeTaskEditModal();
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (btnDeleteTaskFromModal) {
+    btnDeleteTaskFromModal.addEventListener('click', () => {
+      if (currentEditTaskId) {
+        taskStore.deleteTask(currentEditTaskId);
+        runtime.initialTasks = taskStore.getTasks();
+        runtime.recalculate();
+        updateActiveTaskDisplay();
+        renderTaskList(runtime.currentSchedule?.tasks || []);
+        closeTaskEditModal();
+        mobileServices.hapticTap();
+      }
+    });
+  }
+
+  // Emoji Picker Modal events
+  const btnCloseEmojiPicker = document.getElementById('btnCloseEmojiPicker');
+  const emojiPickerModalBackdrop = document.getElementById('emojiPickerModalBackdrop');
+  if (btnCloseEmojiPicker) btnCloseEmojiPicker.addEventListener('click', closeEmojiPicker);
+  if (emojiPickerModalBackdrop) {
+    emojiPickerModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === emojiPickerModalBackdrop) closeEmojiPicker();
+    });
+  }
+
   function openDrawer() {
     if (navDrawer && navDrawerBackdrop) {
       navDrawer.classList.add('open');
@@ -942,6 +1147,7 @@ function setupNavigationAndModals() {
     if (toggleConfirmAdjust) {
       toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
     }
+    applyTheme(taskStore.getTheme());
     if (settingsModalBackdrop) {
       settingsModalBackdrop.classList.remove('hidden');
     }

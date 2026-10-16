@@ -272,6 +272,18 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Theme Mode</span>
+              <span class="setting-desc">Choose appearance: Default (system), Light, or Dark</span>
+            </div>
+            <div class="theme-segmented-control" id="themeSegmented">
+              <button type="button" class="theme-segment-btn" data-theme-val="system">Default</button>
+              <button type="button" class="theme-segment-btn" data-theme-val="light">Light</button>
+              <button type="button" class="theme-segment-btn" data-theme-val="dark">Dark</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -297,6 +309,74 @@
         <div class="calendar-timeline" id="calendarTimelineList">
           <!-- Calendar items generated dynamically -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Edit Modal -->
+  <div class="modal-backdrop hidden" id="taskEditModalBackdrop">
+    <div class="settings-modal" id="taskEditModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span style="font-size: 1.3rem;" id="editTaskHeaderEmoji">📝</span>
+          <span class="modal-title">Edit Task</span>
+        </div>
+        <button class="btn-close-modal" id="btnCloseTaskEdit" title="Close">✕</button>
+      </div>
+
+      <form class="modal-body" id="formEditTask">
+        <input type="hidden" id="editTaskId">
+        
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Task Name</label>
+          <input type="text" id="editTaskTitle" class="edit-task-input" required placeholder="Task name">
+        </div>
+
+        <div class="edit-task-row">
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Duration (min)</label>
+            <input type="number" id="editTaskDuration" class="edit-task-input" min="1" max="720" required>
+          </div>
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Category</label>
+            <input type="text" id="editTaskCategory" class="edit-task-input" placeholder="Study">
+          </div>
+        </div>
+
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Fixed Start Time (Optional)</label>
+          <input type="time" id="editTaskFixedTime" class="edit-task-input">
+          <span class="setting-desc" style="margin-top: 4px;">Set a fixed start time if this task cannot move.</span>
+        </div>
+
+        <div class="setting-row" style="margin-top: 8px;">
+          <div class="setting-info">
+            <span class="setting-label">Lock Duration</span>
+            <span class="setting-desc">Prevent scheduler from compressing this task</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="editTaskIsLocked">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="edit-modal-footer">
+          <button type="button" class="btn-modal-delete" id="btnDeleteTaskFromModal">Delete</button>
+          <button type="submit" class="btn-modal-save" id="btnSaveTaskEdit">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Emoji Picker Modal -->
+  <div class="modal-backdrop hidden" id="emojiPickerModalBackdrop">
+    <div class="emoji-picker-modal" id="emojiPickerModal">
+      <div class="modal-header">
+        <span class="modal-title">Select Task Emoji</span>
+        <button class="btn-close-modal" id="btnCloseEmojiPicker" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="emoji-grid" id="emojiPickerGrid"></div>
       </div>
     </div>
   </div>

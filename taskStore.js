@@ -18,7 +18,8 @@ const DEFAULT_TASKS = [
     plannedDuration: 45,
     isLocked: false,
     category: 'Study',
-    tags: ['focus', 'reading']
+    tags: ['focus', 'reading'],
+    emoji: '📚'
   },
   {
     id: 'task-2',
@@ -26,7 +27,8 @@ const DEFAULT_TASKS = [
     plannedDuration: 30,
     isLocked: false,
     category: 'Practice',
-    tags: ['exercises']
+    tags: ['exercises'],
+    emoji: '📝'
   },
   {
     id: 'task-3',
@@ -34,7 +36,8 @@ const DEFAULT_TASKS = [
     plannedDuration: 15,
     isLocked: true,
     category: 'Admin',
-    tags: ['urgent']
+    tags: ['urgent'],
+    emoji: '🎯'
   }
 ];
 
@@ -135,7 +138,8 @@ export class TaskStore {
       isLocked: Boolean(task.isLocked || task.fixedStartTime),
       fixedStartTime: task.fixedStartTime || null,
       category: task.category || 'General',
-      tags: Array.isArray(task.tags) ? task.tags : (task.tags ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : [])
+      tags: Array.isArray(task.tags) ? task.tags : (task.tags ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
+      emoji: task.emoji || '📌'
     };
     tasks.push(newTask);
     this.saveTasks(tasks);
@@ -198,6 +202,30 @@ export class TaskStore {
   setConfirmAdjustments(value) {
     try {
       localStorage.setItem('calentimer_confirm_adjustments', value ? 'true' : 'false');
+      this._notify();
+    } catch (e) {}
+  }
+
+  /**
+   * Retrieves user theme mode ('system', 'light', 'dark').
+   * Default is 'system'.
+   * @returns {string}
+   */
+  getTheme() {
+    try {
+      return localStorage.getItem('calentimer_theme') || 'system';
+    } catch (e) {
+      return 'system';
+    }
+  }
+
+  /**
+   * Sets user theme mode ('system', 'light', 'dark').
+   * @param {string} theme 
+   */
+  setTheme(theme) {
+    try {
+      localStorage.setItem('calentimer_theme', theme);
       this._notify();
     } catch (e) {}
   }
