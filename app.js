@@ -54,7 +54,6 @@ const digitalClock = document.getElementById('digitalClock');
 const activeCategoryChip = document.getElementById('activeCategoryChip');
 const activeTaskTitle = document.getElementById('activeTaskTitle');
 const activeTaskTimeSpan = document.getElementById('activeTaskTimeSpan');
-const taskTagsContainer = document.getElementById('taskTagsContainer');
 
 const rotaryPreviewBadge = document.getElementById('rotaryPreviewBadge');
 const rotaryConfirmPill = document.getElementById('rotaryConfirmPill');
@@ -403,8 +402,13 @@ function setupRuntimeEvents() {
 
 function updateFinishEarlyButtonText(remainingSeconds) {
   if (!finishEarlyText) return;
-  const mins = Math.max(0, Math.floor((remainingSeconds || 0) / 60));
-  finishEarlyText.textContent = `Finish Early & Send ${mins}m To Time Bank`;
+  const sec = Math.max(0, Math.round(remainingSeconds || 0));
+  if (sec > 0 && sec < 60) {
+    finishEarlyText.textContent = `Finish Early & Send ${sec}s To Time Bank`;
+  } else {
+    const mins = Math.floor(sec / 60);
+    finishEarlyText.textContent = `Finish Early & Send ${mins}m To Time Bank`;
+  }
 }
 
 // 60fps/120fps continuous wheel & bead animation loop
@@ -526,15 +530,10 @@ function updateTimerQuickToggles(isOverrunning = false) {
   if (!togglesContainer || !piggyBtn || !lockIcon) return;
 
   const activeTask = runtime ? runtime.getActiveTask() : null;
-  if (!activeTask || runtime.status === TimerStatus.COMPLETED) {
-    togglesContainer.classList.add('hidden');
-    return;
-  }
-
   togglesContainer.classList.remove('hidden');
 
   const overrunning = Boolean(isOverrunning || (runtime && runtime.isOverrunning));
-  const hasTimeBank = activeTask.useTimeBank !== false;
+  const hasTimeBank = activeTask ? (activeTask.useTimeBank !== false) : true;
 
   piggyBtn.innerHTML = getPiggyBankSvg(overrunning);
   piggyBtn.classList.toggle('cracked', overrunning);
@@ -547,10 +546,11 @@ function updateTimerQuickToggles(isOverrunning = false) {
     piggyBtn.title = 'Time Bank disabled (tap to enable)';
   }
 
-  const isLocked = Boolean(activeTask.isLocked);
+  const isLocked = activeTask ? Boolean(activeTask.isLocked) : false;
+  lockIcon.classList.remove('hidden');
+  lockIcon.classList.toggle('locked', isLocked);
+  lockIcon.classList.toggle('unlocked', !isLocked);
   if (isLocked) {
-    lockIcon.classList.remove('hidden');
-    lockIcon.classList.remove('unlocked');
     lockIcon.title = 'Duration is locked (tap to unlock)';
     lockIcon.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -558,7 +558,12 @@ function updateTimerQuickToggles(isOverrunning = false) {
       </svg>
     `;
   } else {
-    lockIcon.classList.add('hidden');
+    lockIcon.title = 'Duration is unlocked (tap to lock)';
+    lockIcon.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+      </svg>
+    `;
   }
 }
 
@@ -570,7 +575,6 @@ function updateActiveTaskDisplay() {
     activeTaskTitle.style.cursor = 'pointer';
     updateActiveTaskTimeSpanDynamic();
     updateTimerQuickToggles(false);
-    taskTagsContainer.innerHTML = '';
     if (wheelContainer) wheelContainer.classList.remove('is-break-mode');
     document.body.classList.remove('is-break-mode');
     renderClockTime(1800); // Default 30:00
@@ -581,8 +585,7 @@ function updateActiveTaskDisplay() {
   activeTaskTitle.style.cursor = 'default';
   const isBreak = (
     (activeTask.category && activeTask.category.toLowerCase() === 'break') ||
-    (activeTask.title && activeTask.title.toLowerCase() === 'break') ||
-    (Array.isArray(activeTask.tags) && activeTask.tags.some(t => t.toLowerCase().includes('break')))
+    (activeTask.title && activeTask.title.toLowerCase() === 'break')
   );
 
   if (wheelContainer) wheelContainer.classList.toggle('is-break-mode', Boolean(isBreak));
@@ -592,17 +595,7 @@ function updateActiveTaskDisplay() {
   activeTaskTitle.textContent = activeTask.title;
   updateActiveTaskTimeSpanDynamic();
   updateTimerQuickToggles();
-
-  // Tags rendering directly below digital timer
-  taskTagsContainer.innerHTML = '';
-  if (Array.isArray(activeTask.tags) && activeTask.tags.length > 0) {
-    activeTask.tags.forEach(tag => {
-      const tagSpan = document.createElement('span');
-      tagSpan.className = 'task-tag';
-      tagSpan.textContent = tag.startsWith('#') ? tag : `#${tag}`;
-      taskTagsContainer.appendChild(tagSpan);
-    });
-  }
+}
 }
 
 function updateScheduleUI(schedule) {
@@ -687,6 +680,17 @@ function setupRotaryWheel() {
   // Strictly used to reduce time. Dragging to a location leaves it in that position.
   // -------------------------------------------------------------
   function onScrubStart(e) {
+    const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (activeTask && activeTask.isLocked) {
+      if (e) {
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+      }
+      mobileServices.hapticWarning();
+      showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
+      return;
+    }
+
     e.stopPropagation();
     isScrubbingGreenLine = true;
     document.body.classList.add('is-scrubbing');
@@ -786,6 +790,17 @@ function setupRotaryWheel() {
   function onDialStart(e) {
     if (isScrubbingGreenLine) return;
     if (!rotaryConfirmPill.classList.contains('hidden')) return;
+
+    const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (activeTask && activeTask.isLocked) {
+      if (e) {
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+      }
+      mobileServices.hapticWarning();
+      showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
+      return;
+    }
 
     isDraggingOuterDial = true;
     document.body.classList.add('is-dragging-dial');
@@ -1156,59 +1171,79 @@ function setupControls() {
     runtime.completeCurrentTaskEarly();
   });
 
+  function handleTimerPiggyToggle(e) {
+    if (e) {
+      e.stopPropagation();
+      if (e.preventDefault) e.preventDefault();
+    }
+    const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (!activeTask) {
+      showToastNotification('Add a task first to toggle Time Bank.');
+      return;
+    }
+    mobileServices.hapticTap();
+    const currentVal = activeTask.useTimeBank !== false;
+    const nextVal = !currentVal;
+    activeTask.useTimeBank = nextVal;
+
+    taskStore.updateTask(activeTask.id, { useTimeBank: nextVal });
+    const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+    if (initTask) initTask.useTimeBank = nextVal;
+
+    if (!nextVal && runtime.isOverrunning) {
+      runtime.isOverrunning = false;
+      runtime.overrunStartTime = null;
+      showToastNotification('Time Bank disabled — moving to next task');
+      runtime._advanceToNextTask();
+      return;
+    }
+
+    showToastNotification(nextVal ? 'Time Bank enabled for this task' : 'Time Bank disabled for this task');
+    updateTimerQuickToggles();
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    const calBackdrop = document.getElementById('calendarModalBackdrop');
+    if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+      renderCalendarModal();
+    }
+  }
+
+  function handleTimerLockToggle(e) {
+    if (e) {
+      e.stopPropagation();
+      if (e.preventDefault) e.preventDefault();
+    }
+    const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (!activeTask) {
+      showToastNotification('Add a task first to toggle Lock.');
+      return;
+    }
+    mobileServices.hapticTap();
+    const nextLock = !Boolean(activeTask.isLocked);
+    activeTask.isLocked = nextLock;
+
+    taskStore.updateTask(activeTask.id, { isLocked: nextLock });
+    const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+    if (initTask) initTask.isLocked = nextLock;
+
+    showToastNotification(nextLock ? 'Task duration locked' : 'Task duration unlocked');
+    updateTimerQuickToggles();
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    const calBackdrop = document.getElementById('calendarModalBackdrop');
+    if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+      renderCalendarModal();
+    }
+  }
+
   const timerScreenPiggyBtn = document.getElementById('timerScreenPiggyBtn');
   if (timerScreenPiggyBtn) {
-    timerScreenPiggyBtn.addEventListener('click', () => {
-      const activeTask = runtime ? runtime.getActiveTask() : null;
-      if (!activeTask) return;
-      mobileServices.hapticTap();
-      const currentVal = activeTask.useTimeBank !== false;
-      const nextVal = !currentVal;
-      activeTask.useTimeBank = nextVal;
-
-      taskStore.updateTask(activeTask.id, { useTimeBank: nextVal });
-      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
-      if (initTask) initTask.useTimeBank = nextVal;
-
-      if (!nextVal && runtime.isOverrunning) {
-        runtime.isOverrunning = false;
-        runtime.overrunStartTime = null;
-        showToastNotification('Time Bank disabled — moving to next task');
-        runtime._advanceToNextTask();
-        return;
-      }
-
-      showToastNotification(nextVal ? 'Time Bank enabled for this task' : 'Time Bank disabled for this task');
-      updateTimerQuickToggles();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
-      const calBackdrop = document.getElementById('calendarModalBackdrop');
-      if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
-        renderCalendarModal();
-      }
-    });
+    timerScreenPiggyBtn.addEventListener('click', handleTimerPiggyToggle);
+    timerScreenPiggyBtn.addEventListener('touchend', handleTimerPiggyToggle, { passive: false });
   }
 
   const timerScreenLockIcon = document.getElementById('timerScreenLockIcon');
   if (timerScreenLockIcon) {
-    timerScreenLockIcon.addEventListener('click', () => {
-      const activeTask = runtime ? runtime.getActiveTask() : null;
-      if (!activeTask) return;
-      mobileServices.hapticTap();
-      const nextLock = !Boolean(activeTask.isLocked);
-      activeTask.isLocked = nextLock;
-
-      taskStore.updateTask(activeTask.id, { isLocked: nextLock });
-      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
-      if (initTask) initTask.isLocked = nextLock;
-
-      showToastNotification(nextLock ? 'Task duration locked' : 'Task duration unlocked');
-      updateTimerQuickToggles();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
-      const calBackdrop = document.getElementById('calendarModalBackdrop');
-      if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
-        renderCalendarModal();
-      }
-    });
+    timerScreenLockIcon.addEventListener('click', handleTimerLockToggle);
+    timerScreenLockIcon.addEventListener('touchend', handleTimerLockToggle, { passive: false });
   }
 
   function triggerTimePicker(inputEl) {
@@ -1573,12 +1608,12 @@ function setupControls() {
         if (deltaY < 0) {
           isDrawerPullingUp = true;
           // Live rubberband upward pull with resistance (0.45 damping)
-          const rubberbandY = -Math.min(Math.abs(deltaY) * 0.45, 120);
+          const rubberbandY = -Math.min(Math.abs(deltaY) * 0.45, 90);
           taskDrawer.style.transition = 'none';
-          taskDrawer.style.transform = `translateY(calc(100% - 56px + ${rubberbandY}px))`;
+          taskDrawer.style.setProperty('transform', `translateY(calc(100% - 56px + ${rubberbandY}px))`, 'important');
 
-          // When swiped extra far (>= 85px), rotate arrow 180 deg to point up; rotate back if pulled down
-          if (Math.abs(deltaY) >= 85) {
+          // When swiped with enough resistance (>= 60px), rotate arrow 180 deg to point up; rotate back if pulled down
+          if (Math.abs(deltaY) >= 60) {
             taskDrawer.classList.add('will-open');
           } else {
             taskDrawer.classList.remove('will-open');
@@ -1597,10 +1632,10 @@ function setupControls() {
           // Live rubberband pull visual
           const rubberbandY = Math.min(deltaY * 0.45, 120);
           taskDrawer.style.transition = 'none';
-          taskDrawer.style.transform = `translateY(${rubberbandY}px)`;
+          taskDrawer.style.setProperty('transform', `translateY(${rubberbandY}px)`, 'important');
 
-          // Rotate arrow 180° clockwise when swiped >= 85px to indicate release will minimise; rotate back if pulled back
-          if (deltaY >= 85) {
+          // Rotate arrow 180° clockwise when swiped >= 65px to indicate release will minimise; rotate back if pulled back
+          if (deltaY >= 65) {
             taskDrawer.classList.add('will-minimise');
           } else {
             taskDrawer.classList.remove('will-minimise');
@@ -1620,8 +1655,8 @@ function setupControls() {
 
     if (isDrawerPullingUp) {
       taskDrawer.style.transition = '';
-      // Opens when either flicked up (deltaY < -40 with speed) or swiped high enough (deltaY <= -85)
-      if (deltaY <= -85 || (deltaY < -40 && flickVelocity > 0.4)) {
+      // Opens when either flicked up (deltaY < -30 with speed) or swiped with enough resistance (deltaY <= -60)
+      if (deltaY <= -60 || (deltaY < -30 && flickVelocity > 0.35)) {
         taskDrawer.classList.remove('will-open');
         taskDrawer.style.removeProperty('transform');
         openTaskDrawer();
@@ -1629,20 +1664,20 @@ function setupControls() {
         // Snap back to collapsed state
         taskDrawer.classList.remove('will-open');
         taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        taskDrawer.style.transform = '';
+        taskDrawer.style.removeProperty('transform');
       }
     }
 
     if (isDrawerPullingDown) {
       taskDrawer.style.transition = '';
-      if (deltaY > 85 || (deltaY > 40 && flickVelocity > 0.4)) {
+      if (deltaY > 65 || (deltaY > 30 && flickVelocity > 0.35)) {
         taskDrawer.classList.remove('will-minimise');
         taskDrawer.style.removeProperty('transform');
         closeTaskDrawer();
       } else {
         taskDrawer.classList.remove('will-minimise');
         taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        taskDrawer.style.transform = '';
+        taskDrawer.style.removeProperty('transform');
       }
     }
 
