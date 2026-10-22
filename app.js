@@ -696,7 +696,6 @@ function setupRotaryWheel() {
 
     scrubStartAngleRad = getAngleFromEvent(e);
 
-    const activeTask = runtime.getActiveTask();
     if (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED) {
       activeTotalSec = runtime.taskDurationMs > 0
         ? Math.round(runtime.taskDurationMs / 1000)
