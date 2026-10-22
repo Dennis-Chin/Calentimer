@@ -19,6 +19,10 @@
  * @returns {number} Minutes from midnight (0 - 1439)
  */
 export function parseTimeToMinutes(timeInput) {
+  if (timeInput === null || timeInput === undefined) {
+    return 0;
+  }
+
   if (typeof timeInput === 'number' && !isNaN(timeInput)) {
     return Math.floor(timeInput) % 1440;
   }

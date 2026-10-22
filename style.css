@@ -1143,6 +1143,10 @@ body {
   transform: rotate(180deg);
 }
 
+.task-drawer.collapsed.will-open .drawer-arrow-icon {
+  transform: rotate(0deg);
+}
+
 .task-drawer:not(.collapsed) .drawer-arrow-icon {
   transform: rotate(0deg);
 }
@@ -3101,14 +3105,31 @@ body {
 /* ==========================================================================
    Active Task Time Span & Dynamic Break Theme on Rotary Dial
    ========================================================================== */
+.active-task-time-span-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  line-height: 1.2;
+}
+
 .active-task-time-span {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--accent-cyan);
   letter-spacing: 0.4px;
-  margin-top: 2px;
-  margin-bottom: 4px;
+  transition: color 0.25s ease;
+}
+
+.active-task-total-duration {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
   transition: color 0.25s ease;
 }
 
@@ -3116,8 +3137,78 @@ body {
   color: #0284c7;
 }
 
+[data-theme="light"] .active-task-total-duration {
+  color: #64748b;
+}
+
 .is-break-mode .active-task-time-span {
   color: #fbbf24 !important;
+}
+
+.is-break-mode .active-task-total-duration {
+  color: #d97706 !important;
+}
+
+.timer-quick-toggles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 3px;
+  margin-bottom: 4px;
+}
+
+.timer-quick-btn {
+  background: transparent;
+  border: none;
+  padding: 5px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.timer-quick-btn:active {
+  transform: scale(0.88);
+}
+
+.timer-piggy-btn {
+  color: #64748b;
+  opacity: 0.38;
+}
+
+.timer-piggy-btn:hover {
+  opacity: 0.75;
+}
+
+.timer-piggy-btn.active {
+  color: #ec4899;
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(236, 72, 153, 0.45));
+}
+
+.timer-piggy-btn.cracked {
+  color: #f43f5e;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.7));
+  animation: pulse-overrun 1s infinite alternate ease-in-out;
+}
+
+.timer-lock-indicator {
+  color: #f59e0b;
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.4));
+}
+
+.timer-lock-indicator.unlocked {
+  color: #64748b;
+  opacity: 0.35;
+  filter: none;
 }
 
 .is-break-mode .dial-tick-active,

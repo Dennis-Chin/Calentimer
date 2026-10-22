@@ -228,6 +228,7 @@ function setupRuntimeEvents() {
     if (!isScrubbingGreenLine && !isDraggingOuterDial) {
       renderClockTime(data.remainingSeconds);
       updateActiveTaskTimeSpanDynamic(data.remainingSeconds);
+      updateTimerQuickToggles(data.isOverrunning);
       // Continuous rAF drives smooth wheel during RUNNING; update here when paused, idle, or seeking
       if (runtime.status !== TimerStatus.RUNNING) {
         updateWheelProgress(data.isOverrunning ? data.progress : data.progressRatio);
@@ -477,6 +478,8 @@ function updateWheelProgress(progressRatio) {
 function updateActiveTaskTimeSpanDynamic(remainingSec) {
   if (!activeTaskTimeSpan) return;
   const activeTask = (runtime ? runtime.getActiveTask() : null);
+  const totalDurEl = document.getElementById('activeTaskTotalDuration');
+
   if (!activeTask || (runtime && runtime.status) === TimerStatus.COMPLETED) {
     // Idle/No task state: Live digital clock start time, end time = now + 30m
     const d = new Date();
@@ -485,6 +488,7 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     const startStr = formatMinutesToTime(startMinutes);
     const endStr = formatMinutesToTime(endMinutes);
     activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+    if (totalDurEl) totalDurEl.textContent = '(30m)';
     return;
   }
 
@@ -503,12 +507,59 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     ? runtime.getElapsedSeconds()
     : 0;
   const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
-  const totalSec = elapsedSec + rem;
-  const endMinutes = (startMinutes + Math.round(totalSec / 60)) % 1440;
+  const totalSec = Math.max(60, elapsedSec + rem);
+  const totalMinutes = Math.max(1, Math.round(totalSec / 60));
+  const endMinutes = (startMinutes + totalMinutes) % 1440;
 
   const startStr = formatMinutesToTime(startMinutes);
   const endStr = formatMinutesToTime(endMinutes);
   activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+  if (totalDurEl) {
+    totalDurEl.textContent = `(${totalMinutes}m)`;
+  }
+}
+
+function updateTimerQuickToggles(isOverrunning = false) {
+  const togglesContainer = document.getElementById('timerQuickToggles');
+  const piggyBtn = document.getElementById('timerScreenPiggyBtn');
+  const lockIcon = document.getElementById('timerScreenLockIcon');
+  if (!togglesContainer || !piggyBtn || !lockIcon) return;
+
+  const activeTask = runtime ? runtime.getActiveTask() : null;
+  if (!activeTask || runtime.status === TimerStatus.COMPLETED) {
+    togglesContainer.classList.add('hidden');
+    return;
+  }
+
+  togglesContainer.classList.remove('hidden');
+
+  const overrunning = Boolean(isOverrunning || (runtime && runtime.isOverrunning));
+  const hasTimeBank = activeTask.useTimeBank !== false;
+
+  piggyBtn.innerHTML = getPiggyBankSvg(overrunning);
+  piggyBtn.classList.toggle('cracked', overrunning);
+  piggyBtn.classList.toggle('active', !overrunning && hasTimeBank);
+  if (overrunning) {
+    piggyBtn.title = 'Overrunning into Time Bank';
+  } else if (hasTimeBank) {
+    piggyBtn.title = 'Time Bank enabled: taps into saved surplus time if overdue (tap to disable)';
+  } else {
+    piggyBtn.title = 'Time Bank disabled (tap to enable)';
+  }
+
+  const isLocked = Boolean(activeTask.isLocked);
+  if (isLocked) {
+    lockIcon.classList.remove('hidden');
+    lockIcon.classList.remove('unlocked');
+    lockIcon.title = 'Duration is locked (tap to unlock)';
+    lockIcon.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+      </svg>
+    `;
+  } else {
+    lockIcon.classList.add('hidden');
+  }
 }
 
 function updateActiveTaskDisplay() {
@@ -518,6 +569,7 @@ function updateActiveTaskDisplay() {
     activeTaskTitle.textContent = 'Add Task';
     activeTaskTitle.style.cursor = 'pointer';
     updateActiveTaskTimeSpanDynamic();
+    updateTimerQuickToggles(false);
     taskTagsContainer.innerHTML = '';
     if (wheelContainer) wheelContainer.classList.remove('is-break-mode');
     document.body.classList.remove('is-break-mode');
@@ -539,6 +591,7 @@ function updateActiveTaskDisplay() {
   activeCategoryChip.textContent = (activeTask.category || 'Focus').toUpperCase();
   activeTaskTitle.textContent = activeTask.title;
   updateActiveTaskTimeSpanDynamic();
+  updateTimerQuickToggles();
 
   // Tags rendering directly below digital timer
   taskTagsContainer.innerHTML = '';
@@ -641,10 +694,15 @@ function setupRotaryWheel() {
     scrubStartAngleRad = getAngleFromEvent(e);
 
     const activeTask = runtime.getActiveTask();
-    activeTotalSec = ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60;
-    baseRemainingSecAtScrubStart = runtime.status === TimerStatus.IDLE
-      ? activeTotalSec
-      : runtime.getRemainingSeconds();
+    if (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED) {
+      activeTotalSec = runtime.taskDurationMs > 0
+        ? Math.round(runtime.taskDurationMs / 1000)
+        : (((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60);
+      baseRemainingSecAtScrubStart = runtime.getRemainingSeconds();
+    } else {
+      activeTotalSec = ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60;
+      baseRemainingSecAtScrubStart = activeTotalSec;
+    }
 
     // The starting angular position of the bead corresponds to current elapsed progress
     const currentProgress = activeTotalSec > 0
@@ -704,6 +762,7 @@ function setupRotaryWheel() {
     }
     const finalRatio = activeTotalSec > 0 ? (activeTotalSec - (lastScrubbedSecond >= 0 ? lastScrubbedSecond : 0)) / activeTotalSec : 0;
     updateWheelProgress(Math.min(1, Math.max(0, finalRatio)));
+    updateActiveTaskTimeSpanDynamic(lastScrubbedSecond >= 0 ? lastScrubbedSecond : runtime.getRemainingSeconds());
 
     if (runtime.status === TimerStatus.RUNNING) {
       startContinuousWheelAnimation();
@@ -736,7 +795,7 @@ function setupRotaryWheel() {
     lastAudibleMinuteTick = 0;
 
     baseDialSeconds = runtime.status === TimerStatus.IDLE
-      ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) || 25) * 60
+      ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) || 30) * 60
       : runtime.getRemainingSeconds();
 
     rotaryPreviewBadge.classList.remove('hidden');
@@ -799,12 +858,11 @@ function setupRotaryWheel() {
     if (pendingMinuteAdjustment !== 0) {
       mobileServices.hapticTap();
 
-      // Compute exact preview target seconds and target minutes
+      // Compute exact preview target seconds
       const targetSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
-      const targetMinutes = Math.round(targetSeconds / 60);
 
-      // Lock task to this exact target minutes so it stays at this time without stepping back
-      runtime.setActiveTaskTargetMinutes(targetMinutes, pendingMinuteAdjustment);
+      // Lock task to this exact target seconds so it preserves seconds and doesn't round to a whole minute!
+      runtime.setActiveTaskTargetSeconds(targetSeconds, pendingMinuteAdjustment);
 
       const activeTask = runtime.getActiveTask();
       if (activeTask) {
@@ -820,9 +878,10 @@ function setupRotaryWheel() {
       }
       updateActiveTaskDisplay();
       const remainingSec = runtime.status === TimerStatus.IDLE
-        ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) * 60 || 1500)
+        ? targetSeconds
         : runtime.getRemainingSeconds();
       renderClockTime(remainingSec);
+      updateActiveTaskTimeSpanDynamic(remainingSec);
       updateWheelProgress(runtime.getProgress());
       updateFinishEarlyButtonText(remainingSec);
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -1096,6 +1155,61 @@ function setupControls() {
     mobileServices.hapticTap();
     runtime.completeCurrentTaskEarly();
   });
+
+  const timerScreenPiggyBtn = document.getElementById('timerScreenPiggyBtn');
+  if (timerScreenPiggyBtn) {
+    timerScreenPiggyBtn.addEventListener('click', () => {
+      const activeTask = runtime ? runtime.getActiveTask() : null;
+      if (!activeTask) return;
+      mobileServices.hapticTap();
+      const currentVal = activeTask.useTimeBank !== false;
+      const nextVal = !currentVal;
+      activeTask.useTimeBank = nextVal;
+
+      taskStore.updateTask(activeTask.id, { useTimeBank: nextVal });
+      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+      if (initTask) initTask.useTimeBank = nextVal;
+
+      if (!nextVal && runtime.isOverrunning) {
+        runtime.isOverrunning = false;
+        runtime.overrunStartTime = null;
+        showToastNotification('Time Bank disabled — moving to next task');
+        runtime._advanceToNextTask();
+        return;
+      }
+
+      showToastNotification(nextVal ? 'Time Bank enabled for this task' : 'Time Bank disabled for this task');
+      updateTimerQuickToggles();
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      const calBackdrop = document.getElementById('calendarModalBackdrop');
+      if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+        renderCalendarModal();
+      }
+    });
+  }
+
+  const timerScreenLockIcon = document.getElementById('timerScreenLockIcon');
+  if (timerScreenLockIcon) {
+    timerScreenLockIcon.addEventListener('click', () => {
+      const activeTask = runtime ? runtime.getActiveTask() : null;
+      if (!activeTask) return;
+      mobileServices.hapticTap();
+      const nextLock = !Boolean(activeTask.isLocked);
+      activeTask.isLocked = nextLock;
+
+      taskStore.updateTask(activeTask.id, { isLocked: nextLock });
+      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+      if (initTask) initTask.isLocked = nextLock;
+
+      showToastNotification(nextLock ? 'Task duration locked' : 'Task duration unlocked');
+      updateTimerQuickToggles();
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      const calBackdrop = document.getElementById('calendarModalBackdrop');
+      if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+        renderCalendarModal();
+      }
+    });
+  }
 
   function triggerTimePicker(inputEl) {
     if (!inputEl) return;
@@ -1382,7 +1496,7 @@ function setupControls() {
   function openTaskDrawer() {
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.remove('collapsed');
-    taskDrawer.classList.remove('will-minimise');
+    taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
   }
@@ -1390,7 +1504,7 @@ function setupControls() {
   function closeTaskDrawer() {
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.add('collapsed');
-    taskDrawer.classList.remove('will-minimise');
+    taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.add('hidden');
   }
 
@@ -1414,29 +1528,35 @@ function setupControls() {
   // Swipe up to open Today's Tasks tab; swipe down to minimise it (with live rubberband)
   let drawerTouchStartY = 0;
   let drawerTouchStartX = 0;
+  let drawerTouchStartTime = 0;
   let isDrawerTouching = false;
   let isDrawerPullingDown = false;
+  let isDrawerPullingUp = false;
 
   function onDrawerTouchStart(e) {
     if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
       isDrawerTouching = false;
       isDrawerPullingDown = false;
+      isDrawerPullingUp = false;
       return;
     }
     if (!e.touches || e.touches.length !== 1) return;
     drawerTouchStartY = e.touches[0].clientY;
     drawerTouchStartX = e.touches[0].clientX;
+    drawerTouchStartTime = Date.now();
     isDrawerTouching = true;
     isDrawerPullingDown = false;
+    isDrawerPullingUp = false;
   }
 
   function onDrawerTouchMove(e) {
     if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
       isDrawerTouching = false;
-      if (isDrawerPullingDown) {
+      if (isDrawerPullingDown || isDrawerPullingUp) {
         taskDrawer.style.removeProperty('transform');
-        taskDrawer.classList.remove('will-minimise');
+        taskDrawer.classList.remove('will-minimise', 'will-open');
         isDrawerPullingDown = false;
+        isDrawerPullingUp = false;
       }
       return;
     }
@@ -1447,12 +1567,24 @@ function setupControls() {
     const deltaX = currentX - drawerTouchStartX;
 
     // Only respond to predominantly vertical swipes
-    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
       if (taskDrawer.classList.contains('collapsed')) {
-        // Swiping UP when collapsed -> open drawer
-        if (deltaY < -25) {
-          isDrawerTouching = false;
-          openTaskDrawer();
+        // Swiping UP when collapsed with resistance and 180 deg rotating arrow
+        if (deltaY < 0) {
+          isDrawerPullingUp = true;
+          // Live rubberband upward pull with resistance (0.45 damping)
+          const rubberbandY = -Math.min(Math.abs(deltaY) * 0.45, 120);
+          taskDrawer.style.transition = 'none';
+          taskDrawer.style.transform = `translateY(calc(100% - 56px + ${rubberbandY}px))`;
+
+          // When swiped extra far (>= 85px), rotate arrow 180 deg to point up; rotate back if pulled down
+          if (Math.abs(deltaY) >= 85) {
+            taskDrawer.classList.add('will-open');
+          } else {
+            taskDrawer.classList.remove('will-open');
+          }
+        } else if (deltaY >= 0 && isDrawerPullingUp) {
+          taskDrawer.classList.remove('will-open');
         }
       } else {
         // Swiping DOWN when expanded: only allow when user is at the top of drawer content (scrollTop <= 0) or touching the header
@@ -1481,19 +1613,43 @@ function setupControls() {
   }
 
   function onDrawerTouchEnd(e) {
-    if (isDrawerPullingDown) {
+    const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
+    const deltaY = currentY - drawerTouchStartY;
+    const elapsedMs = Math.max(1, Date.now() - drawerTouchStartTime);
+    const flickVelocity = Math.abs(deltaY) / elapsedMs; // px per ms
+
+    if (isDrawerPullingUp) {
       taskDrawer.style.transition = '';
-      const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
-      const deltaY = currentY - drawerTouchStartY;
-      if (deltaY > 85) {
-        closeTaskDrawer();
+      // Opens when either flicked up (deltaY < -40 with speed) or swiped high enough (deltaY <= -85)
+      if (deltaY <= -85 || (deltaY < -40 && flickVelocity > 0.4)) {
+        taskDrawer.classList.remove('will-open');
+        taskDrawer.style.removeProperty('transform');
+        openTaskDrawer();
       } else {
+        // Snap back to collapsed state
+        taskDrawer.classList.remove('will-open');
+        taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
         taskDrawer.style.transform = '';
       }
     }
-    taskDrawer.classList.remove('will-minimise');
+
+    if (isDrawerPullingDown) {
+      taskDrawer.style.transition = '';
+      if (deltaY > 85 || (deltaY > 40 && flickVelocity > 0.4)) {
+        taskDrawer.classList.remove('will-minimise');
+        taskDrawer.style.removeProperty('transform');
+        closeTaskDrawer();
+      } else {
+        taskDrawer.classList.remove('will-minimise');
+        taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+        taskDrawer.style.transform = '';
+      }
+    }
+
+    taskDrawer.classList.remove('will-minimise', 'will-open');
     isDrawerTouching = false;
     isDrawerPullingDown = false;
+    isDrawerPullingUp = false;
   }
 
   if (drawerHeader) {

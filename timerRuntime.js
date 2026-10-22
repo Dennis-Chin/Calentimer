@@ -533,29 +533,32 @@ export class TimerRuntime {
   }
 
   /**
-   * Directly sets the active task to an exact minute target (from rotary dial release).
-   * Guarantees the timer stays at that exact minute without stepping back.
+   * Directly sets the active task to an exact second target (from rotary dial release).
+   * Preserves exact seconds and prevents rounding off to whole minutes.
    * 
-   * @param {number} targetMinutes 
+   * @param {number} targetRemainingSec 
    * @param {number} deltaMinutes 
    */
-  setActiveTaskTargetMinutes(targetMinutes, deltaMinutes = 0) {
-    targetMinutes = Math.max(1, Math.round(targetMinutes));
+  setActiveTaskTargetSeconds(targetRemainingSec, deltaMinutes = 0) {
+    targetRemainingSec = Math.max(10, Math.round(targetRemainingSec));
 
     if (this.status === TimerStatus.IDLE) {
       const targetIndex = Math.max(0, this.activeTaskIndex);
       const targetTask = this.initialTasks[targetIndex];
       if (targetTask) {
+        const targetMinutes = Math.max(1, Math.round(targetRemainingSec / 60));
         targetTask.plannedDuration = targetMinutes;
         targetTask.allocatedDuration = targetMinutes;
         targetTask.isLocked = true;
+        this.taskDurationMs = targetRemainingSec * 1000;
 
         this._ensureHardStopAccommodatesTasks();
         const schedule = this.recalculate();
         this._emit('taskAdjusted', {
           task: targetTask,
           targetMinutes,
-          deltaMinutes
+          deltaMinutes,
+          newRemainingSeconds: targetRemainingSec
         });
         return schedule;
       }
@@ -564,9 +567,6 @@ export class TimerRuntime {
       if (!activeTask) return;
 
       const elapsedSec = this.getElapsedSeconds();
-      // targetMinutes represents the desired remaining minutes on the clock.
-      // Total duration for the active task = elapsed seconds + remaining target seconds.
-      const targetRemainingSec = Math.max(60, targetMinutes * 60);
       const newTotalSec = elapsedSec + targetRemainingSec;
       const newTotalMinutes = Math.max(1, Math.round(newTotalSec / 60));
 
@@ -588,7 +588,7 @@ export class TimerRuntime {
       this._emit('taskAdjusted', {
         task: activeTask,
         targetMinutes: newTotalMinutes,
-        remainingMinutes: targetMinutes,
+        remainingMinutes: Math.round(targetRemainingSec / 60),
         deltaMinutes,
         newRemainingSeconds: targetRemainingSec
       });
@@ -596,6 +596,16 @@ export class TimerRuntime {
       this._tick();
       return schedule;
     }
+  }
+
+  /**
+   * Directly sets the active task to an exact minute target (from rotary dial release).
+   * 
+   * @param {number} targetMinutes 
+   * @param {number} deltaMinutes 
+   */
+  setActiveTaskTargetMinutes(targetMinutes, deltaMinutes = 0) {
+    return this.setActiveTaskTargetSeconds(targetMinutes * 60, deltaMinutes);
   }
 
   /**
@@ -739,7 +749,7 @@ export class TimerRuntime {
     if (this.status !== TimerStatus.RUNNING) return;
 
     const nowMinutes = parseTimeToMinutes(new Date());
-    const stopMinutes = parseTimeToMinutes(this.hardStop);
+    const stopMinutes = this.hardStop ? parseTimeToMinutes(this.hardStop) : 1440;
     const isHardStopPassed = (stopMinutes >= nowMinutes)
       ? (nowMinutes >= stopMinutes)
       : false; // midnight wrap handled by calculateSchedule
@@ -821,7 +831,7 @@ export class TimerRuntime {
       const activeTask = this.getActiveTask();
       const currentBank = taskStore.getTimeBankSeconds();
 
-      if (activeTask && activeTask.useTimeBank && currentBank > 0) {
+      if (activeTask && (activeTask.useTimeBank !== false) && currentBank > 0) {
         // Trigger Overrun Mode!
         this.isOverrunning = true;
         this.overrunStartTime = Date.now();
@@ -883,7 +893,7 @@ export class TimerRuntime {
 
     const progressRatio = totalSeconds > 0 ? newElapsedSeconds / totalSeconds : 0;
     const nowMinutes = parseTimeToMinutes(new Date());
-    const stopMinutes = parseTimeToMinutes(this.hardStop);
+    const stopMinutes = this.hardStop ? parseTimeToMinutes(this.hardStop) : 1440;
 
     this._emit('tick', {
       activeTask: this.getActiveTask(),
