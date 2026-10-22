@@ -150,6 +150,10 @@ export class TaskStore {
     }
   }
 
+  setHardStop(hardStop) {
+    return this.saveHardStop(hardStop);
+  }
+
   /**
    * Adds a new task.
    */

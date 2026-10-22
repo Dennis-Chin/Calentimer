@@ -243,6 +243,15 @@ function setupRuntimeEvents() {
     updateFinishEarlyButtonText(data.remainingSeconds);
   });
 
+  runtime.on('hardStopReached', (data) => {
+    audioManager.playChime();
+    mobileServices.hapticBuzz();
+    showToastNotification(`🛑 Hard Stop reached (${data.hardStop || 'target time'})! Time to stop working.`);
+    renderClockTime(0);
+    updateWheelProgress(1);
+    updateActiveTaskDisplay();
+  });
+
   runtime.on('taskOverrunStart', (data) => {
     audioManager.playTumblingCoinsSound();
     mobileServices.hapticCelebration();
@@ -960,21 +969,54 @@ function resetWholeDay() {
 }
 
 function setupControls() {
+  const alertsModalBackdrop = document.getElementById('alertsModalBackdrop');
+  const alertsModalToggle = document.getElementById('alertsModalToggle');
+  const alertsModalStatusLabel = document.getElementById('alertsModalStatusLabel');
+  const btnCloseAlertsModal = document.getElementById('btnCloseAlertsModal');
+
+  function openAlertsModal() {
+    if (!alertsModalBackdrop) return;
+    const isEnabled = taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission();
+    if (alertsModalToggle) alertsModalToggle.checked = isEnabled;
+    if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = isEnabled ? 'Notifications Active' : 'Notifications Muted';
+    alertsModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeAlertsModal() {
+    alertsModalBackdrop?.classList.add('hidden');
+  }
+
   if (btnNotifToggle) {
-    btnNotifToggle.addEventListener('click', async () => {
+    btnNotifToggle.addEventListener('click', openAlertsModal);
+  }
+
+  if (btnCloseAlertsModal) btnCloseAlertsModal.addEventListener('click', closeAlertsModal);
+  if (alertsModalBackdrop) {
+    alertsModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === alertsModalBackdrop) closeAlertsModal();
+    });
+  }
+
+  if (alertsModalToggle) {
+    alertsModalToggle.addEventListener('change', async () => {
       mobileServices.hapticTap();
-      if (!mobileServices.hasNotificationPermission()) {
-        const granted = await mobileServices.requestNotificationPermission();
-        if (granted) {
-          taskStore.setAlertsEnabled(true);
+      if (alertsModalToggle.checked) {
+        if (!mobileServices.hasNotificationPermission()) {
+          const granted = await mobileServices.requestNotificationPermission();
+          if (!granted) {
+            alertsModalToggle.checked = false;
+            if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = 'Permission Denied';
+            updateNotifToggleUI();
+            return;
+          }
         }
+        taskStore.setAlertsEnabled(true);
+        if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = 'Notifications Active';
       } else {
-        const currentlyEnabled = taskStore.getAlertsEnabled();
-        const nextState = !currentlyEnabled;
-        taskStore.setAlertsEnabled(nextState);
-        if (!nextState) {
-          mobileServices.cancelLiveNotification();
-        }
+        taskStore.setAlertsEnabled(false);
+        mobileServices.cancelLiveNotification();
+        if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = 'Notifications Muted';
       }
       updateNotifToggleUI();
       if (taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission() && runtime) {
@@ -1155,7 +1197,7 @@ function setupControls() {
       const newStop = `${h}:${m}`;
       const isEnabled = hardStopModalToggle ? hardStopModalToggle.checked : true;
 
-      taskStore.setHardStop(newStop);
+      taskStore.saveHardStop(newStop);
       taskStore.setHardStopEnabled(isEnabled);
       runtime.setHardStopEnabled(isEnabled);
       syncHardStopValue(newStop);
@@ -1481,7 +1523,8 @@ function addBreakTask(duration = 10) {
     category: 'Break',
     tags: ['rest', 'recharge'],
     emoji: '☕',
-    isLocked: false
+    isLocked: false,
+    useTimeBank: false
   });
   runtime.initialTasks = taskStore.getTasks();
   runtime.recalculate();
@@ -2333,6 +2376,8 @@ function setAddTaskType(type) {
     if (titleInput) titleInput.placeholder = 'e.g. Coffee break, walk, stretch';
     if (durationInput) durationInput.value = '10';
     if (categoryInput) categoryInput.value = 'Break';
+    const bankInput = document.getElementById('addModalTimeBank');
+    if (bankInput) bankInput.checked = false; // Breaks default to no piggy bank
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('data-min') === '10');
@@ -2355,6 +2400,8 @@ function setAddTaskType(type) {
     if (titleInput) titleInput.placeholder = 'e.g. Core Reading & Practice';
     if (durationInput) durationInput.value = '25';
     if (categoryInput && categoryInput.value === 'Break') categoryInput.value = 'Study';
+    const bankInput = document.getElementById('addModalTimeBank');
+    if (bankInput) bankInput.checked = true;
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('data-min') === '25');
@@ -2543,32 +2590,30 @@ function closeCalendar() {
   if (navItemCalendar) navItemCalendar.classList.remove('active');
 }
 
-// Category Color Palette for Consistent Custom Pill Styling
+// Category Color Palette: Vibrant, colorful tones strictly distinct from task status colors (no light-blue, red, orange/yellow, or grey)
 const CATEGORY_PALETTE = [
-  { bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.45)', text: '#60a5fa' },   // Blue (Work)
-  { bg: 'rgba(168, 85, 247, 0.18)', border: 'rgba(168, 85, 247, 0.45)', text: '#c084fc' },  // Purple (Study)
-  { bg: 'rgba(16, 185, 129, 0.18)', border: 'rgba(16, 185, 129, 0.45)', text: '#34d399' },  // Green (Personal)
-  { bg: 'rgba(244, 63, 94, 0.18)', border: 'rgba(244, 63, 94, 0.45)', text: '#fb7185' },    // Rose (Health)
-  { bg: 'rgba(14, 165, 233, 0.18)', border: 'rgba(14, 165, 233, 0.45)', text: '#38bdf8' },  // Cyan (Break)
-  { bg: 'rgba(245, 158, 11, 0.18)', border: 'rgba(245, 158, 11, 0.45)', text: '#fbbf24' },  // Amber (Meeting)
-  { bg: 'rgba(99, 102, 241, 0.18)', border: 'rgba(99, 102, 241, 0.45)', text: '#818cf8' },  // Indigo (Coding)
-  { bg: 'rgba(20, 184, 166, 0.18)', border: 'rgba(20, 184, 166, 0.45)', text: '#2dd4bf' },  // Teal (Chores)
-  { bg: 'rgba(236, 72, 153, 0.18)', border: 'rgba(236, 72, 153, 0.45)', text: '#f472b6' },  // Pink (Life)
-  { bg: 'rgba(148, 163, 184, 0.18)', border: 'rgba(148, 163, 184, 0.45)', text: '#94a3b8' } // Slate (General)
+  { bg: 'rgba(168, 85, 247, 0.22)', border: '#a855f7', text: '#e9d5ff' },  // Bright Purple (Study / Deep Work)
+  { bg: 'rgba(16, 185, 129, 0.22)', border: '#10b981', text: '#6ee7b7' },  // Emerald / Mint (Personal)
+  { bg: 'rgba(236, 72, 153, 0.22)', border: '#ec4899', text: '#fbcfe8' },  // Magenta / Hot Pink (Creative / Life)
+  { bg: 'rgba(132, 204, 22, 0.22)', border: '#84cc16', text: '#d9f99d' },  // Bright Lime (Health / Fitness)
+  { bg: 'rgba(99, 102, 241, 0.22)', border: '#6366f1', text: '#c7d2fe' },  // Royal Indigo (Coding / Dev)
+  { bg: 'rgba(20, 184, 166, 0.22)', border: '#14b8a6', text: '#99f6e4' },  // Teal (Chores / Tasks)
+  { bg: 'rgba(217, 70, 239, 0.22)', border: '#d946ef', text: '#f5d0fe' },  // Vivid Fuchsia (Meeting)
+  { bg: 'rgba(139, 92, 246, 0.22)', border: '#8b5cf6', text: '#ddd6fe' },  // Violet (General)
+  { bg: 'rgba(34, 197, 94, 0.22)', border: '#22c55e', text: '#bbf7d0' }   // Spring Green (Admin)
 ];
 
 function getCategoryColor(category) {
   const cat = (category || 'General').trim();
   const lower = cat.toLowerCase();
-  if (lower === 'work') return CATEGORY_PALETTE[0];
-  if (lower === 'study') return CATEGORY_PALETTE[1];
-  if (lower === 'personal') return CATEGORY_PALETTE[2];
+  if (lower === 'study') return CATEGORY_PALETTE[0];
+  if (lower === 'work') return CATEGORY_PALETTE[4];
+  if (lower === 'personal') return CATEGORY_PALETTE[1];
   if (lower === 'health' || lower === 'fitness') return CATEGORY_PALETTE[3];
-  if (lower === 'break') return CATEGORY_PALETTE[4];
-  if (lower === 'meeting') return CATEGORY_PALETTE[5];
-  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[6];
-  if (lower === 'chores') return CATEGORY_PALETTE[7];
-  if (lower === 'general') return CATEGORY_PALETTE[9];
+  if (lower === 'meeting') return CATEGORY_PALETTE[6];
+  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[4];
+  if (lower === 'chores') return CATEGORY_PALETTE[5];
+  if (lower === 'general') return CATEGORY_PALETTE[7];
 
   let hash = 0;
   for (let i = 0; i < cat.length; i++) {
@@ -2987,9 +3032,10 @@ function setupNavigationAndModals() {
   const durationDialTaskTitle = document.getElementById('durationDialTaskTitle');
   const durationDialTimeSpan = document.getElementById('durationDialTimeSpan');
 
-  function renderPickerTicks() {
-    if (!pickerTicksGroup || pickerTicksGroup.children.length > 0) return;
+  function renderPickerTicks(isBreak = false) {
+    if (!pickerTicksGroup) return;
     pickerTicksGroup.innerHTML = '';
+    const majorColor = isBreak ? '#f59e0b' : 'var(--accent-cyan)';
     for (let i = 0; i < 60; i++) {
       const isMajor = i % 5 === 0;
       const angleRad = (i * 6 - 90) * (Math.PI / 180);
@@ -3006,7 +3052,7 @@ function setupNavigationAndModals() {
       line.setAttribute('x2', x2);
       line.setAttribute('y2', y2);
       line.setAttribute('class', `dial-tick ${isMajor ? 'major' : ''}`);
-      line.style.stroke = isMajor ? 'var(--accent-cyan)' : 'rgba(255, 255, 255, 0.28)';
+      line.style.stroke = isMajor ? majorColor : 'rgba(255, 255, 255, 0.28)';
       line.style.strokeWidth = isMajor ? '3.5' : '2';
       line.style.strokeLinecap = 'round';
       pickerTicksGroup.appendChild(line);
@@ -3074,7 +3120,18 @@ function setupNavigationAndModals() {
     pickerSeconds = 0;
     pickerAccumulatedDeltaDeg = 0;
 
-    renderPickerTicks();
+    let isBreak = false;
+    if (callingModal === 'add') {
+      const catInput = document.getElementById('addModalCategory');
+      const titleInput = document.getElementById('addModalTitle');
+      isBreak = (currentAddTaskType === 'break') || (catInput?.value.toLowerCase() === 'break') || (titleInput?.value.toLowerCase() === 'break');
+    } else {
+      const task = taskStore.getTasks().find(t => t.id === currentEditTaskId);
+      const catInput = document.getElementById('editTaskCategory');
+      isBreak = (task?.category?.toLowerCase() === 'break') || (catInput?.value.toLowerCase() === 'break');
+    }
+
+    renderPickerTicks(isBreak);
     updatePickerVisuals();
 
     durationDialModalBackdrop?.classList.remove('hidden');
@@ -3152,14 +3209,19 @@ function setupNavigationAndModals() {
   }
 
   function onPickerPointerStart(e) {
+    if (e.target && e.target.id === 'pickerDigitalInput') return;
+
     const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
     const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
     const radius = getPickerRadius(clientX, clientY);
 
+    if (radius < 45) return;
+    if (e.cancelable) e.preventDefault();
+
     pickerDialStartAngleRad = getPickerAngle(clientX, clientY);
     pickerAccumulatedDeltaDeg = 0;
 
-    if (radius >= 100) {
+    if (radius >= 92) {
       isDraggingPickerMinutes = true;
     } else {
       isDraggingPickerSeconds = true;
@@ -3174,6 +3236,7 @@ function setupNavigationAndModals() {
 
   function onPickerPointerMove(e) {
     if (!isDraggingPickerMinutes && !isDraggingPickerSeconds) return;
+    if (e.cancelable) e.preventDefault();
     const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
     const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
     const currentAngleRad = getPickerAngle(clientX, clientY);
@@ -3211,9 +3274,10 @@ function setupNavigationAndModals() {
     isDraggingPickerSeconds = false;
   }
 
-  if (pickerRotarySvg) {
-    pickerRotarySvg.addEventListener('mousedown', onPickerPointerStart);
-    pickerRotarySvg.addEventListener('touchstart', onPickerPointerStart, { passive: false });
+  const dialPickerContainer = document.getElementById('dialPickerContainer');
+  if (dialPickerContainer) {
+    dialPickerContainer.addEventListener('mousedown', onPickerPointerStart);
+    dialPickerContainer.addEventListener('touchstart', onPickerPointerStart, { passive: false });
   }
 
   window.addEventListener('mousemove', (e) => {

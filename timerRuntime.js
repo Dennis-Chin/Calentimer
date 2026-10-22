@@ -229,6 +229,15 @@ export class TimerRuntime {
   start() {
     if (this.status === TimerStatus.RUNNING) return;
 
+    if (this.isHardStopEnabled && this.hardStop) {
+      const nowMin = parseTimeToMinutes(new Date());
+      const stopMin = parseTimeToMinutes(this.hardStop);
+      if (calculateAvailableMinutes(nowMin, stopMin) <= 0) {
+        this._emit('hardStopReached', { currentClock: formatMinutesToTime(nowMin), hardStop: this.hardStop });
+        return { success: false, error: 'HARD_STOP_PASSED' };
+      }
+    }
+
     if (this.status === TimerStatus.IDLE) {
       const scheduleResult = this.recalculate();
       if (!scheduleResult.success) return scheduleResult;
@@ -799,8 +808,12 @@ export class TimerRuntime {
       hardStop: typeof this.hardStop === 'string' ? this.hardStop : formatMinutesToTime(stopMinutes)
     });
 
-    if (isHardStopPassed && remainingSeconds === 0) {
-      this._emit('hardStopReached', { currentClock: formatMinutesToTime(nowMinutes) });
+    if (this.isHardStopEnabled && isHardStopPassed) {
+      this.pause();
+      this.status = TimerStatus.COMPLETED;
+      this._emit('hardStopReached', { currentClock: formatMinutesToTime(nowMinutes), hardStop: this.hardStop });
+      this._emit('allTasksCompleted', { hardStopReached: true });
+      return;
     }
 
     // 3. Task reached 00:00: check if it should overrun into Time Bank
