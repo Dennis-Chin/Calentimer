@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#0d0f14">
+  <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Hard-Stop Study Timer</title>
@@ -38,15 +39,17 @@
       </div>
     </header>
 
-    <!-- Schedule Control Bar: Hard Stop & Status -->
+    <!-- Schedule Control Bar: Hard Stop & Time Bank -->
     <div class="schedule-control-bar">
-      <div class="hard-stop-pill" id="hardStopPill" title="Hard Stop Deadline: automatically compresses tasks to fit this time">
+      <div class="hard-stop-pill" id="hardStopPill" title="Hard Stop: all tasks automatically shrink to finish by this time">
         <span class="pill-label">HARD STOP</span>
         <input type="time" id="hardStopInput" class="hard-stop-input" value="15:00">
       </div>
-      <div class="status-banner" id="statusBanner">
-        <span class="status-indicator"></span>
-        <span id="statusText">All tasks fit on schedule</span>
+
+      <div class="time-bank-pill" id="timeBankPill" title="Time Bank: finish tasks early to bank extra time!">
+        <span class="time-bank-icon">🐷</span>
+        <span class="time-bank-label">TIME BANK:</span>
+        <span class="time-bank-amount" id="timeBankAmount">0m</span>
       </div>
     </div>
 
@@ -82,6 +85,7 @@
           <div class="task-category-chip" id="activeCategoryChip">STUDY</div>
           <div class="digital-clock" id="digitalClock">25:00</div>
           <div class="active-task-title" id="activeTaskTitle">Core Reading & Notes</div>
+          <div class="active-task-time-span" id="activeTaskTimeSpan">--:-- → --:--</div>
           
           <!-- Tags describing the task -->
           <div class="task-tags-container" id="taskTagsContainer">
@@ -143,58 +147,60 @@
 
       <!-- Intuitive Time Reclaim Action -->
       <div class="secondary-actions">
-        <button class="btn-finish-early" id="btnFinishEarly" title="Mark this task finished now and share remaining minutes with subsequent tasks">
+        <button class="btn-finish-early" id="btnFinishEarly" title="Finish early and bank unused time to Time Bank">
           <span class="finish-early-icon">⚡</span>
-          <span class="finish-early-text" id="finishEarlyText">Finish Early & Share Time With Rest of Schedule</span>
+          <span class="finish-early-text" id="finishEarlyText">Finish Early & Send 25m To Time Bank</span>
         </button>
       </div>
     </main>
 
-    <!-- Bottom Task Pipeline & Drawer -->
-    <section class="task-drawer" id="taskDrawer">
-      <div class="drawer-header" id="drawerHeader">
-        <div class="drawer-header-left">
-          <span class="drawer-title">Study Pipeline</span>
-          <span class="task-count-badge" id="taskCountBadge">3 tasks</span>
+    <!-- Backdrop for Sliding Today's Tasks Bottom Sheet -->
+    <div class="task-drawer-backdrop hidden" id="taskDrawerBackdrop"></div>
+
+    <!-- Bottom Today's Tasks Sliding Drawer -->
+    <section class="task-drawer collapsed" id="taskDrawer">
+      <div class="drawer-header" id="drawerHeader" title="Pull open Today's Tasks">
+        <div class="drawer-pull-pill"></div>
+        <div class="drawer-header-content">
+          <div class="drawer-header-left">
+            <span class="drawer-title">Today's Tasks</span>
+            <span class="task-count-badge" id="taskCountBadge">3 tasks</span>
+          </div>
+          <button class="btn-drawer-toggle" id="btnDrawerToggle" title="Toggle tasks panel" aria-label="Toggle tasks panel">
+            <svg class="drawer-arrow-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+          </button>
         </div>
-        <button class="btn-drawer-toggle" id="btnDrawerToggle">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </button>
       </div>
 
       <div class="drawer-content" id="drawerContent">
-        <!-- Add Task Form -->
-        <form class="add-task-form" id="addTaskForm">
-          <input type="text" id="inputTaskTitle" placeholder="Task or meeting title..." required class="input-task-title">
-          <div class="form-grid-row">
-            <div class="input-field-wrapper">
-              <label class="field-label">DURATION</label>
-              <div class="input-group">
-                <input type="number" id="inputTaskDuration" placeholder="25" min="1" max="480" value="25" required class="input-task-min">
-                <span class="input-suffix">m</span>
-              </div>
-            </div>
-            <div class="input-field-wrapper">
-              <label class="field-label">CATEGORY</label>
-              <input type="text" id="inputTaskCategory" placeholder="Study, Work" class="input-task-cat">
-            </div>
-            <div class="input-field-wrapper">
-              <label class="field-label">FIXED TIME</label>
-              <input type="time" id="inputTaskFixedTime" title="Fixed start time (locks task at exact time, e.g. 15:00)" class="input-task-fixed">
-            </div>
-          </div>
-          <div class="form-bottom-row">
-            <input type="text" id="inputTaskTags" placeholder="Tags (e.g. exam, urgent)" class="input-task-tags">
-            <button type="submit" class="btn-add-task">+ Add Task</button>
-          </div>
-        </form>
-
         <!-- Tasks Schedule List -->
         <div class="task-list" id="taskListContainer">
           <!-- Rendered dynamically -->
         </div>
+
+        <!-- Thin Checkered Finish Line in Today's Tasks -->
+        <div class="today-finish-line" id="todayFinishLine">
+          <div class="finish-line-checkered" aria-hidden="true"></div>
+          <div class="today-finish-line-content">
+            <span class="finish-flag" aria-hidden="true">🏁</span>
+            <span class="finish-text">End • <span id="todayFinishLineTime">15:00</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer-footer">
+        <button type="button" class="btn-calendar-add-task" id="btnDrawerAddTask" title="Add task to today's schedule">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Add Task</span>
+        </button>
+        <button type="button" class="btn-calendar-add-break" id="btnDrawerAddBreak" title="Add break to today's schedule">
+          <span>☕ Add Break</span>
+        </button>
       </div>
     </section>
 
@@ -264,6 +270,28 @@
         <div class="settings-group">
           <div class="setting-row">
             <div class="setting-info">
+              <span class="setting-label">Enable Hard Stop</span>
+              <span class="setting-desc">Automatically compresses tasks to finish by deadline. Turn off to run tasks for full planned durations.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggleHardStopEnabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Alerts & Notifications</span>
+              <span class="setting-desc">Status bar countdown and audio bells for task milestones and transitions.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggleAlertsEnabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
               <span class="setting-label">Confirm Dial Adjustments</span>
               <span class="setting-desc">Prompt to apply or cancel when turning the outer dial. (Turn off to apply immediately without asking)</span>
             </div>
@@ -292,7 +320,7 @@
   <!-- Calendar View Modal -->
   <div class="modal-backdrop hidden" id="calendarModalBackdrop">
     <div class="calendar-modal" id="calendarModal">
-      <div class="modal-header">
+      <div class="modal-header calendar-modal-header">
         <div class="modal-title-wrap">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -300,16 +328,150 @@
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span class="modal-title">Schedule Calendar</span>
+          <span class="modal-title">Today</span>
         </div>
-        <button class="btn-close-modal" id="btnCloseCalendar" title="Close calendar">✕</button>
+
+        <div class="calendar-header-actions">
+          <button type="button" class="btn-clear-schedule" id="btnClearCalendarSchedule" title="Clear all tasks from today's schedule">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+          </button>
+          <button type="button" class="btn-close-modal" id="btnCloseCalendar" title="Close calendar">✕</button>
+        </div>
       </div>
 
-      <div class="modal-body">
+      <div class="modal-body" style="padding-bottom: 70px;">
         <div class="calendar-timeline" id="calendarTimelineList">
           <!-- Calendar items generated dynamically -->
         </div>
+
+        <!-- Finish Line / Hard Stop at Bottom of Task List -->
+        <div class="calendar-finish-line" id="calendarFinishLine" title="Click anywhere on the Finish Line to set your stopping time">
+          <div class="finish-line-checkered" aria-hidden="true"></div>
+          <div class="finish-line-content">
+            <div class="finish-line-left">
+              <span class="finish-line-flag" aria-hidden="true">🏁</span>
+              <div class="finish-line-labels">
+                <span class="finish-line-title">FINISH LINE</span>
+                <span class="finish-line-sub">TARGET HARD STOP</span>
+              </div>
+            </div>
+            <div class="finish-line-right">
+              <input type="time" id="calendarHardStopInput" class="finish-line-time-input" value="15:00" title="Click to adjust stopping time">
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div class="calendar-modal-footer">
+        <button type="button" class="btn-calendar-add-task" id="btnCalendarAddTask" title="Add task to today's schedule">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Add Task</span>
+        </button>
+        <button type="button" class="btn-calendar-add-break" id="btnCalendarAddBreak" title="Add break to today's schedule">
+          <span>☕ Add Break</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Task Modal (Opened via Calendar + Add Task or Task Drawer) -->
+  <div class="modal-backdrop hidden" id="addTaskModalBackdrop">
+    <div class="settings-modal add-task-modal" id="addTaskModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <button type="button" class="edit-task-emoji-badge" id="btnAddModalEmoji" title="Click to choose emoji">
+            <span id="addTaskHeaderEmoji">📚</span>
+            <span class="emoji-edit-hint">✏️</span>
+          </button>
+          <span class="modal-title" id="addTaskModalHeading">Add Task</span>
+        </div>
+        <button class="btn-close-modal" id="btnCloseAddTaskModal" title="Close">✕</button>
+      </div>
+
+      <form class="modal-body" id="formAddModalTask">
+        <!-- Work / Break Segmented Toggle -->
+        <div class="task-type-segment-control" id="taskTypeSegment">
+          <button type="button" class="type-segment-btn active" id="typeSegmentWork" data-type="work">💼 Work</button>
+          <button type="button" class="type-segment-btn" id="typeSegmentBreak" data-type="break">☕ Break</button>
+        </div>
+
+        <div class="edit-task-form-group">
+          <label class="edit-task-label" id="addModalTitleLabel">Task Name</label>
+          <input type="text" id="addModalTitle" class="edit-task-input" placeholder="e.g. Core Reading & Practice">
+        </div>
+
+        <div class="edit-task-row">
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Duration (min)</label>
+            <input type="text" id="addModalDuration" class="edit-task-input duration-interactive-input" value="25" readonly placeholder="Tap to pick with dials or chips">
+          </div>
+        </div>
+
+        <div class="quick-duration-chips" id="addModalDurationChips">
+          <button type="button" class="duration-chip" data-min="15">15m</button>
+          <button type="button" class="duration-chip active" data-min="25">25m</button>
+          <button type="button" class="duration-chip" data-min="45">45m</button>
+          <button type="button" class="duration-chip" data-min="60">60m</button>
+          <button type="button" class="duration-chip" data-min="90">90m</button>
+          <button type="button" class="duration-chip" data-min="120">120m</button>
+          <button type="button" class="duration-chip duration-clock-btn" id="btnAddModalOpenDial" title="Open interactive dial picker">⏱️</button>
+        </div>
+
+        <!-- Optional Time Span (Start & End Time) -->
+        <div class="edit-task-row time-span-row">
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Start Time (Optional)</label>
+            <input type="time" id="addModalStartTime" class="edit-task-input" title="Start Time">
+          </div>
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">End Time (Optional)</label>
+            <input type="time" id="addModalEndTime" class="edit-task-input" title="End Time">
+          </div>
+        </div>
+
+        <!-- Category Input + Add Button + Remembered Chips -->
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Category</label>
+          <div class="category-input-group">
+            <input type="text" id="addModalCategory" class="edit-task-input" placeholder="Select or type new category..." autocomplete="off">
+            <button type="button" class="btn-add-category hidden" id="btnAddCategory" title="Add this category to remembered list">+ Add</button>
+          </div>
+          <div class="category-chips-list" id="addModalCategoryChips">
+            <!-- Rendered dynamically with × delete button -->
+          </div>
+        </div>
+
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Fixed Start Time (Optional)</label>
+          <input type="time" id="addModalFixedTime" class="edit-task-input" title="Sets immovable start time">
+        </div>
+
+        <div class="setting-row" style="margin-top: 6px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:1.1rem;">🐷</span>
+              <span class="setting-label">Time Bank Protection</span>
+            </div>
+            <span class="setting-desc">Borrow from Time Bank if this task overruns</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="addModalTimeBank" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="edit-modal-footer">
+          <button type="submit" class="btn-modal-save" id="btnAddModalSubmit">+ Add Task</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -318,10 +480,13 @@
     <div class="settings-modal" id="taskEditModal">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <span style="font-size: 1.3rem;" id="editTaskHeaderEmoji">📝</span>
+          <button type="button" class="edit-task-emoji-badge" id="btnEditTaskHeaderEmoji" title="Click to choose emoji">
+            <span id="editTaskHeaderEmoji">📝</span>
+            <span class="emoji-edit-hint">✏️</span>
+          </button>
           <span class="modal-title">Edit Task</span>
         </div>
-        <button class="btn-close-modal" id="btnCloseTaskEdit" title="Close">✕</button>
+        <button type="button" class="btn-close-modal" id="btnCloseTaskEdit" title="Close">✕</button>
       </div>
 
       <form class="modal-body" id="formEditTask">
@@ -335,18 +500,59 @@
         <div class="edit-task-row">
           <div class="edit-task-form-group" style="flex: 1;">
             <label class="edit-task-label">Duration (min)</label>
-            <input type="number" id="editTaskDuration" class="edit-task-input" min="1" max="720" required>
+            <input type="text" id="editTaskDuration" class="edit-task-input duration-interactive-input" readonly placeholder="Tap to pick with dials or chips">
+          </div>
+        </div>
+
+        <div class="quick-duration-chips" id="editModalDurationChips">
+          <button type="button" class="duration-chip" data-min="15">15m</button>
+          <button type="button" class="duration-chip" data-min="25">25m</button>
+          <button type="button" class="duration-chip" data-min="45">45m</button>
+          <button type="button" class="duration-chip" data-min="60">60m</button>
+          <button type="button" class="duration-chip" data-min="90">90m</button>
+          <button type="button" class="duration-chip" data-min="120">120m</button>
+          <button type="button" class="duration-chip duration-clock-btn" id="btnEditModalOpenDial" title="Open interactive dial picker">⏱️</button>
+        </div>
+
+        <!-- Optional Time Span (Start & End Time) -->
+        <div class="edit-task-row time-span-row">
+          <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Start Time (Optional)</label>
+            <input type="time" id="editTaskStartTime" class="edit-task-input" title="Start Time">
           </div>
           <div class="edit-task-form-group" style="flex: 1;">
-            <label class="edit-task-label">Category</label>
-            <input type="text" id="editTaskCategory" class="edit-task-input" placeholder="Study">
+            <label class="edit-task-label">End Time (Optional)</label>
+            <input type="time" id="editTaskEndTime" class="edit-task-input" title="End Time">
           </div>
+        </div>
+
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Category</label>
+          <div class="category-input-group">
+            <input type="text" id="editTaskCategory" class="edit-task-input" placeholder="Select or type category..." autocomplete="off">
+            <button type="button" class="btn-add-category hidden" id="btnEditAddCategory" title="Add this category to remembered list">+ Add</button>
+          </div>
+          <div class="category-chips-list" id="editModalCategoryChips"></div>
         </div>
 
         <div class="edit-task-form-group">
           <label class="edit-task-label">Fixed Start Time (Optional)</label>
           <input type="time" id="editTaskFixedTime" class="edit-task-input">
           <span class="setting-desc" style="margin-top: 4px;">Set a fixed start time if this task cannot move.</span>
+        </div>
+
+        <div class="setting-row" style="margin-top: 8px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:1.1rem;">🐷</span>
+              <span class="setting-label">Time Bank Protection</span>
+            </div>
+            <span class="setting-desc">Borrow from Time Bank if this task overruns</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="editTaskTimeBank">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
 
         <div class="setting-row" style="margin-top: 8px;">
@@ -381,6 +587,208 @@
     </div>
   </div>
 
+  <!-- Custom Themed Confirmation Modal for Deleting Single Task -->
+  <div class="modal-backdrop hidden" id="confirmDeleteTaskModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon">🗑️</div>
+      <div class="confirm-modal-title" id="confirmDeleteTaskTitle">Delete Task?</div>
+      <div class="confirm-modal-desc" id="confirmDeleteTaskDesc">Are you sure you want to remove this task from today's schedule?</div>
+      <div class="confirm-modal-actions">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelDeleteTask">Cancel</button>
+        <button type="button" class="btn-confirm-danger" id="btnConfirmDeleteTask">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Themed Confirmation Modal for Clearing Schedule -->
+  <div class="modal-backdrop hidden" id="confirmClearModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon">🗑️</div>
+      <div class="confirm-modal-title">Clear Today's Schedule?</div>
+      <div class="confirm-modal-desc">This will remove all scheduled tasks and breaks from your timeline.</div>
+      <div class="confirm-modal-actions">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelClearSchedule">Cancel</button>
+        <button type="button" class="btn-confirm-danger" id="btnConfirmClearSchedule">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Rotary Duration Dial Picker Modal -->
+  <div class="modal-backdrop hidden" id="durationDialModalBackdrop">
+    <div class="settings-modal duration-dial-modal" id="durationDialModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title" id="durationDialTaskTitle">Task Duration</span>
+          <span class="duration-dial-sub" id="durationDialTimeSpan"></span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseDurationDial" title="Close">✕</button>
+      </div>
+      <div class="modal-body duration-dial-body">
+        <div class="dial-picker-container" id="dialPickerContainer">
+          <svg class="picker-rotary-svg" id="pickerRotarySvg" viewBox="0 0 260 260">
+            <circle cx="130" cy="130" r="114" class="picker-bg-track"/>
+            <g id="pickerTicksGroup"></g>
+            <circle cx="130" cy="130" r="95" class="picker-inner-track"/>
+            <circle cx="130" cy="130" r="95" class="picker-progress-arc" id="pickerProgressArc"/>
+            <circle id="pickerGreenHandle" cx="130" cy="35" r="9" class="picker-green-handle"/>
+          </svg>
+          <div class="picker-center-display">
+            <input type="text" class="picker-digital-input" id="pickerDigitalInput" value="25:00" maxlength="5" title="Tap to enter exact minutes and seconds">
+            <span class="picker-hint">Rotate outer ticks for min • Green for sec</span>
+          </div>
+        </div>
+        <div class="picker-quick-chips" id="pickerQuickChips">
+          <button type="button" class="duration-chip" data-min="15">15m</button>
+          <button type="button" class="duration-chip" data-min="25">25m</button>
+          <button type="button" class="duration-chip" data-min="45">45m</button>
+          <button type="button" class="duration-chip" data-min="60">60m</button>
+          <button type="button" class="duration-chip" data-min="90">90m</button>
+          <button type="button" class="duration-chip" data-min="120">120m</button>
+        </div>
+      </div>
+      <div class="edit-modal-footer">
+        <button type="button" class="btn-modal-delete" id="btnCancelDurationDial">Cancel</button>
+        <button type="button" class="btn-modal-save" id="btnConfirmDurationDial">✓ Confirm Duration</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Themed Hard Stop Modal with Toggle & Description -->
+  <div class="modal-backdrop hidden" id="hardStopModalBackdrop">
+    <div class="settings-modal hard-stop-modal" id="hardStopModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span style="font-size:1.3rem;">🛑</span>
+          <span class="modal-title">Hard Stop</span>
+        </div>
+        <div class="hard-stop-header-toggle">
+          <span class="toggle-status-label" id="hardStopModalToggleLabel">Enabled</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="hardStopModalToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseHardStopModal" title="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="hard-stop-description">
+          All tasks and breaks will automatically adjust their durations so that you finish everything by your target stop time.
+        </p>
+
+        <!-- Custom Themed Clock Time Selector -->
+        <div class="custom-clock-selector">
+          <div class="clock-col">
+            <button type="button" class="clock-arrow-btn" id="btnHardStopHourUp">▲</button>
+            <input type="text" class="clock-digit-input" id="hardStopHourInput" value="18" maxlength="2">
+            <button type="button" class="clock-arrow-btn" id="btnHardStopHourDown">▼</button>
+            <span class="clock-col-label">Hours</span>
+          </div>
+          <span class="clock-colon">:</span>
+          <div class="clock-col">
+            <button type="button" class="clock-arrow-btn" id="btnHardStopMinUp">▲</button>
+            <input type="text" class="clock-digit-input" id="hardStopMinInput" value="00" maxlength="2">
+            <button type="button" class="clock-arrow-btn" id="btnHardStopMinDown">▼</button>
+            <span class="clock-col-label">Minutes</span>
+          </div>
+        </div>
+
+        <div class="hard-stop-presets">
+          <button type="button" class="preset-pill" data-time="+30">+30m</button>
+          <button type="button" class="preset-pill" data-time="+60">+1h</button>
+          <button type="button" class="preset-pill" data-time="17:00">17:00</button>
+          <button type="button" class="preset-pill" data-time="18:00">18:00</button>
+          <button type="button" class="preset-pill" data-time="20:00">20:00</button>
+        </div>
+      </div>
+
+      <div class="edit-modal-footer">
+        <button type="button" class="btn-modal-save" id="btnSaveHardStopModal">Set Hard Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Time Bank Explanation & Guide Modal -->
+  <div class="modal-backdrop hidden" id="timeBankInfoModalBackdrop">
+    <div class="confirm-modal-card time-bank-info-card">
+      <div class="confirm-modal-icon">🐷</div>
+      <div class="confirm-modal-title">Time Bank</div>
+      <div class="time-bank-info-balance" id="timeBankModalBalance">Current balance: 0m</div>
+      <div class="time-bank-info-desc">
+        Your safety buffer of saved time. Finish early to bank extra minutes, which protect future tasks if you overrun.
+      </div>
+
+      <div class="time-bank-icon-guide">
+        <div class="icon-guide-row">
+          <span class="guide-icon">🐷</span>
+          <div class="guide-text">
+            <strong>Safe Piggy (Active)</strong>
+            <span>Guards your task schedule. If a task exceeds its time, minutes are drawn from here.</span>
+          </div>
+        </div>
+        <div class="icon-guide-row">
+          <span class="guide-icon">💔</span>
+          <div class="guide-text">
+            <strong>Cracked Piggy (Overrun)</strong>
+            <span>The current task has overrun its planned time and is consuming banked minutes.</span>
+          </div>
+        </div>
+        <div class="icon-guide-row">
+          <span class="guide-icon">⚡</span>
+          <div class="guide-text">
+            <strong>Finish Early & Send To Bank</strong>
+            <span>Tap to complete a task early and instantly deposit the unused minutes into your Time Bank.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="confirm-modal-actions" style="margin-top: 14px;">
+        <button type="button" class="btn-confirm-yes" id="btnCloseTimeBankInfo" style="width: 100%;">Got It</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Banner -->
+  <div class="toast-notification hidden" id="toastNotification"></div>
+
+  <script>
+    var errorToastTimeout = null;
+    window.addEventListener('error', function(e) {
+      console.error('Unhandled runtime error:', e.error || e.message);
+      var toast = document.getElementById('toastNotification');
+      if (toast) {
+        toast.textContent = '⚠️ Script Error: ' + (e.message || 'Unknown error');
+        toast.classList.remove('hidden');
+        toast.style.opacity = '1';
+        toast.style.background = '#dc2626';
+        toast.style.color = '#ffffff';
+        toast.style.cursor = 'pointer';
+
+        if (errorToastTimeout) clearTimeout(errorToastTimeout);
+        errorToastTimeout = setTimeout(function() {
+          toast.style.opacity = '0';
+          setTimeout(function() {
+            toast.classList.add('hidden');
+            toast.style.removeProperty('background');
+            toast.style.removeProperty('color');
+          }, 300);
+        }, 4000);
+      }
+    });
+
+    var toastEl = document.getElementById('toastNotification');
+    if (toastEl) {
+      toastEl.addEventListener('click', function() {
+        this.style.opacity = '0';
+        var self = this;
+        setTimeout(function() {
+          self.classList.add('hidden');
+          self.style.removeProperty('background');
+          self.style.removeProperty('color');
+        }, 200);
+      });
+    }
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -35,6 +35,19 @@ assert(runtime.status === TimerStatus.IDLE, 'Initial status is IDLE');
 assert(runtime.currentSchedule !== null, 'Schedule generated upon initialization');
 assert(runtime.currentSchedule.tasks.length === 2, '2 tasks scheduled');
 
+console.log('\n--- 1b. Testing Skip in IDLE Mode (Before timer starts / on reset) ---');
+let idleSkipFired = false;
+const unsubIdleSkip = runtime.on('taskSkipped', () => { idleSkipFired = true; });
+runtime.skipCurrentTask();
+assert(idleSkipFired === true, 'taskSkipped event fired in IDLE mode');
+assert(runtime.activeTaskIndex === 1, 'activeTaskIndex moved to next task (index 1)');
+assert(runtime.getActiveTask().id === '2', 'Active task is now Task 2 while IDLE');
+assert(runtime.status === TimerStatus.IDLE, 'Status remains IDLE when skipped before start');
+// Wrap back to 0 for subsequent tests
+runtime.skipCurrentTask();
+assert(runtime.activeTaskIndex === 0, 'activeTaskIndex wrapped back to 0 in IDLE mode');
+unsubIdleSkip();
+
 console.log('\n--- 2. Testing Event Subscriptions ---');
 let tickReceived = false;
 let startReceived = false;
@@ -80,6 +93,8 @@ runtime.completeCurrentTaskEarly();
 assert(completeReceived === true, 'taskComplete event fired for early finish');
 assert(runtime.activeTaskIndex === 1, 'Advanced to next task (index 1)');
 assert(runtime.getActiveTask().id === '2', 'Active task is now Task 2');
+assert(runtime.getActiveTask().plannedDuration === 30, 'Task 2 retained its own planned duration of 30m');
+assert(runtime.getRemainingSeconds() === 30 * 60, 'Task 2 timer started fresh with 30 minutes');
 
 console.log('\n--- 5. Testing Task Skip & Completion Flow ---');
 let allDone = false;
@@ -92,10 +107,36 @@ runtime.skipCurrentTask();
 assert(runtime.status === TimerStatus.COMPLETED, 'Status changed to COMPLETED after skipping last task');
 assert(allDone === true, 'allTasksCompleted event fired');
 
+console.log('\n--- 6. Testing deleteTask & Reordering in TimerRuntime ---');
+const rt = new TimerRuntime({
+  hardStop: '18:00',
+  tasks: [
+    { id: 'a', title: 'Task A', plannedDuration: 20 },
+    { id: 'b', title: 'Task B', plannedDuration: 30 },
+    { id: 'c', title: 'Task C', plannedDuration: 15 }
+  ]
+});
+assert(rt.currentSchedule.tasks.length === 3, 'Initial schedule has 3 tasks');
+
+// Delete future task 'c'
+rt.deleteTask('c');
+assert(rt.currentSchedule.tasks.length === 2, 'Schedule has 2 tasks after deleteTask(c)');
+assert(!rt.currentSchedule.tasks.some(t => t.id === 'c'), 'Task c is not in schedule');
+assert(!rt.initialTasks.some(t => t.id === 'c'), 'Task c is not in initialTasks');
+
+// Start timer and delete future task 'b'
+rt.start();
+assert(rt.status === TimerStatus.RUNNING, 'Timer is running');
+rt.deleteTask('b');
+assert(rt.currentSchedule.tasks.length === 1, 'Schedule has 1 task after deleting b while running');
+assert(rt.getActiveTask().id === 'a', 'Active task remains Task a');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);
 
 if (failed > 0) {
   process.exit(1);
+} else {
+  process.exit(0);
 }

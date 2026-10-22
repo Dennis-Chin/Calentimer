@@ -83,6 +83,45 @@ class AudioManager {
       // Ignore background audio failures
     }
   }
+
+  /**
+   * Tumbling coins sound effect when a piggy bank cracks.
+   * Synthesizes rapid metallic gold coin clinks and cascading bounces.
+   */
+  playTumblingCoinsSound() {
+    try {
+      this._initContext();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      // 7 distinct metallic coin bounces with decreasing intervals and pitch variations
+      const coinFrequencies = [2400, 3100, 2150, 2850, 3400, 2600, 3800];
+      const startTimes = [0, 0.07, 0.15, 0.22, 0.30, 0.38, 0.46];
+
+      coinFrequencies.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        const t = now + startTimes[idx];
+        osc.frequency.setValueAtTime(freq, t);
+        // Slight metallic pitch drop on impact
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.88, t + 0.08);
+
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.exponentialRampToValueAtTime(0.25, t + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(t);
+        osc.stop(t + 0.1);
+      });
+    } catch (e) {
+      console.warn('Tumbling coins sound error:', e);
+    }
+  }
 }
 
 export const audioManager = new AudioManager();

@@ -7,6 +7,8 @@
  * 3. Notification Panel Live Countdown & Task Transition Alerts
  */
 
+import { taskStore } from './taskStore.js';
+
 class MobileServices {
   constructor() {
     this.wakeLock = null;
@@ -124,6 +126,28 @@ class MobileServices {
     }
   }
 
+  /**
+   * Warning vibration pattern (e.g. attempting to drag a locked task)
+   */
+  hapticWarning() {
+    if ('vibrate' in navigator) {
+      try {
+        navigator.vibrate([40, 50, 40]);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Distinct buzz on drag drop / deletion / task movement
+   */
+  hapticBuzz() {
+    if ('vibrate' in navigator) {
+      try {
+        navigator.vibrate(35);
+      } catch (e) {}
+    }
+  }
+
   // ========================================================
   // 4. Live Notification Panel Countdown & Transition Alerts
   // ========================================================
@@ -131,7 +155,7 @@ class MobileServices {
    * Updates or creates the live timer notification in the Android notification panel
    */
   async updateLiveNotification({ activeTask, remainingSeconds, nextTask, isPaused = false }) {
-    if (!this.hasNotificationPermission() || !activeTask) return;
+    if (!this.hasNotificationPermission() || !activeTask || !taskStore.getAlertsEnabled()) return;
 
     // Throttle updates: update on minute changes or when 5 seconds pass to save battery
     const mins = Math.floor(remainingSeconds / 60);
@@ -168,7 +192,7 @@ class MobileServices {
    * Celebratory transition alert banner when a task finishes
    */
   async notifyTaskComplete({ completedTask, nextTask }) {
-    if (!this.hasNotificationPermission() || !completedTask) return;
+    if (!this.hasNotificationPermission() || !completedTask || !taskStore.getAlertsEnabled()) return;
 
     const title = `🎉 Task Complete: ${completedTask.title}`;
     const nextStr = nextTask
@@ -202,6 +226,10 @@ class MobileServices {
         notifs.forEach(n => n.close());
       }
     } catch (err) {}
+  }
+
+  async cancelLiveNotification() {
+    return this.clearLiveNotification();
   }
 }
 

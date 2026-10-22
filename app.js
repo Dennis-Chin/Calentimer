@@ -9,17 +9,38 @@ import { TimerRuntime, TimerStatus } from './timerRuntime.js';
 import { taskStore } from './taskStore.js';
 import { audioManager } from './audioManager.js';
 import { mobileServices } from './mobileServices.js';
-import { formatMinutesToTime } from './schedulerEngine.js';
+import { formatMinutesToTime, parseTimeToMinutes } from './schedulerEngine.js';
 
 // DOM Elements
+const hardStopPill = document.getElementById('hardStopPill');
 const hardStopInput = document.getElementById('hardStopInput');
+const calendarFinishLine = document.getElementById('calendarFinishLine');
+const calendarHardStopInput = document.getElementById('calendarHardStopInput');
+const btnClearCalendarSchedule = document.getElementById('btnClearCalendarSchedule');
+const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
+const calendarTimelineList = document.getElementById('calendarTimelineList');
+const navItemTimer = document.getElementById('navItemTimer');
+const navItemCalendar = document.getElementById('navItemCalendar');
+const navItemSettings = document.getElementById('navItemSettings');
+const btnOpenNav = document.getElementById('btnOpenNav');
+const btnCloseNav = document.getElementById('btnCloseNav');
+const navDrawerBackdrop = document.getElementById('navDrawerBackdrop');
+const navDrawer = document.getElementById('navDrawer');
+const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+const btnCloseSettings = document.getElementById('btnCloseSettings');
+const btnCloseCalendar = document.getElementById('btnCloseCalendar');
+const toggleConfirmAdjust = document.getElementById('toggleConfirmAdjust');
+const toggleHardStopEnabled = document.getElementById('toggleHardStopEnabled');
 const statusBanner = document.getElementById('statusBanner');
 const statusText = document.getElementById('statusText');
+
+let isDraggingTask = false;
 
 const btnNotifToggle = document.getElementById('btnNotifToggle');
 const notifStatusText = document.getElementById('notifStatusText');
 
 const wheelContainer = document.getElementById('wheelContainer');
+const rotarySvg = document.getElementById('rotarySvg');
 const rotaryDialGroup = document.getElementById('rotaryDialGroup');
 const dialHitRing = document.getElementById('dialHitRing');
 const dialTicksGroup = document.getElementById('dialTicksGroup');
@@ -32,6 +53,7 @@ const revolvingGlow = document.getElementById('revolvingGlow');
 const digitalClock = document.getElementById('digitalClock');
 const activeCategoryChip = document.getElementById('activeCategoryChip');
 const activeTaskTitle = document.getElementById('activeTaskTitle');
+const activeTaskTimeSpan = document.getElementById('activeTaskTimeSpan');
 const taskTagsContainer = document.getElementById('taskTagsContainer');
 
 const rotaryPreviewBadge = document.getElementById('rotaryPreviewBadge');
@@ -71,40 +93,91 @@ let lastAudibleMinuteTick = 0;
 // Initialize Timer Runtime
 let runtime = null;
 
+function updateHardStopPillsUI(enabled) {
+  if (hardStopPill) {
+    if (enabled) {
+      hardStopPill.classList.remove('is-disabled');
+      hardStopPill.title = "Hard Stop: all tasks automatically shrink to finish by this time";
+    } else {
+      hardStopPill.classList.add('is-disabled');
+      hardStopPill.title = "Hard Stop disabled (tasks run for full planned durations)";
+    }
+  }
+  if (calendarFinishLine) {
+    const sub = calendarFinishLine.querySelector('.finish-line-sub');
+    if (enabled) {
+      calendarFinishLine.classList.remove('is-disabled');
+      calendarFinishLine.title = "Finish Line / Hard Stop: Click anywhere to set target finish time";
+      if (sub) sub.textContent = "TARGET HARD STOP";
+    } else {
+      calendarFinishLine.classList.add('is-disabled');
+      calendarFinishLine.title = "Finish Line disabled in Settings";
+      if (sub) sub.textContent = "HARD STOP DISABLED";
+    }
+  }
+}
+
 function initApp() {
-  const savedHardStop = taskStore.getHardStop();
-  hardStopInput.value = savedHardStop;
+  try {
+    const savedHardStop = taskStore.getHardStop();
+    if (hardStopInput) hardStopInput.value = savedHardStop;
+    if (calendarHardStopInput) calendarHardStopInput.value = savedHardStop;
+    const todayFinishLineTime = document.getElementById('todayFinishLineTime');
+    if (todayFinishLineTime) todayFinishLineTime.textContent = savedHardStop;
 
-  const tasks = taskStore.getTasks();
+    const isHardStopEnabled = taskStore.getHardStopEnabled();
 
-  runtime = new TimerRuntime({
-    hardStop: savedHardStop,
-    tasks: tasks
-  });
+    const tasks = taskStore.getTasks();
 
-  initTheme();
-  renderDialTicks();
-  setupRuntimeEvents();
-  setupControls();
-  setupRotaryWheel();
-  setupTaskPipeline();
-  setupNavigationAndModals();
+    runtime = new TimerRuntime({
+      hardStop: savedHardStop,
+      tasks: tasks
+    });
+    runtime.setHardStopEnabled(isHardStopEnabled);
+    updateHardStopPillsUI(isHardStopEnabled);
 
-  // Initial render
-  updateScheduleUI(runtime.currentSchedule);
-  updateActiveTaskDisplay();
-  updateResetButtonUI();
-  updateNotifToggleUI();
-  renderClockTime(runtime.getActiveTask()?.allocatedDuration * 60 || 1500);
-  updateWheelProgress(0);
+    initTheme();
+    renderDialTicks();
+    setupRuntimeEvents();
+    setupControls();
+    setupRotaryWheel();
+    setupTaskPipeline();
+    setupNavigationAndModals();
+
+    // Initial render: calculate schedule and populate all lists immediately
+    runtime.recalculate();
+    updateScheduleUI(runtime.currentSchedule);
+    renderTaskList(runtime.currentSchedule?.tasks || tasks);
+    updateActiveTaskDisplay();
+    updateResetButtonUI();
+    updateNotifToggleUI();
+    updateTimeBankDisplay();
+    const initActiveTask = runtime.getActiveTask();
+    const initDurSec = (initActiveTask?.allocatedDuration || initActiveTask?.plannedDuration || 25) * 60;
+    updateFinishEarlyButtonText(initDurSec);
+    renderClockTime(initDurSec);
+    updateWheelProgress(0);
+  } catch (err) {
+    console.error('Fatal initialization error in initApp:', err);
+    showToastNotification('⚠️ Init Error: ' + err.message);
+  }
 }
 
 function updateNotifToggleUI() {
   if (!btnNotifToggle || !notifStatusText) return;
-  if (mobileServices.hasNotificationPermission()) {
+  const hasPerm = mobileServices.hasNotificationPermission();
+  const isEnabled = taskStore.getAlertsEnabled();
+  const toggleAlerts = document.getElementById('toggleAlertsEnabled');
+  if (toggleAlerts) toggleAlerts.checked = isEnabled && hasPerm;
+
+  if (hasPerm && isEnabled) {
     btnNotifToggle.classList.add('granted');
     notifStatusText.textContent = 'Alerts On';
-    btnNotifToggle.title = 'Android notification panel countdown enabled';
+    btnNotifToggle.title = 'Android notification panel countdown enabled (tap to toggle)';
+  } else if (hasPerm && !isEnabled) {
+    btnNotifToggle.classList.remove('granted');
+    notifStatusText.textContent = 'Alerts Off';
+    btnNotifToggle.title = 'Notifications muted (tap to enable)';
   } else {
     btnNotifToggle.classList.remove('granted');
     notifStatusText.textContent = 'Alerts';
@@ -143,11 +216,17 @@ function renderDialTicks() {
 // ==========================================
 function setupRuntimeEvents() {
   runtime.on('tick', (data) => {
-    // Only update digital clock & wheel from tick if user is NOT currently scrubbing or dragging the dial
+    // Only update digital clock from tick if user is NOT currently scrubbing or dragging the dial
     if (!isScrubbingGreenLine && !isDraggingOuterDial) {
       renderClockTime(data.remainingSeconds);
-      updateWheelProgress(data.progressRatio);
+      updateActiveTaskTimeSpanDynamic(data.remainingSeconds);
+      // Continuous rAF drives smooth wheel during RUNNING; update here when paused, idle, or seeking
+      if (runtime.status !== TimerStatus.RUNNING) {
+        updateWheelProgress(data.isOverrunning ? data.progress : data.progressRatio);
+      }
     }
+
+    updateTimeBankDisplay();
 
     // Android notification panel live countdown update
     if (runtime.status === TimerStatus.RUNNING) {
@@ -160,23 +239,64 @@ function setupRuntimeEvents() {
       });
     }
 
-    // Dynamic intuitive text explaining the reclaim bonus
-    if (finishEarlyText) {
-      const remainingMin = Math.floor(data.remainingSeconds / 60);
-      if (remainingMin > 0) {
-        finishEarlyText.textContent = `✓ Finish Early & Share +${remainingMin}m to Remaining Tasks`;
-      } else {
-        finishEarlyText.textContent = `✓ Complete Task Early & Move to Next`;
-      }
+    // Dynamic intuitive text: Finish Early & Send X To Time Bank
+    updateFinishEarlyButtonText(data.remainingSeconds);
+  });
+
+  runtime.on('taskOverrunStart', (data) => {
+    audioManager.playTumblingCoinsSound();
+    mobileServices.hapticCelebration();
+    updateTimeBankDisplay();
+    if (statusBanner) statusBanner.classList.add('compressed');
+    if (statusText) statusText.textContent = '🪙 Using Time Bank excess time';
+    showToastNotification('🪙 Task overdue! Consuming excess time from Time Bank');
+    renderTaskList(runtime.currentSchedule?.tasks || []);
+    const calBackdrop = document.getElementById('calendarModalBackdrop');
+    if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+      renderCalendarModal();
+    }
+  });
+
+  runtime.on('timeBankDeposit', (data) => {
+    updateTimeBankDisplay();
+    const mins = Math.round(data.secondsDeposited / 60);
+    if (mins > 0) {
+      showToastNotification(`🪙 +${mins}m deposited to Time Bank!`);
+    }
+  });
+
+  runtime.on('timeBankExhausted', (data) => {
+    updateTimeBankDisplay();
+    audioManager.playTaskCompleteChime();
+    showToastNotification('⚠️ Time Bank exhausted!');
+    renderTaskList(runtime.currentSchedule?.tasks || []);
+    const calBackdrop = document.getElementById('calendarModalBackdrop');
+    if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+      renderCalendarModal();
     }
   });
 
   runtime.on('taskStart', (data) => {
+    startContinuousWheelAnimation();
     updateActiveTaskDisplay();
+    updateFinishEarlyButtonText(data.totalDurationSeconds);
+    renderTaskList(runtime.currentSchedule?.tasks || []);
+  });
+
+  runtime.on('taskSkipped', (data) => {
+    updateActiveTaskDisplay();
+    const activeTask = runtime.getActiveTask();
+    const durSec = runtime.status === TimerStatus.IDLE
+      ? (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60
+      : runtime.getRemainingSeconds();
+    renderClockTime(durSec);
+    updateWheelProgress(runtime.getProgress());
+    updateFinishEarlyButtonText(durSec);
     renderTaskList(runtime.currentSchedule?.tasks || []);
   });
 
   runtime.on('taskComplete', (data) => {
+    stopContinuousWheelAnimation();
     audioManager.playTaskCompleteChime();
     mobileServices.hapticCelebration();
     const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
@@ -189,6 +309,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('allTasksCompleted', () => {
+    stopContinuousWheelAnimation();
     mobileServices.disableWakeLock();
     mobileServices.clearLiveNotification();
     updateActiveTaskDisplay();
@@ -200,8 +321,21 @@ function setupRuntimeEvents() {
     updateScheduleUI(schedule);
   });
 
+  runtime.on('taskAdjusted', (data) => {
+    const durSec = data.newRemainingSeconds !== undefined
+      ? data.newRemainingSeconds
+      : (data.targetMinutes || 25) * 60;
+    updateFinishEarlyButtonText(durSec);
+    renderClockTime(durSec);
+  });
+
+  runtime.on('seek', (data) => {
+    updateFinishEarlyButtonText(data.remainingSeconds);
+  });
+
   runtime.on('statusChange', (status) => {
     if (status === TimerStatus.RUNNING) {
+      startContinuousWheelAnimation();
       iconPlay.classList.add('hidden');
       iconPause.classList.remove('hidden');
       mobileServices.enableWakeLock();
@@ -214,6 +348,7 @@ function setupRuntimeEvents() {
         isPaused: false
       });
     } else if (status === TimerStatus.PAUSED) {
+      stopContinuousWheelAnimation();
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
@@ -226,6 +361,7 @@ function setupRuntimeEvents() {
         isPaused: true
       });
     } else {
+      stopContinuousWheelAnimation();
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
@@ -237,14 +373,55 @@ function setupRuntimeEvents() {
 
   runtime.on('error', (err) => {
     if (err.code === 'LOCKED_TASKS_EXCEED_TIME') {
-      warningAlertCard.classList.remove('hidden');
-      warningDesc.textContent = err.message;
-      statusBanner.classList.add('compressed');
-      statusText.textContent = 'Locked tasks exceed Hard Stop!';
+      if (warningAlertCard) warningAlertCard.classList.remove('hidden');
+      if (warningDesc) warningDesc.textContent = err.message;
+      if (statusBanner) statusBanner.classList.add('compressed');
+      if (statusText) statusText.textContent = 'Locked tasks exceed Hard Stop!';
     } else {
-      statusText.textContent = err.message;
+      if (statusText) statusText.textContent = err.message;
     }
   });
+}
+
+function updateFinishEarlyButtonText(remainingSeconds) {
+  if (!finishEarlyText) return;
+  const mins = Math.max(0, Math.floor((remainingSeconds || 0) / 60));
+  finishEarlyText.textContent = `Finish Early & Send ${mins}m To Time Bank`;
+}
+
+// 60fps/120fps continuous wheel & bead animation loop
+let continuousAnimFrameId = null;
+
+function startContinuousWheelAnimation() {
+  if (continuousAnimFrameId) return;
+
+  function step() {
+    if (runtime && runtime.status === TimerStatus.RUNNING) {
+      if (!isScrubbingGreenLine && !isDraggingOuterDial) {
+        if (runtime.isOverrunning) {
+          const overrunElapsedSec = (Date.now() - runtime.overrunStartTime) / 1000;
+          const totalBankSec = runtime.initialOverrunBankSeconds || 1;
+          const progress = Math.min(1, Math.max(0, overrunElapsedSec / totalBankSec));
+          updateWheelProgress(progress);
+        } else {
+          const progress = runtime.getProgress();
+          updateWheelProgress(progress);
+        }
+      }
+      continuousAnimFrameId = requestAnimationFrame(step);
+    } else {
+      continuousAnimFrameId = null;
+    }
+  }
+
+  continuousAnimFrameId = requestAnimationFrame(step);
+}
+
+function stopContinuousWheelAnimation() {
+  if (continuousAnimFrameId) {
+    cancelAnimationFrame(continuousAnimFrameId);
+    continuousAnimFrameId = null;
+  }
 }
 
 function renderClockTime(secondsLeft) {
@@ -280,17 +457,61 @@ function updateWheelProgress(progressRatio) {
   }
 }
 
+function updateActiveTaskTimeSpanDynamic(remainingSec) {
+  if (!activeTaskTimeSpan) return;
+  const activeTask = runtime?.getActiveTask();
+  if (!activeTask || runtime?.status === TimerStatus.COMPLETED) {
+    activeTaskTimeSpan.textContent = '--:-- → --:--';
+    return;
+  }
+
+  let startMinutes;
+  if (runtime.taskStartedAt) {
+    const d = new Date(runtime.taskStartedAt);
+    startMinutes = d.getHours() * 60 + d.getMinutes();
+  } else if (activeTask.startTime) {
+    startMinutes = parseTimeToMinutes(activeTask.startTime);
+  } else {
+    const d = new Date();
+    startMinutes = d.getHours() * 60 + d.getMinutes();
+  }
+
+  const elapsedSec = (runtime.getElapsedSeconds && typeof runtime.getElapsedSeconds === 'function')
+    ? runtime.getElapsedSeconds()
+    : 0;
+  const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
+  const totalSec = elapsedSec + rem;
+  const endMinutes = (startMinutes + Math.round(totalSec / 60)) % 1440;
+
+  const startStr = formatMinutesToTime(startMinutes);
+  const endStr = formatMinutesToTime(endMinutes);
+  activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+}
+
 function updateActiveTaskDisplay() {
   const activeTask = runtime.getActiveTask();
   if (!activeTask || runtime.status === TimerStatus.COMPLETED) {
     activeCategoryChip.textContent = 'DONE';
     activeTaskTitle.textContent = 'All tasks completed!';
+    if (activeTaskTimeSpan) activeTaskTimeSpan.textContent = '--:-- → --:--';
     taskTagsContainer.innerHTML = '';
+    if (wheelContainer) wheelContainer.classList.remove('is-break-mode');
+    document.body.classList.remove('is-break-mode');
     return;
   }
 
+  const isBreak = (
+    (activeTask.category && activeTask.category.toLowerCase() === 'break') ||
+    (activeTask.title && activeTask.title.toLowerCase() === 'break') ||
+    (Array.isArray(activeTask.tags) && activeTask.tags.some(t => t.toLowerCase().includes('break')))
+  );
+
+  if (wheelContainer) wheelContainer.classList.toggle('is-break-mode', Boolean(isBreak));
+  document.body.classList.toggle('is-break-mode', Boolean(isBreak));
+
   activeCategoryChip.textContent = (activeTask.category || 'Focus').toUpperCase();
   activeTaskTitle.textContent = activeTask.title;
+  updateActiveTaskTimeSpanDynamic();
 
   // Tags rendering directly below digital timer
   taskTagsContainer.innerHTML = '';
@@ -307,15 +528,15 @@ function updateActiveTaskDisplay() {
 function updateScheduleUI(schedule) {
   if (!schedule || !schedule.success) return;
 
-  warningAlertCard.classList.add('hidden');
+  if (warningAlertCard) warningAlertCard.classList.add('hidden');
 
   if (schedule.isCompressed) {
-    statusBanner.classList.add('compressed');
+    if (statusBanner) statusBanner.classList.add('compressed');
     const pct = Math.round(schedule.compressionRatio * 100);
-    statusText.textContent = `⚡ Compressed to ${pct}% to meet Hard Stop`;
+    if (statusText) statusText.textContent = `⚡ Compressed to ${pct}% to meet Hard Stop`;
   } else {
-    statusBanner.classList.remove('compressed');
-    statusText.textContent = `✓ On track · ${schedule.bufferMinutes}m buffer before Hard Stop`;
+    if (statusBanner) statusBanner.classList.remove('compressed');
+    if (statusText) statusText.textContent = `✓ On track · ${schedule.bufferMinutes}m buffer before Hard Stop`;
   }
 
   renderTaskList(schedule.tasks || []);
@@ -328,7 +549,7 @@ function updateScheduleUI(schedule) {
 // ==========================================
 function setupRotaryWheel() {
   function getAngleFromEvent(e) {
-    const rect = (rotarySvg || wheelContainer).getBoundingClientRect();
+    const rect = (rotarySvg || wheelContainer)?.getBoundingClientRect() || { left: 0, top: 0, width: 320, height: 320 };
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
@@ -438,6 +659,7 @@ function setupRotaryWheel() {
 
     // Live update digital clock as you drag
     renderClockTime(targetRemainingSec);
+    updateActiveTaskTimeSpanDynamic(targetRemainingSec);
 
     if (targetRemainingSec !== lastScrubbedSecond) {
       lastScrubbedSecond = targetRemainingSec;
@@ -456,6 +678,10 @@ function setupRotaryWheel() {
     }
     const finalRatio = activeTotalSec > 0 ? (activeTotalSec - (lastScrubbedSecond >= 0 ? lastScrubbedSecond : 0)) / activeTotalSec : 0;
     updateWheelProgress(Math.min(1, Math.max(0, finalRatio)));
+
+    if (runtime.status === TimerStatus.RUNNING) {
+      startContinuousWheelAnimation();
+    }
   }
 
   // Bind scrub listeners to green line handle and track
@@ -527,6 +753,18 @@ function setupRotaryWheel() {
       // LIVE TIMER ADJUSTMENT: User sees what the next time would be if applied!
       const previewSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
       renderClockTime(previewSeconds);
+      updateActiveTaskTimeSpanDynamic(previewSeconds);
+
+      // Dynamically calculate the angle required to complete the task and update green circle & arc!
+      let previewProgress = 0;
+      if (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED) {
+        const elapsedSec = runtime.getElapsedSeconds();
+        const totalSec = elapsedSec + previewSeconds;
+        previewProgress = totalSec > 0 ? Math.min(1, Math.max(0, elapsedSec / totalSec)) : 0;
+      } else {
+        previewProgress = 0;
+      }
+      updateWheelProgress(previewProgress);
     }
   }
 
@@ -534,24 +772,39 @@ function setupRotaryWheel() {
     rotaryConfirmPill.classList.add('hidden');
     if (pendingMinuteAdjustment !== 0) {
       mobileServices.hapticTap();
-      // 1. Adjust active task duration and re-compress all other tasks in the pipeline
-      runtime.adjustActiveTaskDuration(pendingMinuteAdjustment);
 
-      // 2. Persist updated task plannedDuration into taskStore
+      // Compute exact preview target seconds and target minutes
+      const targetSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
+      const targetMinutes = Math.round(targetSeconds / 60);
+
+      // Lock task to this exact target minutes so it stays at this time without stepping back
+      runtime.setActiveTaskTargetMinutes(targetMinutes, pendingMinuteAdjustment);
+
       const activeTask = runtime.getActiveTask();
       if (activeTask) {
-        taskStore.updateTask(activeTask.id, { plannedDuration: activeTask.plannedDuration });
+        taskStore.updateTask(activeTask.id, {
+          plannedDuration: activeTask.plannedDuration,
+          isLocked: true
+        });
       }
 
-      // 3. Reset wheel angle and update UI displays
       currentDialRotationDeg = 0;
       if (rotaryDialGroup) {
         rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
       }
       updateActiveTaskDisplay();
-      renderClockTime(runtime.status === TimerStatus.IDLE ? (runtime.getActiveTask()?.allocatedDuration * 60 || 1500) : runtime.getRemainingSeconds());
+      const remainingSec = runtime.status === TimerStatus.IDLE
+        ? (runtime.getActiveTask()?.allocatedDuration * 60 || 1500)
+        : runtime.getRemainingSeconds();
+      renderClockTime(remainingSec);
       updateWheelProgress(runtime.getProgress());
+      updateFinishEarlyButtonText(remainingSec);
+      renderTaskList(runtime.currentSchedule?.tasks || []);
       pendingMinuteAdjustment = 0;
+
+      if (runtime.status === TimerStatus.RUNNING) {
+        startContinuousWheelAnimation();
+      }
     }
   }
 
@@ -584,6 +837,9 @@ function setupRotaryWheel() {
         rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
       }
       renderClockTime(baseDialSeconds);
+      if (runtime.status === TimerStatus.RUNNING) {
+        startContinuousWheelAnimation();
+      }
     }
   }
 
@@ -636,6 +892,11 @@ function setupRotaryWheel() {
     }
     // Revert clock display back to original time!
     renderClockTime(baseDialSeconds);
+    updateActiveTaskTimeSpanDynamic(baseDialSeconds);
+    updateWheelProgress(runtime.getProgress());
+    if (runtime.status === TimerStatus.RUNNING) {
+      startContinuousWheelAnimation();
+    }
   });
 }
 
@@ -676,28 +937,47 @@ function updateResetButtonUI() {
 }
 
 function resetWholeDay() {
+  stopContinuousWheelAnimation();
   mobileServices.disableWakeLock();
   mobileServices.clearLiveNotification();
   runtime.reset();
+  // Reset clears Time Bank back to zero (strictly on reset, not on exit)
+  taskStore.setTimeBankSeconds(0);
+  updateTimeBankDisplay();
   currentDialRotationDeg = 0;
   if (rotaryDialGroup) {
     rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
   }
   updateActiveTaskDisplay();
   const firstTask = runtime.getActiveTask();
-  renderClockTime(firstTask?.allocatedDuration * 60 || 1500);
+  const durSec = firstTask?.allocatedDuration * 60 || 1500;
+  renderClockTime(durSec);
   updateWheelProgress(0);
+  updateFinishEarlyButtonText(durSec);
   updateScheduleUI(runtime.currentSchedule);
   updateResetButtonUI();
+  renderTaskList(runtime.currentSchedule?.tasks || []);
 }
 
 function setupControls() {
   if (btnNotifToggle) {
     btnNotifToggle.addEventListener('click', async () => {
       mobileServices.hapticTap();
-      const granted = await mobileServices.requestNotificationPermission();
+      if (!mobileServices.hasNotificationPermission()) {
+        const granted = await mobileServices.requestNotificationPermission();
+        if (granted) {
+          taskStore.setAlertsEnabled(true);
+        }
+      } else {
+        const currentlyEnabled = taskStore.getAlertsEnabled();
+        const nextState = !currentlyEnabled;
+        taskStore.setAlertsEnabled(nextState);
+        if (!nextState) {
+          mobileServices.cancelLiveNotification();
+        }
+      }
       updateNotifToggleUI();
-      if (granted && runtime) {
+      if (taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission() && runtime) {
         const activeTask = runtime.getActiveTask();
         if (activeTask) {
           const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
@@ -729,11 +1009,14 @@ function setupControls() {
   btnStopTime.addEventListener('click', () => {
     mobileServices.hapticTap();
     if (runtime.status === TimerStatus.RUNNING) {
+      stopContinuousWheelAnimation();
       runtime.resetCurrentTask();
       updateActiveTaskDisplay();
       const activeTask = runtime.getActiveTask();
-      renderClockTime(activeTask?.allocatedDuration * 60 || 1500);
+      const durSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60;
+      renderClockTime(durSec);
       updateWheelProgress(0);
+      updateFinishEarlyButtonText(durSec);
       updateResetButtonUI();
       renderTaskList(runtime.currentSchedule?.tasks || []);
     } else {
@@ -751,132 +1034,988 @@ function setupControls() {
     runtime.completeCurrentTaskEarly();
   });
 
-  hardStopInput.addEventListener('change', (e) => {
-    const newStop = e.target.value;
-    if (newStop) {
-      taskStore.saveHardStop(newStop);
-      runtime.updateHardStop(newStop);
-    }
+  function triggerTimePicker(inputEl) {
+    if (!inputEl) return;
+    try {
+      if (typeof inputEl.showPicker === 'function') {
+        inputEl.showPicker();
+        return;
+      }
+    } catch (_) {}
+    inputEl.focus();
+    inputEl.click();
+  }
+
+  function syncHardStopValue(newStop) {
+    if (!newStop) return;
+    taskStore.saveHardStop(newStop);
+    if (hardStopInput && hardStopInput.value !== newStop) hardStopInput.value = newStop;
+    if (calendarHardStopInput && calendarHardStopInput.value !== newStop) calendarHardStopInput.value = newStop;
+    const todayFinishLineTime = document.getElementById('todayFinishLineTime');
+    if (todayFinishLineTime) todayFinishLineTime.textContent = newStop;
+    runtime.updateHardStop(newStop);
+  }
+
+  const hardStopModalBackdrop = document.getElementById('hardStopModalBackdrop');
+  const hardStopModalToggle = document.getElementById('hardStopModalToggle');
+  const hardStopModalToggleLabel = document.getElementById('hardStopModalToggleLabel');
+  const btnCloseHardStopModal = document.getElementById('btnCloseHardStopModal');
+  const btnSaveHardStopModal = document.getElementById('btnSaveHardStopModal');
+  const hardStopHourInput = document.getElementById('hardStopHourInput');
+  const hardStopMinInput = document.getElementById('hardStopMinInput');
+  const btnHardStopHourUp = document.getElementById('btnHardStopHourUp');
+  const btnHardStopHourDown = document.getElementById('btnHardStopHourDown');
+  const btnHardStopMinUp = document.getElementById('btnHardStopMinUp');
+  const btnHardStopMinDown = document.getElementById('btnHardStopMinDown');
+
+  function openHardStopModal() {
+    if (!hardStopModalBackdrop) return;
+    const isEnabled = taskStore.getHardStopEnabled();
+    if (hardStopModalToggle) hardStopModalToggle.checked = isEnabled;
+    if (hardStopModalToggleLabel) hardStopModalToggleLabel.textContent = isEnabled ? 'Enabled' : 'Disabled';
+
+    const currentStop = taskStore.getHardStop() || '18:00';
+    const [h, m] = currentStop.split(':');
+    if (hardStopHourInput) hardStopHourInput.value = (h || '18').padStart(2, '0');
+    if (hardStopMinInput) hardStopMinInput.value = (m || '00').padStart(2, '0');
+
+    hardStopModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeHardStopModal() {
+    hardStopModalBackdrop?.classList.add('hidden');
+  }
+
+  if (hardStopModalToggle) {
+    hardStopModalToggle.addEventListener('change', () => {
+      const enabled = hardStopModalToggle.checked;
+      if (hardStopModalToggleLabel) {
+        hardStopModalToggleLabel.textContent = enabled ? 'Enabled' : 'Disabled';
+      }
+    });
+  }
+
+  if (btnHardStopHourUp) {
+    btnHardStopHourUp.addEventListener('click', () => {
+      mobileServices.hapticTick();
+      const cur = parseInt(hardStopHourInput?.value, 10) || 0;
+      if (hardStopHourInput) hardStopHourInput.value = String((cur + 1) % 24).padStart(2, '0');
+    });
+  }
+
+  if (btnHardStopHourDown) {
+    btnHardStopHourDown.addEventListener('click', () => {
+      mobileServices.hapticTick();
+      const cur = parseInt(hardStopHourInput?.value, 10) || 0;
+      if (hardStopHourInput) hardStopHourInput.value = String((cur - 1 + 24) % 24).padStart(2, '0');
+    });
+  }
+
+  if (btnHardStopMinUp) {
+    btnHardStopMinUp.addEventListener('click', () => {
+      mobileServices.hapticTick();
+      const cur = parseInt(hardStopMinInput?.value, 10) || 0;
+      if (hardStopMinInput) hardStopMinInput.value = String((cur + 5) % 60).padStart(2, '0');
+    });
+  }
+
+  if (btnHardStopMinDown) {
+    btnHardStopMinDown.addEventListener('click', () => {
+      mobileServices.hapticTick();
+      const cur = parseInt(hardStopMinInput?.value, 10) || 0;
+      if (hardStopMinInput) hardStopMinInput.value = String((cur - 5 + 60) % 60).padStart(2, '0');
+    });
+  }
+
+  document.querySelectorAll('.hard-stop-presets .preset-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      mobileServices.hapticTap();
+      const timeVal = btn.getAttribute('data-time');
+      if (timeVal.startsWith('+')) {
+        const addMin = parseInt(timeVal.replace('+', ''), 10);
+        const curH = parseInt(hardStopHourInput?.value, 10) || 0;
+        const curM = parseInt(hardStopMinInput?.value, 10) || 0;
+        const total = (curH * 60 + curM + addMin) % 1440;
+        if (hardStopHourInput) hardStopHourInput.value = String(Math.floor(total / 60)).padStart(2, '0');
+        if (hardStopMinInput) hardStopMinInput.value = String(total % 60).padStart(2, '0');
+      } else {
+        const [h, m] = timeVal.split(':');
+        if (hardStopHourInput) hardStopHourInput.value = (h || '18').padStart(2, '0');
+        if (hardStopMinInput) hardStopMinInput.value = (m || '00').padStart(2, '0');
+      }
+    });
   });
 
-  drawerHeader.addEventListener('click', () => {
-    taskDrawer.classList.toggle('collapsed');
+  if (btnSaveHardStopModal) {
+    btnSaveHardStopModal.addEventListener('click', () => {
+      mobileServices.hapticTap();
+      const h = String(Math.max(0, Math.min(23, parseInt(hardStopHourInput?.value, 10) || 0))).padStart(2, '0');
+      const m = String(Math.max(0, Math.min(59, parseInt(hardStopMinInput?.value, 10) || 0))).padStart(2, '0');
+      const newStop = `${h}:${m}`;
+      const isEnabled = hardStopModalToggle ? hardStopModalToggle.checked : true;
+
+      taskStore.setHardStop(newStop);
+      taskStore.setHardStopEnabled(isEnabled);
+      runtime.setHardStopEnabled(isEnabled);
+      syncHardStopValue(newStop);
+      updateHardStopPillsUI(isEnabled);
+      closeHardStopModal();
+      showToastNotification(`Hard Stop set to ${newStop} (${isEnabled ? 'Enabled' : 'Disabled'})`);
+    });
+  }
+
+  if (btnCloseHardStopModal) btnCloseHardStopModal.addEventListener('click', closeHardStopModal);
+  if (hardStopModalBackdrop) {
+    hardStopModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === hardStopModalBackdrop) closeHardStopModal();
+    });
+  }
+
+  if (hardStopPill) {
+    hardStopPill.addEventListener('click', () => {
+      openHardStopModal();
+    });
+  }
+
+  if (calendarFinishLine) {
+    calendarFinishLine.addEventListener('click', () => {
+      openHardStopModal();
+    });
+  }
+
+  if (hardStopInput) {
+    hardStopInput.addEventListener('change', (e) => {
+      syncHardStopValue(e.target.value);
+    });
+  }
+
+  if (calendarHardStopInput) {
+    calendarHardStopInput.addEventListener('change', (e) => {
+      syncHardStopValue(e.target.value);
+    });
+  }
+
+  // Themed Single Task Delete Confirmation Modal
+  const confirmDeleteTaskModalBackdrop = document.getElementById('confirmDeleteTaskModalBackdrop');
+  const confirmDeleteTaskTitle = document.getElementById('confirmDeleteTaskTitle');
+  const confirmDeleteTaskDesc = document.getElementById('confirmDeleteTaskDesc');
+  const btnCancelDeleteTask = document.getElementById('btnCancelDeleteTask');
+  const btnConfirmDeleteTask = document.getElementById('btnConfirmDeleteTask');
+
+  let pendingDeleteTaskId = null;
+  let pendingDeleteTaskTitle = '';
+
+  function openConfirmDeleteTaskModal(taskId, taskTitle) {
+    pendingDeleteTaskId = taskId;
+    pendingDeleteTaskTitle = taskTitle || 'this task';
+    if (confirmDeleteTaskTitle) confirmDeleteTaskTitle.textContent = `Delete "${pendingDeleteTaskTitle}"?`;
+    if (confirmDeleteTaskDesc) confirmDeleteTaskDesc.textContent = `Are you sure you want to remove "${pendingDeleteTaskTitle}" from today's schedule?`;
+    if (confirmDeleteTaskModalBackdrop) confirmDeleteTaskModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticWarning();
+  }
+  window.openConfirmDeleteTaskModal = openConfirmDeleteTaskModal;
+
+  function closeConfirmDeleteTaskModal() {
+    if (confirmDeleteTaskModalBackdrop) confirmDeleteTaskModalBackdrop.classList.add('hidden');
+    pendingDeleteTaskId = null;
+    pendingDeleteTaskTitle = '';
+  }
+
+  if (btnCancelDeleteTask) {
+    btnCancelDeleteTask.addEventListener('click', closeConfirmDeleteTaskModal);
+  }
+  if (confirmDeleteTaskModalBackdrop) {
+    confirmDeleteTaskModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmDeleteTaskModalBackdrop) closeConfirmDeleteTaskModal();
+    });
+  }
+  if (btnConfirmDeleteTask) {
+    btnConfirmDeleteTask.addEventListener('click', () => {
+      const id = pendingDeleteTaskId;
+      const title = pendingDeleteTaskTitle;
+      closeConfirmDeleteTaskModal();
+      if (id) {
+        executeDeleteTask(id, title);
+      }
+    });
+  }
+
+  // Centralized Unified Task Deletion
+  function executeDeleteTask(taskId, taskTitle = 'Task') {
+    taskStore.deleteTask(taskId);
+    if (runtime) {
+      runtime.deleteTask(taskId);
+      updateActiveTaskDisplay();
+      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderCalendarModal();
+      updateScheduleUI(runtime.currentSchedule);
+      updateResetButtonUI();
+      const activeTask = runtime.getActiveTask();
+      if (activeTask) {
+        renderClockTime(runtime.getRemainingSeconds());
+      } else {
+        renderClockTime(0);
+        updateWheelProgress(0);
+      }
+    }
+    mobileServices.hapticBuzz();
+    showToastNotification(`✓ Deleted "${taskTitle}"`);
+  }
+  window.executeDeleteTask = executeDeleteTask;
+
+  // Themed Clear Schedule Confirmation Modal
+  const confirmClearModalBackdrop = document.getElementById('confirmClearModalBackdrop');
+  const btnCancelClearSchedule = document.getElementById('btnCancelClearSchedule');
+  const btnConfirmClearSchedule = document.getElementById('btnConfirmClearSchedule');
+
+  function openConfirmClearModal() {
+    if (confirmClearModalBackdrop) confirmClearModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticWarning();
+  }
+
+  function closeConfirmClearModal() {
+    if (confirmClearModalBackdrop) confirmClearModalBackdrop.classList.add('hidden');
+  }
+
+  if (btnClearCalendarSchedule) {
+    btnClearCalendarSchedule.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openConfirmClearModal();
+    });
+  }
+
+  if (btnCancelClearSchedule) {
+    btnCancelClearSchedule.addEventListener('click', closeConfirmClearModal);
+  }
+
+  if (confirmClearModalBackdrop) {
+    confirmClearModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmClearModalBackdrop) closeConfirmClearModal();
+    });
+  }
+
+  if (btnConfirmClearSchedule) {
+    btnConfirmClearSchedule.addEventListener('click', () => {
+      closeConfirmClearModal();
+      taskStore.clearAllTasks();
+      runtime.initialTasks = [];
+      runtime.reset();
+      runtime.recalculate();
+      updateActiveTaskDisplay();
+      renderTaskList([]);
+      renderCalendarModal();
+      updateScheduleUI(runtime.currentSchedule);
+      renderClockTime(0);
+      updateWheelProgress(0);
+      mobileServices.hapticBuzz();
+      showToastNotification("✓ Cleared today's schedule");
+    });
+  }
+
+  const taskDrawerBackdrop = document.getElementById('taskDrawerBackdrop');
+  const btnDrawerToggle = document.getElementById('btnDrawerToggle');
+
+  function openTaskDrawer() {
+    taskDrawer.style.removeProperty('transform');
+    taskDrawer.classList.remove('collapsed');
+    taskDrawer.classList.remove('will-minimise');
+    if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeTaskDrawer() {
+    taskDrawer.style.removeProperty('transform');
+    taskDrawer.classList.add('collapsed');
+    taskDrawer.classList.remove('will-minimise');
+    if (taskDrawerBackdrop) taskDrawerBackdrop.classList.add('hidden');
+  }
+
+  function toggleTaskDrawer() {
+    if (taskDrawer.classList.contains('collapsed')) {
+      openTaskDrawer();
+    } else {
+      closeTaskDrawer();
+    }
+  }
+
+  if (drawerHeader) drawerHeader.addEventListener('click', toggleTaskDrawer);
+  if (btnDrawerToggle) {
+    btnDrawerToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleTaskDrawer();
+    });
+  }
+  if (taskDrawerBackdrop) taskDrawerBackdrop.addEventListener('click', closeTaskDrawer);
+
+  // Swipe up to open Today's Tasks tab; swipe down to minimise it (with live rubberband)
+  let drawerTouchStartY = 0;
+  let drawerTouchStartX = 0;
+  let isDrawerTouching = false;
+  let isDrawerPullingDown = false;
+
+  function onDrawerTouchStart(e) {
+    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
+      isDrawerTouching = false;
+      isDrawerPullingDown = false;
+      return;
+    }
+    if (!e.touches || e.touches.length !== 1) return;
+    drawerTouchStartY = e.touches[0].clientY;
+    drawerTouchStartX = e.touches[0].clientX;
+    isDrawerTouching = true;
+    isDrawerPullingDown = false;
+  }
+
+  function onDrawerTouchMove(e) {
+    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
+      isDrawerTouching = false;
+      if (isDrawerPullingDown) {
+        taskDrawer.style.removeProperty('transform');
+        taskDrawer.classList.remove('will-minimise');
+        isDrawerPullingDown = false;
+      }
+      return;
+    }
+    if (!isDrawerTouching || !e.touches || e.touches.length !== 1) return;
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const deltaY = currentY - drawerTouchStartY;
+    const deltaX = currentX - drawerTouchStartX;
+
+    // Only respond to predominantly vertical swipes
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
+      if (taskDrawer.classList.contains('collapsed')) {
+        // Swiping UP when collapsed -> open drawer
+        if (deltaY < -25) {
+          isDrawerTouching = false;
+          openTaskDrawer();
+        }
+      } else {
+        // Swiping DOWN when expanded: only allow when user is at the top of drawer content (scrollTop <= 0) or touching the header
+        const drawerContentEl = document.getElementById('drawerContent');
+        const isHeaderTouch = e.target.closest('#drawerHeader, .drawer-header');
+        const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
+
+        if ((isHeaderTouch || isAtTop) && deltaY > 0) {
+          isDrawerPullingDown = true;
+          // Live rubberband pull visual
+          const rubberbandY = Math.min(deltaY * 0.45, 120);
+          taskDrawer.style.transition = 'none';
+          taskDrawer.style.transform = `translateY(${rubberbandY}px)`;
+
+          // Rotate arrow 180° clockwise when swiped >= 85px to indicate release will minimise; rotate back if pulled back
+          if (deltaY >= 85) {
+            taskDrawer.classList.add('will-minimise');
+          } else {
+            taskDrawer.classList.remove('will-minimise');
+          }
+        } else if (deltaY <= 0 && isDrawerPullingDown) {
+          taskDrawer.classList.remove('will-minimise');
+        }
+      }
+    }
+  }
+
+  function onDrawerTouchEnd(e) {
+    if (isDrawerPullingDown) {
+      taskDrawer.style.transition = '';
+      const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
+      const deltaY = currentY - drawerTouchStartY;
+      if (deltaY > 85) {
+        closeTaskDrawer();
+      } else {
+        taskDrawer.style.transform = '';
+      }
+    }
+    taskDrawer.classList.remove('will-minimise');
+    isDrawerTouching = false;
+    isDrawerPullingDown = false;
+  }
+
+  if (drawerHeader) {
+    drawerHeader.addEventListener('touchstart', onDrawerTouchStart, { passive: true });
+    drawerHeader.addEventListener('touchmove', onDrawerTouchMove, { passive: true });
+    drawerHeader.addEventListener('touchend', onDrawerTouchEnd, { passive: true });
+  }
+
+  if (taskDrawer) {
+    taskDrawer.addEventListener('touchstart', onDrawerTouchStart, { passive: true });
+    taskDrawer.addEventListener('touchmove', onDrawerTouchMove, { passive: true });
+    taskDrawer.addEventListener('touchend', onDrawerTouchEnd, { passive: true });
+  }
+}
+
+// ==========================================
+// Toast Notification System
+// ==========================================
+let toastTimeout = null;
+function showToastNotification(msg) {
+  const toast = document.getElementById('toastNotification');
+  if (!toast) return;
+  toast.style.removeProperty('background');
+  toast.style.removeProperty('color');
+  toast.textContent = msg;
+  toast.classList.remove('hidden');
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(10px)';
+    setTimeout(() => {
+      toast.classList.add('hidden');
+      toast.style.removeProperty('background');
+      toast.style.removeProperty('color');
+    }, 220);
+  }, 2200);
+}
+
+// ==========================================
+// Break Option Logic
+// ==========================================
+function addBreakTask(duration = 10) {
+  taskStore.addTask({
+    title: 'Break',
+    plannedDuration: duration,
+    category: 'Break',
+    tags: ['rest', 'recharge'],
+    emoji: '☕',
+    isLocked: false
+  });
+  runtime.initialTasks = taskStore.getTasks();
+  runtime.recalculate();
+  updateActiveTaskDisplay();
+  renderTaskList(runtime.currentSchedule?.tasks || []);
+  const calBackdrop = document.getElementById('calendarModalBackdrop');
+  if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
+    renderCalendarModal();
+  }
+  mobileServices.hapticTap();
+  showToastNotification('☕ 10m Break added to schedule');
+}
+
+// ==========================================
+// Interactive Live Drag Reordering (Mobile Touch + Desktop Pointer)
+// ==========================================
+function setupInteractiveTaskDrag(container) {
+  if (!container || container._hasInteractiveDrag) return;
+  container._hasInteractiveDrag = true;
+
+  container.addEventListener('pointerdown', (e) => {
+    // Only accept primary pointer (left mouse click or touch)
+    if (e.button !== undefined && e.button !== 0) return;
+
+    // Reject all drag interactions if drawer is collapsed
+    const drawer = container.closest('#taskDrawer');
+    if (drawer && drawer.classList.contains('collapsed')) return;
+
+    // STRICT CHECK: Drag can ONLY begin if pointer is directly on the 3x2 dots drag handle!
+    const handle = e.target.closest('[data-action="drag-handle"]');
+    if (!handle) return;
+
+    const card = e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block');
+    if (!card) return;
+
+    const dragCard = card.closest('.calendar-item-wrapper') || card;
+
+    const allCards = Array.from(container.children).filter(c => c.matches('.task-card, .calendar-item-wrapper, .calendar-block'));
+    const fromIndex = allCards.indexOf(dragCard);
+    if (fromIndex === -1) return;
+
+    const activeIdx = runtime && runtime.activeTaskIndex >= 0 ? runtime.activeTaskIndex : 0;
+    const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+    const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
+
+    // In RUNNING state: current active task cannot be moved, but FUTURE tasks can be moved!
+    if (isRunning && fromIndex <= activeIdx) {
+      e.preventDefault();
+      e.stopPropagation();
+      mobileServices.hapticWarning();
+      showToastNotification('Active task is running. Pause timer to reorder.');
+      return;
+    }
+
+    // In PAUSED state: if task is locked, notify user to deselect the padlock first
+    if (isPaused && fromIndex === activeIdx && (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task'))) {
+      e.preventDefault();
+      e.stopPropagation();
+      mobileServices.hapticWarning();
+      showToastNotification('Deselect the padlock to unlock active task first.');
+      return;
+    }
+
+    if (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task')) {
+      e.preventDefault();
+      e.stopPropagation();
+      mobileServices.hapticWarning();
+      showToastNotification('🔒 This task is locked and cannot be moved.');
+      return;
+    }
+
+    const activePointerId = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    let holdTimer = null;
+    let isDragActive = false;
+    let currentSlotIndex = fromIndex;
+    let cardSlotPositions = [];
+    let initialCardTop = 0;
+    let slotSpacing = 68;
+
+    const draggedCard = dragCard;
+    const draggedTaskId = draggedCard.getAttribute('data-id') || draggedCard.querySelector('[data-id]')?.getAttribute('data-id');
+
+    // 200ms HOLD REQUIRED before dragging engages!
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      isDragActive = true;
+      isDraggingTask = true;
+
+      try {
+        handle.setPointerCapture(activePointerId);
+      } catch (_) {}
+
+      const draggedRect = draggedCard.getBoundingClientRect();
+      initialCardTop = draggedRect.top;
+      slotSpacing = draggedRect.height + 8;
+
+      cardSlotPositions = allCards.map((c, idx) => {
+        const r = c.getBoundingClientRect();
+        const id = c.getAttribute('data-id') || c.querySelector('[data-id]')?.getAttribute('data-id');
+        return {
+          card: c,
+          id: id,
+          index: idx,
+          top: r.top,
+          height: r.height,
+          midY: r.top + r.height / 2
+        };
+      });
+
+      draggedCard.classList.add('is-live-dragging');
+      const innerBlock = draggedCard.querySelector('.calendar-block');
+      if (innerBlock) innerBlock.classList.add('is-live-dragging');
+
+      allCards.forEach(c => {
+        if (c !== draggedCard) {
+          c.classList.add('is-drag-sibling');
+        }
+      });
+
+      mobileServices.hapticTap();
+    }, 200);
+
+    const onPointerMove = (moveEv) => {
+      if (moveEv.pointerId !== activePointerId) return;
+
+      if (!isDragActive) {
+        // Cancel hold if finger moves before 200ms (user is swiping/scrolling)
+        if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+        }
+        return;
+      }
+
+      moveEv.preventDefault();
+      const deltaY = moveEv.clientY - startY;
+      draggedCard.style.transform = `translate3d(0, ${deltaY}px, 0) scale(1.03)`;
+
+      if (Math.abs(deltaY) < 10) {
+        if (currentSlotIndex !== fromIndex) {
+          currentSlotIndex = fromIndex;
+          cardSlotPositions.forEach(({ card: siblingCard }) => {
+            siblingCard.style.transform = 'translate3d(0, 0, 0)';
+          });
+        }
+        return;
+      }
+
+      const currentCenterY = initialCardTop + (cardSlotPositions[fromIndex]?.height || 60) / 2 + deltaY;
+      let closestSlot = fromIndex;
+      let minDistance = Infinity;
+      cardSlotPositions.forEach((slot, idx) => {
+        if (isRunning && idx <= activeIdx) return;
+        const dist = Math.abs(currentCenterY - slot.midY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestSlot = idx;
+        }
+      });
+
+      let targetSlot = closestSlot;
+      if (isRunning) {
+        targetSlot = Math.max(activeIdx + 1, Math.min(cardSlotPositions.length - 1, closestSlot));
+      } else {
+        targetSlot = Math.max(0, Math.min(cardSlotPositions.length - 1, closestSlot));
+      }
+
+      if (targetSlot !== currentSlotIndex) {
+        currentSlotIndex = targetSlot;
+        mobileServices.hapticTap();
+
+        cardSlotPositions.forEach(({ card: siblingCard, index }) => {
+          if (index === fromIndex) return;
+
+          if (fromIndex < currentSlotIndex) {
+            if (index > fromIndex && index <= currentSlotIndex) {
+              siblingCard.style.transform = `translate3d(0, -${slotSpacing}px, 0)`;
+            } else {
+              siblingCard.style.transform = 'translate3d(0, 0, 0)';
+            }
+          } else if (fromIndex > currentSlotIndex) {
+            if (index < fromIndex && index >= currentSlotIndex) {
+              siblingCard.style.transform = `translate3d(0, ${slotSpacing}px, 0)`;
+            } else {
+              siblingCard.style.transform = 'translate3d(0, 0, 0)';
+            }
+          } else {
+            siblingCard.style.transform = 'translate3d(0, 0, 0)';
+          }
+        });
+      }
+    };
+
+    const onPointerUp = (upEv) => {
+      if (upEv.pointerId !== activePointerId) return;
+
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      if (!isDragActive) {
+        return;
+      }
+
+      isDragActive = false;
+      isDraggingTask = false;
+
+      try {
+        handle.releasePointerCapture(activePointerId);
+      } catch (_) {}
+
+      const targetTaskId = cardSlotPositions[currentSlotIndex]?.id;
+
+      allCards.forEach(c => {
+        c.classList.remove('is-live-dragging', 'is-drag-sibling');
+        c.style.transform = '';
+        const b = c.querySelector('.calendar-block');
+        if (b) b.classList.remove('is-live-dragging');
+      });
+
+      if (draggedTaskId && targetTaskId && draggedTaskId !== targetTaskId) {
+        taskStore.reorderTaskById(draggedTaskId, targetTaskId);
+        runtime.initialTasks = taskStore.getTasks();
+        runtime.recalculate();
+        if (runtime.status === TimerStatus.IDLE) {
+          runtime.activeTaskIndex = 0;
+        }
+        updateActiveTaskDisplay();
+        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderCalendarModal();
+        updateScheduleUI(runtime.currentSchedule);
+        const activeTask = runtime.getActiveTask();
+        if (activeTask && runtime.status === TimerStatus.IDLE) {
+          renderClockTime(activeTask.allocatedDuration * 60 || 1500);
+          updateWheelProgress(0);
+        }
+        mobileServices.hapticBuzz();
+        showToastNotification('✓ Task moved');
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   });
 }
 
 // ==========================================
-// Task Pipeline List & Add Form
+// Time Bank & Piggy Bank Helpers
+// ==========================================
+function getPiggyBankSvg(isCracked = false) {
+  if (isCracked) {
+    return `
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 3C8 3 5.5 5 4.5 7.5L3 11c0 4 3 7 7 7.5v2.5h2v-2.5l-2-2 3-3-3-3 2-3-2-2.5C10.5 4.2 10.7 3.5 11 3z"/>
+        <path d="M15 3c2.5.5 4.5 2.5 5 5 .5 1.5.5 3 0 4.5-1 2.5-3 4-5.5 4.5v3h-2v-3l2-2-3-3 3-3-2-3 2-2.5c-.5-.3-1-.5-1.5-.5z"/>
+        <line x1="12" y1="1" x2="12" y2="4"/>
+        <circle cx="7" cy="9" r="1" fill="currentColor"/>
+      </svg>
+    `;
+  }
+  return `
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 12c.7-1.3 1-2.8 1-4.2C20 4.6 17.4 2 14.2 2c-1.3 0-2.5.4-3.5 1.1L8.5 2H6v3.2L4.7 6.4C3.6 7.6 3 9.2 3 11c0 4.4 3.6 8 8 8h1v2h2v-2h2v2h2v-2.2c2.4-1.2 4-3.7 4-6.8z"/>
+      <circle cx="8" cy="9" r="1" fill="currentColor"/>
+      <line x1="12" y1="6" x2="15" y2="6"/>
+    </svg>
+  `;
+}
+
+function formatBankTime(totalSeconds) {
+  const sec = Math.max(0, totalSeconds || 0);
+  const min = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (min >= 60) {
+    const hours = Math.floor(min / 60);
+    const remMin = min % 60;
+    return `${hours}h ${remMin}m`;
+  }
+  if (min === 0) {
+    return `${remSec}s`;
+  }
+  if (remSec === 0) {
+    return `${min}m`;
+  }
+  return `${min}m ${remSec}s`;
+}
+
+function updateTimeBankDisplay() {
+  const bankAmountEl = document.getElementById('timeBankAmount');
+  const bankPillEl = document.getElementById('timeBankPill');
+  if (bankAmountEl) {
+    const sec = taskStore.getTimeBankSeconds();
+    bankAmountEl.textContent = formatBankTime(sec);
+  }
+  if (bankPillEl) {
+    if (runtime && runtime.isOverrunning) {
+      bankPillEl.classList.add('is-active-overrun');
+    } else {
+      bankPillEl.classList.remove('is-active-overrun');
+    }
+  }
+}
+
+function setupTimeBankInfoModal() {
+  const bankPillEl = document.getElementById('timeBankPill');
+  const modalBackdrop = document.getElementById('timeBankInfoModalBackdrop');
+  const btnClose = document.getElementById('btnCloseTimeBankInfo');
+  const balanceText = document.getElementById('timeBankModalBalance');
+
+  if (bankPillEl) {
+    bankPillEl.addEventListener('click', () => {
+      mobileServices.hapticTap();
+      if (balanceText) {
+        const sec = taskStore.getTimeBankSeconds();
+        balanceText.textContent = `Current balance: ${formatBankTime(sec)}`;
+      }
+      modalBackdrop?.classList.remove('hidden');
+    });
+  }
+
+  if (btnClose) {
+    btnClose.addEventListener('click', () => {
+      modalBackdrop?.classList.add('hidden');
+    });
+  }
+
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) {
+        modalBackdrop.classList.add('hidden');
+      }
+    });
+  }
+}
+
+// ==========================================
+// Task Pipeline List
 // ==========================================
 function setupTaskPipeline() {
-  addTaskForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const title = document.getElementById('inputTaskTitle').value.trim();
-    const duration = parseInt(document.getElementById('inputTaskDuration').value, 10);
-    const category = document.getElementById('inputTaskCategory').value.trim() || 'General';
-    const tagsRaw = document.getElementById('inputTaskTags').value.trim();
-    const fixedTime = document.getElementById('inputTaskFixedTime').value || null;
-
-    if (title && duration > 0) {
-      taskStore.addTask({
-        title,
-        plannedDuration: duration,
-        category,
-        tags: tagsRaw,
-        isLocked: Boolean(fixedTime),
-        fixedStartTime: fixedTime
-      });
-
-      // Clear inputs
-      document.getElementById('inputTaskTitle').value = '';
-      document.getElementById('inputTaskCategory').value = '';
-      document.getElementById('inputTaskTags').value = '';
-      document.getElementById('inputTaskFixedTime').value = '';
-
-      // Reload into runtime
-      runtime.initialTasks = taskStore.getTasks();
-      runtime.recalculate();
-      updateActiveTaskDisplay();
-    }
-  });
+  // Bind interactive live drag reordering to pipeline task list
+  setupInteractiveTaskDrag(taskListContainer);
 }
 
 function renderTaskList(tasks) {
   taskCountBadge.textContent = `${tasks.length} task${tasks.length === 1 ? '' : 's'}`;
   taskListContainer.innerHTML = '';
 
-  const activeIdx = runtime.activeTaskIndex >= 0 ? runtime.activeTaskIndex : 0;
+  const activeIdx = runtime && runtime.activeTaskIndex >= 0 ? runtime.activeTaskIndex : 0;
+  const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+  const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
   const isAllCompleted = runtime.status === TimerStatus.COMPLETED;
 
   tasks.forEach((task, idx) => {
     const card = document.createElement('div');
     const isImmovable = Boolean(task.fixedStartTime);
+    const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
+    // When timer is RUNNING, the active in-progress task is locked. When PAUSED, user can toggle lock!
+    const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
+    const isBreak = task.category === 'Break' || task.title?.toLowerCase() === 'break';
 
     let statusClass = 'task-pending';
-    let statusBadge = '<span class="task-status-pill pending">⏳ NOT DONE</span>';
+    let statusBadge = isBreak
+      ? '<span class="task-status-pill break-pill">☕ Break</span>'
+      : '<span class="task-status-pill pending">⏳ Todo</span>';
 
     if (isAllCompleted || (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
       statusClass = 'task-completed';
-      statusBadge = '<span class="task-status-pill completed">✓ DONE</span>';
+      statusBadge = '<span class="task-status-pill completed">✓ Done</span>';
     } else if (idx === activeIdx && !isAllCompleted) {
       statusClass = 'task-current';
-      statusBadge = '<span class="task-status-pill current">▶ CURRENT</span>';
+      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
     } else {
       statusClass = 'task-pending';
-      statusBadge = '<span class="task-status-pill pending">⏳ NOT DONE</span>';
+      statusBadge = isBreak
+        ? '<span class="task-status-pill break-pill">☕ Break</span>'
+        : '<span class="task-status-pill pending">⏳ Todo</span>';
     }
 
-    card.className = `task-card ${statusClass} ${task.isLocked || isImmovable ? 'is-locked-task' : ''}`;
+    card.className = `task-card ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''}`;
+    card.setAttribute('data-id', task.id);
+    card.setAttribute('data-index', idx);
 
     const isCompressed = task.allocatedDuration < task.plannedDuration;
     const durationText = isCompressed
-      ? `${task.allocatedDuration}m <span style="text-decoration:line-through;color:var(--text-dim)">${task.plannedDuration}m</span>`
+      ? `${task.allocatedDuration}m (was ${task.plannedDuration}m)`
       : `${task.allocatedDuration}m`;
 
     const lockTitle = isImmovable
       ? `🔒 Fixed in place at ${task.fixedStartTime} (Immovable)`
       : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
 
+    const isOverrunningTask = Boolean(runtime?.isOverrunning && runtime?.getActiveTask()?.id === task.id);
+
     card.innerHTML = `
-      <div class="task-card-left">
-        ${statusBadge}
-        <button class="task-emoji-btn" data-action="pick-emoji" data-id="${task.id}" title="Tap to change emoji">
-          ${task.emoji || '📌'}
-        </button>
-      </div>
-
-      <div class="task-card-content" data-action="edit-task" data-id="${task.id}" title="Tap to edit task options">
-        <div class="task-card-title-row">
-          <span class="task-card-title">${escapeHtml(task.title)}</span>
-          ${task.isLocked || isImmovable ? '<span class="task-padlock-badge" title="Locked duration & time">🔒</span>' : ''}
-        </div>
-        <div class="task-card-time-row">
-          <span class="task-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
-          <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
-        </div>
-      </div>
-
-      <div class="task-card-right">
-        <div class="duration-badge ${isCompressed ? 'compressed' : ''}">
-          ${durationText}
+      <!-- Top Row: Status badge on top left, actions on top right -->
+      <div class="task-card-top-row">
+        <div class="task-card-status-wrap">
+          ${statusBadge}
         </div>
         <div class="task-card-actions">
-          <button class="btn-icon-action ${task.isLocked || isImmovable ? 'locked' : ''}" data-action="toggle-lock" data-id="${task.id}" title="${lockTitle}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              ${task.isLocked || isImmovable
+          <button class="btn-icon-action time-bank-btn ${task.useTimeBank !== false ? 'active' : ''} ${isOverrunningTask ? 'cracked' : ''}" data-action="toggle-time-bank" data-id="${task.id}" title="${task.useTimeBank !== false ? 'Time Bank enabled: taps into saved surplus time if overdue' : 'Time Bank disabled'}">
+            ${getPiggyBankSvg(isOverrunningTask)}
+          </button>
+          <button class="btn-icon-action ${isLocked ? 'locked' : ''}" data-action="toggle-lock" data-id="${task.id}" title="${lockTitle}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              ${isLocked
                 ? '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>'
                 : '<path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>'
               }
             </svg>
           </button>
           <button class="btn-icon-action" data-action="delete" data-id="${task.id}" title="Delete task">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
         </div>
       </div>
+
+      <!-- Middle Row: 3x2 dots drag handle on far left (if unlocked), Emoji underneath status, full Task Name next to emoji -->
+      <div class="task-card-middle-row" data-action="edit-task" data-id="${task.id}" title="Tap to edit task options">
+        ${!isLocked ? `
+          <div class="drag-handle" data-action="drag-handle" title="Hold & drag to reorder">
+            <svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor">
+              <circle cx="3" cy="3" r="1.5"/>
+              <circle cx="9" cy="3" r="1.5"/>
+              <circle cx="3" cy="9" r="1.5"/>
+              <circle cx="9" cy="9" r="1.5"/>
+              <circle cx="3" cy="15" r="1.5"/>
+              <circle cx="9" cy="15" r="1.5"/>
+            </svg>
+          </div>
+        ` : `
+          <div class="drag-handle-locked" data-action="locked-drag-attempt" title="Task locked">
+            <span style="font-size: 0.85rem; opacity: 0.7;">🔒</span>
+          </div>
+        `}
+        <button class="task-emoji-btn" data-action="pick-emoji" data-id="${task.id}" title="Tap to change emoji">
+          ${task.emoji || '📌'}
+        </button>
+        <div class="task-card-title-wrap">
+          <span class="task-card-title">${escapeHtml(task.title)}</span>
+        </div>
+      </div>
+
+      <!-- Bottom Row: Timing duration in blue text on a single line -->
+      <div class="task-card-bottom-row">
+        <span class="task-timing-blue">${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}</span>
+        <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
+      </div>
     `;
+
+    // Custom Themed Hold-to-delete gesture (450ms) on task card
+    let holdTimer = null;
+    let holdMoved = false;
+    let startX = 0;
+    let startY = 0;
+
+    const clearHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    };
+
+    const triggerHoldDelete = () => {
+      openConfirmDeleteTaskModal(task.id, task.title);
+    };
+
+    card.addEventListener('touchstart', (e) => {
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], .task-emoji-btn, .btn-icon-action')) return;
+      holdMoved = false;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      clearHold();
+      holdTimer = setTimeout(() => {
+        if (!holdMoved) {
+          triggerHoldDelete();
+        }
+      }, 500);
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!holdTimer) return;
+      const diffX = e.touches[0].clientX - startX;
+      const diffY = e.touches[0].clientY - startY;
+      if (Math.hypot(diffX, diffY) > 10) {
+        holdMoved = true;
+        clearHold();
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchend', clearHold);
+    card.addEventListener('touchcancel', clearHold);
+
+    card.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], .task-emoji-btn, .btn-icon-action')) return;
+      holdMoved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      clearHold();
+      holdTimer = setTimeout(() => {
+        if (!holdMoved) {
+          triggerHoldDelete();
+        }
+      }, 500);
+
+      const onMouseMove = (me) => {
+        if (Math.hypot(me.clientX - startX, me.clientY - startY) > 10) {
+          holdMoved = true;
+          clearHold();
+        }
+      };
+      const onMouseUp = () => {
+        clearHold();
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+      };
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
 
     // Emoji click
     card.querySelector('[data-action="pick-emoji"]').addEventListener('click', (e) => {
@@ -886,28 +2025,56 @@ function renderTaskList(tasks) {
 
     // Edit task click
     card.querySelector('[data-action="edit-task"]').addEventListener('click', (e) => {
-      e.stopPropagation();
+      if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]')) return;
       openTaskEditModal(task.id);
     });
+
+    // Locked drag handle tap notification
+    const lockedDrag = card.querySelector('[data-action="locked-drag-attempt"]');
+    if (lockedDrag) {
+      lockedDrag.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mobileServices.hapticWarning();
+        showToastNotification('🔒 This task is locked and cannot be moved.');
+      });
+    }
+
+    // Time bank toggle event
+    const timeBankBtn = card.querySelector('[data-action="toggle-time-bank"]');
+    if (timeBankBtn) {
+      timeBankBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        taskStore.toggleTaskTimeBank(task.id);
+        runtime.initialTasks = taskStore.getTasks();
+        runtime.recalculate();
+        updateActiveTaskDisplay();
+        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderCalendarModal();
+        mobileServices.hapticTap();
+      });
+    }
 
     // Lock toggle event
     card.querySelector('[data-action="toggle-lock"]').addEventListener('click', (e) => {
       e.stopPropagation();
+      if (runtime && runtime.status === TimerStatus.RUNNING && isCurrentActive) {
+        mobileServices.hapticWarning();
+        showToastNotification('Pause timer first to unlock the current task.');
+        return;
+      }
       taskStore.toggleLock(task.id);
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
+      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderCalendarModal();
       mobileServices.hapticTap();
     });
 
     // Delete event
     card.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
       e.stopPropagation();
-      taskStore.deleteTask(task.id);
-      runtime.initialTasks = taskStore.getTasks();
-      runtime.recalculate();
-      updateActiveTaskDisplay();
-      mobileServices.hapticTap();
+      executeDeleteTask(task.id, task.title);
     });
 
     taskListContainer.appendChild(card);
@@ -943,6 +2110,13 @@ function applyTheme(theme) {
       : 'dark';
   }
   document.documentElement.setAttribute('data-theme', resolvedTheme);
+  document.documentElement.style.colorScheme = resolvedTheme;
+  document.body.setAttribute('data-theme', resolvedTheme);
+
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', resolvedTheme === 'light' ? '#f4f5f8' : '#0a0a0f');
+  }
 
   const segmentBtns = document.querySelectorAll('.theme-segment-btn');
   segmentBtns.forEach(btn => {
@@ -959,25 +2133,64 @@ function applyTheme(theme) {
 // ==========================================
 const CURATED_EMOJIS = ['📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃', '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌'];
 let currentEmojiTaskId = null;
+let currentAddTaskEmoji = '📚';
+let currentEditEmoji = null;
+let selectedEmojiInPicker = null;
+
+function applyEmojiSelection(emoji) {
+  if (!emoji) return;
+  if (currentEmojiTaskId === 'NEW_TASK') {
+    currentAddTaskEmoji = emoji;
+    const addModalEmoji = document.getElementById('addTaskHeaderEmoji');
+    if (addModalEmoji) addModalEmoji.textContent = emoji;
+    closeEmojiPicker(false);
+    mobileServices.hapticTap();
+  } else if (currentEmojiTaskId) {
+    currentEditEmoji = emoji;
+    taskStore.updateTask(currentEmojiTaskId, { emoji });
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+    updateActiveTaskDisplay();
+    renderTaskList(runtime.currentSchedule?.tasks || []);
+    const editHeaderEmoji = document.getElementById('editTaskHeaderEmoji');
+    if (editHeaderEmoji) editHeaderEmoji.textContent = emoji;
+    renderCalendarModal();
+    closeEmojiPicker(false);
+    mobileServices.hapticTap();
+    showToastNotification(`Emoji updated to ${emoji}`);
+  }
+}
 
 function openEmojiPicker(taskId) {
   currentEmojiTaskId = taskId;
+  let currentTaskEmoji = '📚';
+  if (taskId === 'NEW_TASK') {
+    currentTaskEmoji = currentAddTaskEmoji || '📚';
+  } else if (taskId) {
+    const t = taskStore.getTasks().find(item => item.id === taskId);
+    currentTaskEmoji = t?.emoji || currentEditEmoji || '📌';
+  }
+  selectedEmojiInPicker = currentTaskEmoji;
+
   const grid = document.getElementById('emojiPickerGrid');
   if (grid) {
     grid.innerHTML = '';
     CURATED_EMOJIS.forEach(emoji => {
       const btn = document.createElement('button');
-      btn.className = 'emoji-pick-btn';
+      btn.className = `emoji-pick-btn ${emoji === selectedEmojiInPicker ? 'active' : ''}`;
       btn.type = 'button';
       btn.textContent = emoji;
-      btn.addEventListener('click', () => {
-        if (currentEmojiTaskId) {
-          taskStore.updateTask(currentEmojiTaskId, { emoji });
-          runtime.initialTasks = taskStore.getTasks();
-          runtime.recalculate();
-          updateActiveTaskDisplay();
-          renderTaskList(runtime.currentSchedule?.tasks || []);
-          closeEmojiPicker();
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (selectedEmojiInPicker === emoji) {
+          // Second click on the same emoji confirms immediately
+          applyEmojiSelection(emoji);
+        } else {
+          // First click selects and visually highlights
+          selectedEmojiInPicker = emoji;
+          grid.querySelectorAll('.emoji-pick-btn').forEach(b => {
+            b.classList.toggle('active', b.textContent === emoji);
+          });
           mobileServices.hapticTap();
         }
       });
@@ -988,13 +2201,207 @@ function openEmojiPicker(taskId) {
   mobileServices.hapticTap();
 }
 
-function closeEmojiPicker() {
-  document.getElementById('emojiPickerModalBackdrop')?.classList.add('hidden');
-  currentEmojiTaskId = null;
+function closeEmojiPicker(confirmSelected = true) {
+  if (confirmSelected && selectedEmojiInPicker && currentEmojiTaskId) {
+    applyEmojiSelection(selectedEmojiInPicker);
+  } else {
+    document.getElementById('emojiPickerModalBackdrop')?.classList.add('hidden');
+    currentEmojiTaskId = null;
+    selectedEmojiInPicker = null;
+  }
 }
 
 // ==========================================
-// Task Edit Modal Logic
+// Category Chips & Remembered Categories Management
+// ==========================================
+function setupCategorySelector(containerId, inputId, addBtnId, onSelectCategory) {
+  const container = document.getElementById(containerId);
+  const input = document.getElementById(inputId);
+  const addBtn = document.getElementById(addBtnId);
+  if (!container || !input) return () => {};
+
+  function renderChips() {
+    const cats = taskStore.getCategories();
+    container.innerHTML = '';
+    const currentVal = input.value.trim().toLowerCase();
+
+    cats.forEach(cat => {
+      const chip = document.createElement('span');
+      const isSelected = cat.toLowerCase() === currentVal;
+      chip.className = `category-chip ${isSelected ? 'active' : ''}`;
+      chip.innerHTML = `
+        <span class="chip-text">${escapeHtml(cat)}</span>
+        <button type="button" class="chip-delete" title="Delete category">✕</button>
+      `;
+
+      // Tap chip to select
+      chip.addEventListener('click', (e) => {
+        if (e.target.closest('.chip-delete')) return;
+        input.value = cat;
+        if (addBtn) addBtn.classList.add('hidden');
+        renderChips();
+        if (onSelectCategory) onSelectCategory(cat);
+        mobileServices.hapticTap();
+      });
+
+      // Tap × to delete category
+      const delBtn = chip.querySelector('.chip-delete');
+      if (delBtn) {
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          taskStore.deleteCategory(cat);
+          if (input.value.trim().toLowerCase() === cat.toLowerCase()) {
+            input.value = '';
+          }
+          renderChips();
+          mobileServices.hapticTap();
+          showToastNotification(`Category "${cat}" removed`);
+        });
+      }
+
+      container.appendChild(chip);
+    });
+  }
+
+  input.addEventListener('input', () => {
+    const val = input.value.trim();
+    const cats = taskStore.getCategories();
+    const exists = cats.some(c => c.toLowerCase() === val.toLowerCase());
+    if (addBtn) {
+      if (val.length > 0 && !exists) {
+        addBtn.classList.remove('hidden');
+      } else {
+        addBtn.classList.add('hidden');
+      }
+    }
+    renderChips();
+  });
+
+  if (addBtn) {
+    addBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const val = input.value.trim();
+      if (val) {
+        taskStore.addCategory(val);
+        addBtn.classList.add('hidden');
+        renderChips();
+        if (onSelectCategory) onSelectCategory(val);
+        mobileServices.hapticTap();
+        showToastNotification(`Category "${val}" saved`);
+      }
+    });
+  }
+
+  renderChips();
+  return renderChips;
+}
+
+let refreshAddCategoryChips = null;
+let refreshEditCategoryChips = null;
+
+// ==========================================
+// Work / Break Segmented Control for Add Task
+// ==========================================
+let currentAddTaskType = 'work'; // 'work' or 'break'
+
+function setAddTaskType(type) {
+  currentAddTaskType = type;
+  const workBtn = document.getElementById('typeSegmentWork');
+  const breakBtn = document.getElementById('typeSegmentBreak');
+  const submitBtn = document.getElementById('btnAddModalSubmit');
+  const titleInput = document.getElementById('addModalTitle');
+  const durationInput = document.getElementById('addModalDuration');
+  const categoryInput = document.getElementById('addModalCategory');
+  const emojiBadge = document.getElementById('addTaskHeaderEmoji');
+  const heading = document.getElementById('addTaskModalHeading');
+
+  if (type === 'break') {
+    if (workBtn) workBtn.classList.remove('active');
+    if (breakBtn) breakBtn.classList.add('active');
+    if (submitBtn) {
+      submitBtn.classList.add('is-break-btn');
+      submitBtn.textContent = '+ Add Break';
+      submitBtn.style.setProperty('background', '#f59e0b', 'important');
+      submitBtn.style.setProperty('color', '#0c0e14', 'important');
+    }
+    if (heading) heading.textContent = 'Add Break';
+    currentAddTaskEmoji = '☕';
+    if (emojiBadge) emojiBadge.textContent = '☕';
+    if (titleInput && (!titleInput.value || titleInput.value === 'Untitled Task')) {
+      titleInput.value = 'Break';
+    }
+    if (titleInput) titleInput.placeholder = 'e.g. Coffee break, walk, stretch';
+    if (durationInput) durationInput.value = '10';
+    if (categoryInput) categoryInput.value = 'Break';
+
+    document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
+      c.classList.toggle('active', c.getAttribute('data-min') === '10');
+    });
+  } else {
+    if (workBtn) workBtn.classList.add('active');
+    if (breakBtn) breakBtn.classList.remove('active');
+    if (submitBtn) {
+      submitBtn.classList.remove('is-break-btn');
+      submitBtn.textContent = '+ Add Task';
+      submitBtn.style.removeProperty('background');
+      submitBtn.style.removeProperty('color');
+    }
+    if (heading) heading.textContent = 'Add Task';
+    currentAddTaskEmoji = '📚';
+    if (emojiBadge) emojiBadge.textContent = '📚';
+    if (titleInput && titleInput.value === 'Break') {
+      titleInput.value = '';
+    }
+    if (titleInput) titleInput.placeholder = 'e.g. Core Reading & Practice';
+    if (durationInput) durationInput.value = '25';
+    if (categoryInput && categoryInput.value === 'Break') categoryInput.value = 'Study';
+
+    document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
+      c.classList.toggle('active', c.getAttribute('data-min') === '25');
+    });
+  }
+
+  if (refreshAddCategoryChips) refreshAddCategoryChips();
+}
+
+// ==========================================
+// Add Task Modal Logic (Unified Planning UI)
+// ==========================================
+function openAddTaskModal(defaultType = 'work') {
+  const modal = document.getElementById('addTaskModalBackdrop');
+  if (!modal) return;
+  const inputTitle = document.getElementById('addModalTitle');
+  const inputDur = document.getElementById('addModalDuration');
+  const inputCat = document.getElementById('addModalCategory');
+  const inputFixed = document.getElementById('addModalFixedTime');
+  const inputStart = document.getElementById('addModalStartTime');
+  const inputEnd = document.getElementById('addModalEndTime');
+  const toggleBank = document.getElementById('addModalTimeBank');
+  const emojiBadge = document.getElementById('addTaskHeaderEmoji');
+
+  if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
+  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '25';
+  if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
+  if (inputFixed) inputFixed.value = '';
+  if (inputStart) inputStart.value = '';
+  if (inputEnd) inputEnd.value = '';
+  if (toggleBank) toggleBank.checked = true;
+
+  setAddTaskType(defaultType);
+  if (emojiBadge) emojiBadge.textContent = currentAddTaskEmoji;
+
+  if (refreshAddCategoryChips) refreshAddCategoryChips();
+
+  modal.classList.remove('hidden');
+  mobileServices.hapticTap();
+}
+
+function closeAddTaskModal() {
+  document.getElementById('addTaskModalBackdrop')?.classList.add('hidden');
+}
+
+// ==========================================
+// Task Edit Modal Logic (With Auto-Save on Click-Off)
 // ==========================================
 let currentEditTaskId = null;
 
@@ -1003,52 +2410,996 @@ function openTaskEditModal(taskId) {
   const task = tasks.find(t => t.id === taskId);
   if (!task) return;
   currentEditTaskId = taskId;
+  currentEditEmoji = task.emoji || '📝';
 
   const editTaskId = document.getElementById('editTaskId');
   const editTaskTitle = document.getElementById('editTaskTitle');
   const editTaskDuration = document.getElementById('editTaskDuration');
   const editTaskCategory = document.getElementById('editTaskCategory');
   const editTaskFixedTime = document.getElementById('editTaskFixedTime');
+  const editTaskStartTime = document.getElementById('editTaskStartTime');
+  const editTaskEndTime = document.getElementById('editTaskEndTime');
   const editTaskIsLocked = document.getElementById('editTaskIsLocked');
   const editTaskHeaderEmoji = document.getElementById('editTaskHeaderEmoji');
+  const editTaskTimeBank = document.getElementById('editTaskTimeBank');
 
   if (editTaskId) editTaskId.value = task.id;
   if (editTaskTitle) editTaskTitle.value = task.title || '';
   if (editTaskDuration) editTaskDuration.value = task.plannedDuration || 25;
-  if (editTaskCategory) editTaskCategory.value = task.category || '';
+  if (editTaskCategory) editTaskCategory.value = task.category || 'General';
   if (editTaskFixedTime) editTaskFixedTime.value = task.fixedStartTime || '';
+  if (editTaskStartTime) editTaskStartTime.value = task.fixedStartTime || task.startTime || '';
+  if (editTaskEndTime) editTaskEndTime.value = task.endTime || '';
   if (editTaskIsLocked) editTaskIsLocked.checked = Boolean(task.isLocked);
-  if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = task.emoji || '📝';
+  if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = currentEditEmoji;
+  if (editTaskTimeBank) editTaskTimeBank.checked = task.useTimeBank !== false;
+
+  if (refreshEditCategoryChips) refreshEditCategoryChips();
 
   document.getElementById('taskEditModalBackdrop')?.classList.remove('hidden');
   mobileServices.hapticTap();
 }
 
+function saveCurrentTaskEdit() {
+  if (!currentEditTaskId) return;
+  const title = document.getElementById('editTaskTitle')?.value.trim();
+  if (!title) return;
+  const plannedDuration = parseInt(document.getElementById('editTaskDuration')?.value, 10) || 25;
+  const category = document.getElementById('editTaskCategory')?.value.trim() || 'General';
+  const fixedStartTime = document.getElementById('editTaskStartTime')?.value || document.getElementById('editTaskFixedTime')?.value || null;
+  const isLocked = document.getElementById('editTaskIsLocked')?.checked || Boolean(fixedStartTime);
+  const useTimeBank = document.getElementById('editTaskTimeBank') ? document.getElementById('editTaskTimeBank').checked : true;
+  const emoji = currentEditEmoji || document.getElementById('editTaskHeaderEmoji')?.textContent.trim() || '📝';
+
+  if (category) taskStore.addCategory(category);
+
+  taskStore.updateTask(currentEditTaskId, {
+    title,
+    plannedDuration,
+    category,
+    fixedStartTime,
+    isLocked,
+    useTimeBank,
+    emoji
+  });
+
+  runtime.initialTasks = taskStore.getTasks();
+  runtime.recalculate();
+  updateActiveTaskDisplay();
+  renderTaskList(runtime.currentSchedule?.tasks || []);
+  renderCalendarModal();
+}
+
 function closeTaskEditModal() {
   document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
   currentEditTaskId = null;
+  currentEditEmoji = null;
 }
 
 // ==========================================
-// Navigation Drawer, Settings & Calendar Modals
+// Navigation Drawer, Settings & Calendar Modals (Module Scope)
+// ==========================================
+function openDrawer() {
+  if (navDrawer && navDrawerBackdrop) {
+    navDrawer.style.removeProperty('transform');
+    navDrawer.style.removeProperty('transition');
+    navDrawer.style.removeProperty('visibility');
+    navDrawerBackdrop.style.removeProperty('opacity');
+    navDrawerBackdrop.style.removeProperty('transition');
+    navDrawer.classList.add('open');
+    navDrawerBackdrop.classList.remove('hidden');
+    navDrawer.setAttribute('aria-hidden', 'false');
+    mobileServices.hapticTap();
+  }
+}
+
+function closeDrawer() {
+  if (navDrawer && navDrawerBackdrop) {
+    navDrawer.style.removeProperty('transform');
+    navDrawer.style.removeProperty('transition');
+    navDrawer.style.removeProperty('visibility');
+    navDrawerBackdrop.style.removeProperty('opacity');
+    navDrawerBackdrop.style.removeProperty('transition');
+    navDrawer.classList.remove('open');
+    navDrawerBackdrop.classList.add('hidden');
+    navDrawer.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function openSettings() {
+  closeDrawer();
+  if (toggleConfirmAdjust) {
+    toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
+  }
+  applyTheme(taskStore.getTheme());
+  if (settingsModalBackdrop) {
+    settingsModalBackdrop.classList.remove('hidden');
+  }
+  mobileServices.hapticTap();
+}
+
+function closeSettings() {
+  if (settingsModalBackdrop) {
+    settingsModalBackdrop.classList.add('hidden');
+  }
+}
+
+function openCalendar() {
+  closeDrawer();
+  renderCalendarModal();
+  if (calendarModalBackdrop) {
+    calendarModalBackdrop.classList.remove('hidden');
+  }
+  if (navItemCalendar) navItemCalendar.classList.add('active');
+  if (navItemTimer) navItemTimer.classList.remove('active');
+  mobileServices.hapticTap();
+}
+
+function closeCalendar() {
+  if (calendarModalBackdrop) {
+    calendarModalBackdrop.classList.add('hidden');
+  }
+  if (navItemTimer) navItemTimer.classList.add('active');
+  if (navItemCalendar) navItemCalendar.classList.remove('active');
+}
+
+// Category Color Palette for Consistent Custom Pill Styling
+const CATEGORY_PALETTE = [
+  { bg: 'rgba(59, 130, 246, 0.18)', border: 'rgba(59, 130, 246, 0.45)', text: '#60a5fa' },   // Blue (Work)
+  { bg: 'rgba(168, 85, 247, 0.18)', border: 'rgba(168, 85, 247, 0.45)', text: '#c084fc' },  // Purple (Study)
+  { bg: 'rgba(16, 185, 129, 0.18)', border: 'rgba(16, 185, 129, 0.45)', text: '#34d399' },  // Green (Personal)
+  { bg: 'rgba(244, 63, 94, 0.18)', border: 'rgba(244, 63, 94, 0.45)', text: '#fb7185' },    // Rose (Health)
+  { bg: 'rgba(14, 165, 233, 0.18)', border: 'rgba(14, 165, 233, 0.45)', text: '#38bdf8' },  // Cyan (Break)
+  { bg: 'rgba(245, 158, 11, 0.18)', border: 'rgba(245, 158, 11, 0.45)', text: '#fbbf24' },  // Amber (Meeting)
+  { bg: 'rgba(99, 102, 241, 0.18)', border: 'rgba(99, 102, 241, 0.45)', text: '#818cf8' },  // Indigo (Coding)
+  { bg: 'rgba(20, 184, 166, 0.18)', border: 'rgba(20, 184, 166, 0.45)', text: '#2dd4bf' },  // Teal (Chores)
+  { bg: 'rgba(236, 72, 153, 0.18)', border: 'rgba(236, 72, 153, 0.45)', text: '#f472b6' },  // Pink (Life)
+  { bg: 'rgba(148, 163, 184, 0.18)', border: 'rgba(148, 163, 184, 0.45)', text: '#94a3b8' } // Slate (General)
+];
+
+function getCategoryColor(category) {
+  const cat = (category || 'General').trim();
+  const lower = cat.toLowerCase();
+  if (lower === 'work') return CATEGORY_PALETTE[0];
+  if (lower === 'study') return CATEGORY_PALETTE[1];
+  if (lower === 'personal') return CATEGORY_PALETTE[2];
+  if (lower === 'health' || lower === 'fitness') return CATEGORY_PALETTE[3];
+  if (lower === 'break') return CATEGORY_PALETTE[4];
+  if (lower === 'meeting') return CATEGORY_PALETTE[5];
+  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[6];
+  if (lower === 'chores') return CATEGORY_PALETTE[7];
+  if (lower === 'general') return CATEGORY_PALETTE[9];
+
+  let hash = 0;
+  for (let i = 0; i < cat.length; i++) {
+    hash = ((hash << 5) - hash) + cat.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % CATEGORY_PALETTE.length;
+  return CATEGORY_PALETTE[idx];
+}
+
+// Condensed Calendar Timeline Renderer
+function renderCalendarModal() {
+  if (!calendarTimelineList) return;
+  calendarTimelineList.innerHTML = '';
+
+  const tasks = runtime?.currentSchedule?.tasks || [];
+  if (tasks.length === 0) {
+    calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
+    return;
+  }
+
+  const activeIdx = runtime && runtime.activeTaskIndex >= 0 ? runtime.activeTaskIndex : 0;
+  const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+  const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
+
+  tasks.forEach((task, idx) => {
+    const isImmovable = Boolean(task.fixedStartTime);
+    const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
+    // When timer is RUNNING, the active task is locked. When PAUSED, user can toggle lock!
+    const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
+    const isOverrunningTask = Boolean(runtime?.isOverrunning && runtime?.getActiveTask()?.id === task.id);
+    const isBreak = task.category === 'Break' || task.title?.toLowerCase() === 'break';
+    const catColor = getCategoryColor(task.category);
+
+    let statusClass = 'pending';
+    if (task.isCompleted || (runtime.activeTaskIndex > 0 && idx < activeIdx)) {
+      statusClass = 'completed';
+    } else if (idx === activeIdx) {
+      statusClass = 'current';
+    }
+
+    const lockTitle = isImmovable
+      ? `🔒 Fixed in place at ${task.fixedStartTime} (Immovable)`
+      : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'calendar-item-wrapper';
+    wrapper.setAttribute('data-id', task.id);
+    wrapper.setAttribute('data-index', idx);
+
+    const deleteAction = document.createElement('div');
+    deleteAction.className = 'calendar-swipe-delete-action';
+    deleteAction.innerHTML = `<button type="button" class="btn-swipe-delete" data-action="swipe-delete-task" data-id="${task.id}" title="Delete task">✕</button>`;
+
+    const item = document.createElement('div');
+    item.className = `calendar-block ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''}`;
+    item.setAttribute('data-id', task.id);
+    item.setAttribute('data-index', idx);
+
+    item.innerHTML = `
+      <div class="calendar-block-left">
+        ${!isLocked ? `
+          <div class="drag-handle-compact" data-action="drag-handle" title="Hold & drag to reorder">
+            <svg width="10" height="15" viewBox="0 0 10 15" fill="currentColor">
+              <circle cx="2.5" cy="2.5" r="1.3"/>
+              <circle cx="7.5" cy="2.5" r="1.3"/>
+              <circle cx="2.5" cy="7.5" r="1.3"/>
+              <circle cx="7.5" cy="7.5" r="1.3"/>
+              <circle cx="2.5" cy="12.5" r="1.3"/>
+              <circle cx="7.5" cy="12.5" r="1.3"/>
+            </svg>
+          </div>
+        ` : `
+          <div class="drag-handle-locked-compact" data-action="locked-drag-attempt" title="Task locked">
+            <span>🔒</span>
+          </div>
+        `}
+        <button class="calendar-emoji-btn" data-action="pick-calendar-emoji" data-id="${task.id}" title="Tap to change emoji">
+          ${task.emoji || '📌'}
+        </button>
+      </div>
+
+      <div class="calendar-block-main" data-action="edit-calendar-task" data-id="${task.id}" title="Tap to edit task options">
+        <div class="calendar-main-line1">
+          <span class="calendar-block-title">${escapeHtml(task.title)}</span>
+          <span class="calendar-duration-badge">${task.allocatedDuration || task.plannedDuration}m</span>
+        </div>
+        <div class="calendar-main-line2">
+          <span class="calendar-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
+          <span class="calendar-category-pill" style="background:${catColor.bg};border:1px solid ${catColor.border};color:${catColor.text};">${escapeHtml(task.category || 'General')}</span>
+        </div>
+      </div>
+
+      <div class="calendar-block-actions">
+        <button class="btn-icon-action time-bank-btn ${task.useTimeBank !== false ? 'active' : ''} ${isOverrunningTask ? 'cracked' : ''}" data-action="toggle-calendar-time-bank" data-id="${task.id}" title="${task.useTimeBank !== false ? 'Time Bank enabled: taps into saved surplus time if overdue' : 'Time Bank disabled'}">
+          ${getPiggyBankSvg(isOverrunningTask)}
+        </button>
+        <button class="btn-icon-action ${isLocked ? 'locked' : ''}" data-action="toggle-calendar-lock" data-id="${task.id}" title="${lockTitle}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            ${isLocked
+              ? '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>'
+              : '<path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1 2 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>'
+            }
+          </svg>
+        </button>
+      </div>
+    `;
+
+    // Partitioned Gestures:
+    const leftZone = item.querySelector('.calendar-block-left');
+    if (leftZone) {
+      leftZone.addEventListener('pointerdown', () => {
+        calendarTimelineList.querySelectorAll('.has-swiped-open, .swiped-open').forEach(el => {
+          el.classList.remove('has-swiped-open', 'swiped-open');
+          if (el.style.transform) el.style.removeProperty('transform');
+        });
+      });
+    }
+
+    // Time bank toggle inside calendar
+    const calTimeBankBtn = item.querySelector('[data-action="toggle-calendar-time-bank"]');
+    if (calTimeBankBtn) {
+      calTimeBankBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        taskStore.toggleTaskTimeBank(task.id);
+        runtime.initialTasks = taskStore.getTasks();
+        runtime.recalculate();
+        updateActiveTaskDisplay();
+        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderCalendarModal();
+        mobileServices.hapticTap();
+      });
+    }
+
+    // Lock toggle inside calendar
+    item.querySelector('[data-action="toggle-calendar-lock"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (runtime && runtime.status === TimerStatus.RUNNING && isCurrentActive) {
+        mobileServices.hapticWarning();
+        showToastNotification('Pause timer first to unlock the current task.');
+        return;
+      }
+      taskStore.toggleLock(task.id);
+      runtime.initialTasks = taskStore.getTasks();
+      runtime.recalculate();
+      updateActiveTaskDisplay();
+      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderCalendarModal();
+      mobileServices.hapticTap();
+    });
+
+    // Emoji click inside calendar
+    const calEmojiBtn = item.querySelector('[data-action="pick-calendar-emoji"]');
+    if (calEmojiBtn) {
+      calEmojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEmojiPicker(task.id);
+      });
+    }
+
+    // Click on locked drag handle
+    const lockedDrag = item.querySelector('[data-action="locked-drag-attempt"]');
+    if (lockedDrag) {
+      lockedDrag.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mobileServices.hapticWarning();
+        showToastNotification('🔒 This task is locked and cannot be moved.');
+      });
+    }
+
+    // Swipe & Gesture Zone: The full task block (except drag handle and emoji button)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let hasMoved = false;
+    let isSwiping = false;
+    let holdTimer = null;
+
+    const clearHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    };
+
+    const handleTaskTouchStart = (e) => {
+      // Ignore interactions originating directly from the drag handle or emoji button
+      if (e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="pick-calendar-emoji"]')) {
+        return;
+      }
+
+      hasMoved = false;
+      isSwiping = false;
+      touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      clearHold();
+
+      // Holding task (including in piggy bank or padlock area) reveals the red X!
+      holdTimer = setTimeout(() => {
+        if (!hasMoved && !isSwiping) {
+          wrapper.classList.add('has-swiped-open');
+          item.classList.add('swiped-open');
+          mobileServices.hapticTap();
+        }
+      }, 350);
+    };
+
+    const handleTaskTouchMove = (e) => {
+      if (e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="pick-calendar-emoji"]')) {
+        return;
+      }
+
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      const diffX = clientX - touchStartX;
+      const diffY = clientY - touchStartY;
+
+      if (Math.hypot(diffX, diffY) > 8) {
+        hasMoved = true;
+        clearHold();
+      }
+
+      // Swipe left or right
+      if ((diffX < -10 && (Math.abs(diffX) * 1.4 >= Math.abs(diffY))) ||
+          (diffX > 10 && wrapper.classList.contains('has-swiped-open'))) {
+        isSwiping = true;
+        const itemW = item.offsetWidth || 300;
+        if (diffX < 0) {
+          const shiftPct = Math.max(-25, (diffX / itemW) * 100);
+          item.style.transition = 'none';
+          item.style.transform = `translateX(${shiftPct}%)`;
+          wrapper.classList.add('has-swiped-open');
+        } else if (diffX > 0 && wrapper.classList.contains('has-swiped-open')) {
+          const shiftPct = Math.min(0, -25 + (diffX / itemW) * 100);
+          item.style.transition = 'none';
+          item.style.transform = `translateX(${shiftPct}%)`;
+        }
+      }
+    };
+
+    const handleTaskTouchEnd = (e) => {
+      clearHold();
+      if (isSwiping) {
+        const clientX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : (e.clientX || touchStartX);
+        const diffX = clientX - touchStartX;
+        item.style.transition = '';
+        item.style.transform = '';
+        if (diffX < -18) {
+          wrapper.classList.add('has-swiped-open');
+          item.classList.add('swiped-open');
+          mobileServices.hapticTap();
+        } else {
+          wrapper.classList.remove('has-swiped-open');
+          item.classList.remove('swiped-open');
+        }
+      }
+    };
+
+    item.addEventListener('touchstart', handleTaskTouchStart, { passive: true });
+    item.addEventListener('touchmove', handleTaskTouchMove, { passive: true });
+    item.addEventListener('touchend', handleTaskTouchEnd, { passive: true });
+    item.addEventListener('touchcancel', () => {
+      clearHold();
+      item.style.transition = '';
+      item.style.transform = '';
+    });
+
+    item.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      handleTaskTouchStart(e);
+
+      const onMouseMove = (moveEv) => handleTaskTouchMove(moveEv);
+      const onMouseUp = (upEv) => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        handleTaskTouchEnd(upEv);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Tap on card: if swiped open, close it; else if tapped main zone, open edit modal
+    item.addEventListener('click', (e) => {
+      if (wrapper.classList.contains('has-swiped-open') || item.classList.contains('swiped-open')) {
+        wrapper.classList.remove('has-swiped-open');
+        item.classList.remove('swiped-open');
+        item.style.transform = '';
+        e.stopPropagation();
+        return;
+      }
+      if (hasMoved || isSwiping) return;
+      if (e.target.closest('[data-action="toggle-calendar-time-bank"]') ||
+          e.target.closest('[data-action="toggle-calendar-lock"]') ||
+          e.target.closest('[data-action="pick-calendar-emoji"]') ||
+          e.target.closest('[data-action="drag-handle"]')) {
+        return;
+      }
+      openTaskEditModal(task.id);
+    });
+
+    // Also allow swiping right on deleteAction to slide X closed
+    deleteAction.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    deleteAction.addEventListener('touchmove', (e) => {
+      const diffX = e.touches[0].clientX - touchStartX;
+      if (diffX > 15) {
+        wrapper.classList.remove('has-swiped-open');
+        item.classList.remove('swiped-open');
+        item.style.transform = '';
+      }
+    }, { passive: true });
+
+    // Swipe delete button click
+    deleteAction.querySelector('.btn-swipe-delete')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      executeDeleteTask(task.id, task.title);
+    });
+
+    wrapper.appendChild(deleteAction);
+    wrapper.appendChild(item);
+    calendarTimelineList.appendChild(wrapper);
+  });
+}
+
+// Global window aliases
+window.renderCalendarModal = renderCalendarModal;
+window.renderCalendarModel = renderCalendarModal;
+window.openCalendar = openCalendar;
+window.closeCalendar = closeCalendar;
+
+// ==========================================
+// Navigation Drawer, Settings, Calendar & Modals Setup
 // ==========================================
 function setupNavigationAndModals() {
-  const btnOpenNav = document.getElementById('btnOpenNav');
-  const btnCloseNav = document.getElementById('btnCloseNav');
-  const navDrawerBackdrop = document.getElementById('navDrawerBackdrop');
-  const navDrawer = document.getElementById('navDrawer');
 
-  const navItemTimer = document.getElementById('navItemTimer');
-  const navItemCalendar = document.getElementById('navItemCalendar');
-  const navItemSettings = document.getElementById('navItemSettings');
+  // Work / Break Segmented Control
+  const typeSegmentWork = document.getElementById('typeSegmentWork');
+  const typeSegmentBreak = document.getElementById('typeSegmentBreak');
 
-  const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
-  const btnCloseSettings = document.getElementById('btnCloseSettings');
-  const toggleConfirmAdjust = document.getElementById('toggleConfirmAdjust');
+  if (typeSegmentWork) {
+    typeSegmentWork.addEventListener('click', () => {
+      setAddTaskType('work');
+      mobileServices.hapticTap();
+    });
+  }
+  if (typeSegmentBreak) {
+    typeSegmentBreak.addEventListener('click', () => {
+      setAddTaskType('break');
+      mobileServices.hapticTap();
+    });
+  }
 
-  const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
-  const btnCloseCalendar = document.getElementById('btnCloseCalendar');
-  const calendarTimelineList = document.getElementById('calendarTimelineList');
+  // Setup category chip selectors for both Add Task and Edit Task
+  refreshAddCategoryChips = setupCategorySelector('addModalCategoryChips', 'addModalCategory', 'btnAddCategory');
+  refreshEditCategoryChips = setupCategorySelector('editModalCategoryChips', 'editTaskCategory', 'btnEditAddCategory');
+
+  // Add Task Modal Elements
+  const btnCloseAddTaskModal = document.getElementById('btnCloseAddTaskModal');
+  const addTaskModalBackdrop = document.getElementById('addTaskModalBackdrop');
+  const formAddModalTask = document.getElementById('formAddModalTask');
+  const btnAddModalEmoji = document.getElementById('btnAddModalEmoji');
+
+  if (btnCloseAddTaskModal) btnCloseAddTaskModal.addEventListener('click', closeAddTaskModal);
+  if (addTaskModalBackdrop) {
+    addTaskModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === addTaskModalBackdrop) closeAddTaskModal();
+    });
+  }
+
+  if (btnAddModalEmoji) {
+    btnAddModalEmoji.addEventListener('click', (e) => {
+      e.preventDefault();
+      openEmojiPicker('NEW_TASK');
+    });
+  }
+
+  // Quick duration chips in Add Task modal
+  const durationChips = document.querySelectorAll('#addModalDurationChips .duration-chip');
+  durationChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const dur = chip.getAttribute('data-min');
+      const inputDur = document.getElementById('addModalDuration');
+      if (inputDur && dur) {
+        inputDur.value = dur;
+        durationChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        updateAddModalEndTimeFromDuration();
+        mobileServices.hapticTap();
+      }
+    });
+  });
+
+  // ==========================================
+  // Interactive Rotary Duration Dial Picker Modal
+  // ==========================================
+  let currentPickerTarget = null;
+  let currentPickerCallingModal = null;
+  let pickerMinutes = 25;
+  let pickerSeconds = 0;
+  let isDraggingPickerMinutes = false;
+  let isDraggingPickerSeconds = false;
+  let pickerDialStartAngleRad = 0;
+  let pickerAccumulatedDeltaDeg = 0;
+
+  const durationDialModalBackdrop = document.getElementById('durationDialModalBackdrop');
+  const btnCloseDurationDial = document.getElementById('btnCloseDurationDial');
+  const btnCancelDurationDial = document.getElementById('btnCancelDurationDial');
+  const btnConfirmDurationDial = document.getElementById('btnConfirmDurationDial');
+  const pickerRotarySvg = document.getElementById('pickerRotarySvg');
+  const pickerTicksGroup = document.getElementById('pickerTicksGroup');
+  const pickerProgressArc = document.getElementById('pickerProgressArc');
+  const pickerGreenHandle = document.getElementById('pickerGreenHandle');
+  const pickerDigitalInput = document.getElementById('pickerDigitalInput');
+  const durationDialTaskTitle = document.getElementById('durationDialTaskTitle');
+  const durationDialTimeSpan = document.getElementById('durationDialTimeSpan');
+
+  function renderPickerTicks() {
+    if (!pickerTicksGroup || pickerTicksGroup.children.length > 0) return;
+    pickerTicksGroup.innerHTML = '';
+    for (let i = 0; i < 60; i++) {
+      const isMajor = i % 5 === 0;
+      const angleRad = (i * 6 - 90) * (Math.PI / 180);
+      const r1 = isMajor ? 104 : 109;
+      const r2 = 118;
+      const x1 = 130 + r1 * Math.cos(angleRad);
+      const y1 = 130 + r1 * Math.sin(angleRad);
+      const x2 = 130 + r2 * Math.cos(angleRad);
+      const y2 = 130 + r2 * Math.sin(angleRad);
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('class', `dial-tick ${isMajor ? 'major' : ''}`);
+      line.style.stroke = isMajor ? 'var(--accent-cyan)' : 'rgba(255, 255, 255, 0.28)';
+      line.style.strokeWidth = isMajor ? '3.5' : '2';
+      line.style.strokeLinecap = 'round';
+      pickerTicksGroup.appendChild(line);
+    }
+  }
+
+  function updatePickerSubtitle() {
+    if (!durationDialTimeSpan) return;
+    const startInput = currentPickerCallingModal === 'add'
+      ? document.getElementById('addModalStartTime')
+      : document.getElementById('editTaskStartTime');
+    const startVal = startInput?.value;
+
+    if (startVal) {
+      const startMin = parseTimeToMinutes(startVal);
+      const endMin = (startMin + pickerMinutes + (pickerSeconds > 0 ? 1 : 0)) % 1440;
+      durationDialTimeSpan.textContent = `${startVal} → ${formatMinutesToTime(endMin)}`;
+    } else {
+      durationDialTimeSpan.textContent = pickerSeconds > 0
+        ? `${pickerMinutes}m ${pickerSeconds}s`
+        : `${pickerMinutes} minutes`;
+    }
+  }
+
+  function updatePickerVisuals() {
+    const arcCircum = 2 * Math.PI * 95;
+    const secRatio = (pickerSeconds % 60) / 60;
+
+    if (pickerProgressArc) {
+      pickerProgressArc.style.strokeDasharray = arcCircum;
+      pickerProgressArc.style.strokeDashoffset = arcCircum * (1 - secRatio);
+    }
+
+    if (pickerGreenHandle) {
+      const angleRad = (secRatio * 360 - 90) * (Math.PI / 180);
+      const cx = 130 + 95 * Math.cos(angleRad);
+      const cy = 130 + 95 * Math.sin(angleRad);
+      pickerGreenHandle.setAttribute('cx', cx);
+      pickerGreenHandle.setAttribute('cy', cy);
+    }
+
+    if (pickerDigitalInput && document.activeElement !== pickerDigitalInput) {
+      pickerDigitalInput.value = `${pickerMinutes}:${String(pickerSeconds).padStart(2, '0')}`;
+    }
+
+    updatePickerSubtitle();
+
+    document.querySelectorAll('#pickerQuickChips .duration-chip').forEach(c => {
+      c.classList.toggle('active', c.getAttribute('data-min') === String(pickerMinutes) && pickerSeconds === 0);
+    });
+  }
+
+  function openDurationDialPicker(targetInput, callingModal = 'add') {
+    currentPickerTarget = targetInput;
+    currentPickerCallingModal = callingModal;
+
+    const titleInput = callingModal === 'add'
+      ? document.getElementById('addModalTitle')
+      : document.getElementById('editTaskTitle');
+    const taskTitle = titleInput?.value.trim() || (callingModal === 'add' ? 'New Task' : 'Edit Task');
+
+    if (durationDialTaskTitle) durationDialTaskTitle.textContent = taskTitle;
+
+    pickerMinutes = Math.max(1, parseInt(targetInput?.value, 10) || 25);
+    pickerSeconds = 0;
+    pickerAccumulatedDeltaDeg = 0;
+
+    renderPickerTicks();
+    updatePickerVisuals();
+
+    durationDialModalBackdrop?.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeDurationDialPicker() {
+    durationDialModalBackdrop?.classList.add('hidden');
+  }
+
+  if (btnCloseDurationDial) btnCloseDurationDial.addEventListener('click', closeDurationDialPicker);
+  if (btnCancelDurationDial) btnCancelDurationDial.addEventListener('click', closeDurationDialPicker);
+  if (durationDialModalBackdrop) {
+    durationDialModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === durationDialModalBackdrop) closeDurationDialPicker();
+    });
+  }
+
+  if (btnConfirmDurationDial) {
+    btnConfirmDurationDial.addEventListener('click', () => {
+      mobileServices.hapticTap();
+      if (currentPickerTarget) {
+        currentPickerTarget.value = pickerMinutes;
+        currentPickerTarget.dispatchEvent(new Event('input', { bubbles: true }));
+        currentPickerTarget.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      closeDurationDialPicker();
+    });
+  }
+
+  document.querySelectorAll('#pickerQuickChips .duration-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      mobileServices.hapticTap();
+      const val = parseInt(chip.getAttribute('data-min'), 10) || 25;
+      pickerMinutes = val;
+      pickerSeconds = 0;
+      updatePickerVisuals();
+    });
+  });
+
+  if (pickerDigitalInput) {
+    pickerDigitalInput.addEventListener('input', () => {
+      const val = pickerDigitalInput.value.trim();
+      if (val.includes(':')) {
+        const [m, s] = val.split(':');
+        const mins = parseInt(m, 10);
+        const secs = parseInt(s, 10);
+        if (!isNaN(mins)) pickerMinutes = Math.max(1, mins);
+        if (!isNaN(secs)) pickerSeconds = Math.max(0, Math.min(59, secs));
+      } else {
+        const mins = parseInt(val, 10);
+        if (!isNaN(mins)) {
+          pickerMinutes = Math.max(1, mins);
+          pickerSeconds = 0;
+        }
+      }
+      updatePickerVisuals();
+    });
+  }
+
+  function getPickerAngle(clientX, clientY) {
+    if (!pickerRotarySvg) return 0;
+    const rect = pickerRotarySvg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx);
+  }
+
+  function getPickerRadius(clientX, clientY) {
+    if (!pickerRotarySvg) return 0;
+    const rect = pickerRotarySvg.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.hypot(clientX - cx, clientY - cy);
+  }
+
+  function onPickerPointerStart(e) {
+    const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    const radius = getPickerRadius(clientX, clientY);
+
+    pickerDialStartAngleRad = getPickerAngle(clientX, clientY);
+    pickerAccumulatedDeltaDeg = 0;
+
+    if (radius >= 100) {
+      isDraggingPickerMinutes = true;
+    } else {
+      isDraggingPickerSeconds = true;
+      let clockDeg = (pickerDialStartAngleRad * (180 / Math.PI) + 90) % 360;
+      if (clockDeg < 0) clockDeg += 360;
+      pickerSeconds = Math.round((clockDeg / 360) * 60) % 60;
+      updatePickerVisuals();
+      mobileServices.hapticTick();
+      audioManager.playRotaryTick();
+    }
+  }
+
+  function onPickerPointerMove(e) {
+    if (!isDraggingPickerMinutes && !isDraggingPickerSeconds) return;
+    const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    const currentAngleRad = getPickerAngle(clientX, clientY);
+
+    if (isDraggingPickerMinutes) {
+      let diff = (currentAngleRad - pickerDialStartAngleRad) * (180 / Math.PI);
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      pickerDialStartAngleRad = currentAngleRad;
+      pickerAccumulatedDeltaDeg += diff;
+
+      const minutesDelta = Math.round(pickerAccumulatedDeltaDeg / 6);
+      if (minutesDelta !== 0) {
+        pickerMinutes = Math.max(1, pickerMinutes + minutesDelta);
+        pickerAccumulatedDeltaDeg -= minutesDelta * 6;
+        mobileServices.hapticTick();
+        audioManager.playRotaryTick();
+        updatePickerVisuals();
+      }
+    } else if (isDraggingPickerSeconds) {
+      let clockDeg = (currentAngleRad * (180 / Math.PI) + 90) % 360;
+      if (clockDeg < 0) clockDeg += 360;
+      const targetSec = Math.round((clockDeg / 360) * 60) % 60;
+      if (targetSec !== pickerSeconds) {
+        pickerSeconds = targetSec;
+        mobileServices.hapticTick();
+        audioManager.playRotaryTick();
+        updatePickerVisuals();
+      }
+    }
+  }
+
+  function onPickerPointerEnd() {
+    isDraggingPickerMinutes = false;
+    isDraggingPickerSeconds = false;
+  }
+
+  if (pickerRotarySvg) {
+    pickerRotarySvg.addEventListener('mousedown', onPickerPointerStart);
+    pickerRotarySvg.addEventListener('touchstart', onPickerPointerStart, { passive: false });
+  }
+
+  window.addEventListener('mousemove', (e) => {
+    if (isDraggingPickerMinutes || isDraggingPickerSeconds) onPickerPointerMove(e);
+  });
+  window.addEventListener('touchmove', (e) => {
+    if (isDraggingPickerMinutes || isDraggingPickerSeconds) onPickerPointerMove(e);
+  }, { passive: false });
+  window.addEventListener('mouseup', onPickerPointerEnd);
+  window.addEventListener('touchend', onPickerPointerEnd);
+
+  // Trigger bindings
+  const addModalDurationInput = document.getElementById('addModalDuration');
+  const btnAddModalOpenDial = document.getElementById('btnAddModalOpenDial');
+  const editTaskDurationInput = document.getElementById('editTaskDuration');
+  const btnEditModalOpenDial = document.getElementById('btnEditModalOpenDial');
+
+  if (addModalDurationInput) {
+    addModalDurationInput.addEventListener('click', () => openDurationDialPicker(addModalDurationInput, 'add'));
+  }
+  if (btnAddModalOpenDial) {
+    btnAddModalOpenDial.addEventListener('click', () => openDurationDialPicker(addModalDurationInput, 'add'));
+  }
+  if (editTaskDurationInput) {
+    editTaskDurationInput.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
+  }
+  if (btnEditModalOpenDial) {
+    btnEditModalOpenDial.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
+  }
+
+  // Start & End Time calculation listeners for Add Task Modal
+  const addModalStartTime = document.getElementById('addModalStartTime');
+  const addModalEndTime = document.getElementById('addModalEndTime');
+
+  function updateAddModalDurationFromTimeSpan() {
+    if (!addModalStartTime?.value || !addModalEndTime?.value) return;
+    const startMin = parseTimeToMinutes(addModalStartTime.value);
+    const endMin = parseTimeToMinutes(addModalEndTime.value);
+    let diff = endMin - startMin;
+    if (diff < 0) diff += 1440;
+    if (diff > 0) {
+      if (addModalDurationInput) addModalDurationInput.value = diff;
+      document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('data-min') === String(diff));
+      });
+    }
+  }
+
+  function updateAddModalEndTimeFromDuration() {
+    if (!addModalStartTime?.value || !addModalDurationInput?.value) return;
+    const startMin = parseTimeToMinutes(addModalStartTime.value);
+    const dur = parseInt(addModalDurationInput.value, 10) || 0;
+    const endMin = (startMin + dur) % 1440;
+    if (addModalEndTime) addModalEndTime.value = formatMinutesToTime(endMin);
+  }
+
+  if (addModalStartTime) {
+    addModalStartTime.addEventListener('change', () => {
+      if (addModalEndTime?.value) {
+        updateAddModalDurationFromTimeSpan();
+      } else if (addModalDurationInput?.value) {
+        updateAddModalEndTimeFromDuration();
+      }
+    });
+  }
+  if (addModalEndTime) {
+    addModalEndTime.addEventListener('change', updateAddModalDurationFromTimeSpan);
+  }
+  if (addModalDurationInput) {
+    addModalDurationInput.addEventListener('input', updateAddModalEndTimeFromDuration);
+    addModalDurationInput.addEventListener('change', updateAddModalEndTimeFromDuration);
+  }
+
+  // Start & End Time calculation listeners for Edit Task Modal
+  const editTaskStartTime = document.getElementById('editTaskStartTime');
+  const editTaskEndTime = document.getElementById('editTaskEndTime');
+
+  function updateEditModalDurationFromTimeSpan() {
+    if (!editTaskStartTime?.value || !editTaskEndTime?.value) return;
+    const startMin = parseTimeToMinutes(editTaskStartTime.value);
+    const endMin = parseTimeToMinutes(editTaskEndTime.value);
+    let diff = endMin - startMin;
+    if (diff < 0) diff += 1440;
+    if (diff > 0) {
+      if (editTaskDurationInput) editTaskDurationInput.value = diff;
+      document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('data-min') === String(diff));
+      });
+    }
+  }
+
+  function updateEditModalEndTimeFromDuration() {
+    if (!editTaskStartTime?.value || !editTaskDurationInput?.value) return;
+    const startMin = parseTimeToMinutes(editTaskStartTime.value);
+    const dur = parseInt(editTaskDurationInput.value, 10) || 0;
+    const endMin = (startMin + dur) % 1440;
+    if (editTaskEndTime) editTaskEndTime.value = formatMinutesToTime(endMin);
+  }
+
+  if (editTaskStartTime) {
+    editTaskStartTime.addEventListener('change', () => {
+      if (editTaskEndTime?.value) {
+        updateEditModalDurationFromTimeSpan();
+      } else if (editTaskDurationInput?.value) {
+        updateEditModalEndTimeFromDuration();
+      }
+    });
+  }
+  if (editTaskEndTime) {
+    editTaskEndTime.addEventListener('change', updateEditModalDurationFromTimeSpan);
+  }
+  if (editTaskDurationInput) {
+    editTaskDurationInput.addEventListener('input', updateEditModalEndTimeFromDuration);
+    editTaskDurationInput.addEventListener('change', updateEditModalEndTimeFromDuration);
+  }
+
+  // Duration chips in Edit Task modal
+  document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const dur = chip.getAttribute('data-min');
+      if (editTaskDurationInput && dur) {
+        editTaskDurationInput.value = dur;
+        document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        updateEditModalEndTimeFromDuration();
+        mobileServices.hapticTap();
+      }
+    });
+  });
+
+  setupTimeBankInfoModal();
+
+  function handleAddTaskSubmit(e) {
+    if (e) e.preventDefault();
+    const titleInput = document.getElementById('addModalTitle');
+    let title = titleInput ? titleInput.value.trim() : '';
+    if (!title) {
+      title = currentAddTaskType === 'break' ? 'Break' : `Task ${taskStore.getTasks().length + 1}`;
+    }
+
+    const durInput = document.getElementById('addModalDuration');
+    const duration = parseInt(durInput?.value, 10) || (currentAddTaskType === 'break' ? 10 : 25);
+
+    const catInput = document.getElementById('addModalCategory');
+    const category = catInput?.value.trim() || (currentAddTaskType === 'break' ? 'Break' : 'General');
+
+    const fixedInput = document.getElementById('addModalFixedTime');
+    const startInput = document.getElementById('addModalStartTime');
+    const fixedStartTime = startInput?.value || fixedInput?.value || null;
+
+    const bankInput = document.getElementById('addModalTimeBank');
+    const useTimeBank = bankInput ? bankInput.checked : true;
+
+    if (category) taskStore.addCategory(category);
+
+    taskStore.addTask({
+      title,
+      plannedDuration: duration,
+      category,
+      fixedStartTime,
+      isLocked: Boolean(fixedStartTime),
+      useTimeBank,
+      emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝')
+    });
+
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+    updateScheduleUI(runtime.currentSchedule);
+    updateActiveTaskDisplay();
+    renderTaskList(runtime.currentSchedule?.tasks || taskStore.getTasks());
+    renderCalendarModal();
+    closeAddTaskModal();
+    mobileServices.hapticTap();
+    showToastNotification(currentAddTaskType === 'break' ? '☕ Break added to schedule' : '✓ Task added to schedule');
+  }
+
+  if (formAddModalTask) {
+    formAddModalTask.addEventListener('submit', handleAddTaskSubmit);
+  }
+  const btnAddModalSubmit = document.getElementById('btnAddModalSubmit');
+  if (btnAddModalSubmit) {
+    btnAddModalSubmit.addEventListener('click', (e) => {
+      // If within a form, submit event will also trigger; calling handleAddTaskSubmit prevents double submissions
+      handleAddTaskSubmit(e);
+    });
+  }
 
   // Theme segmented buttons in Settings
   const themeSegmentBtns = document.querySelectorAll('.theme-segment-btn');
@@ -1063,54 +3414,63 @@ function setupNavigationAndModals() {
 
   // Task Edit Modal events
   const btnCloseTaskEdit = document.getElementById('btnCloseTaskEdit');
+  const btnSaveTaskEdit = document.getElementById('btnSaveTaskEdit');
   const taskEditModalBackdrop = document.getElementById('taskEditModalBackdrop');
   const formEditTask = document.getElementById('formEditTask');
   const btnDeleteTaskFromModal = document.getElementById('btnDeleteTaskFromModal');
+  const btnEditTaskHeaderEmoji = document.getElementById('btnEditTaskHeaderEmoji');
 
-  if (btnCloseTaskEdit) btnCloseTaskEdit.addEventListener('click', closeTaskEditModal);
-  if (taskEditModalBackdrop) {
-    taskEditModalBackdrop.addEventListener('click', (e) => {
-      if (e.target === taskEditModalBackdrop) closeTaskEditModal();
+  if (btnEditTaskHeaderEmoji) {
+    btnEditTaskHeaderEmoji.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (currentEditTaskId) {
+        openEmojiPicker(currentEditTaskId);
+      }
     });
   }
 
-  if (formEditTask) {
-    formEditTask.addEventListener('submit', (e) => {
+  function handleSaveTaskEdit(e) {
+    if (e) {
       e.preventDefault();
-      if (!currentEditTaskId) return;
-      const title = document.getElementById('editTaskTitle').value.trim();
-      const plannedDuration = parseInt(document.getElementById('editTaskDuration').value, 10) || 25;
-      const category = document.getElementById('editTaskCategory').value.trim() || 'General';
-      const fixedStartTime = document.getElementById('editTaskFixedTime').value || null;
-      const isLocked = document.getElementById('editTaskIsLocked').checked || Boolean(fixedStartTime);
+      e.stopPropagation();
+    }
+    saveCurrentTaskEdit();
+    document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+    currentEditTaskId = null;
+    currentEditEmoji = null;
+    mobileServices.hapticTap();
+    showToastNotification('✓ Task updated');
+  }
 
-      taskStore.updateTask(currentEditTaskId, {
-        title,
-        plannedDuration,
-        category,
-        fixedStartTime,
-        isLocked
-      });
+  function handleCloseTaskEdit(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+    currentEditTaskId = null;
+    currentEditEmoji = null;
+  }
 
-      runtime.initialTasks = taskStore.getTasks();
-      runtime.recalculate();
-      updateActiveTaskDisplay();
-      renderTaskList(runtime.currentSchedule?.tasks || []);
-      closeTaskEditModal();
-      mobileServices.hapticTap();
+  if (btnCloseTaskEdit) btnCloseTaskEdit.addEventListener('click', handleCloseTaskEdit);
+  if (btnSaveTaskEdit) btnSaveTaskEdit.addEventListener('click', handleSaveTaskEdit);
+  if (formEditTask) formEditTask.addEventListener('submit', handleSaveTaskEdit);
+  if (taskEditModalBackdrop) {
+    taskEditModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === taskEditModalBackdrop) handleCloseTaskEdit(e);
     });
   }
 
   if (btnDeleteTaskFromModal) {
     btnDeleteTaskFromModal.addEventListener('click', () => {
       if (currentEditTaskId) {
-        taskStore.deleteTask(currentEditTaskId);
-        runtime.initialTasks = taskStore.getTasks();
-        runtime.recalculate();
-        updateActiveTaskDisplay();
-        renderTaskList(runtime.currentSchedule?.tasks || []);
-        closeTaskEditModal();
-        mobileServices.hapticTap();
+        const id = currentEditTaskId;
+        const task = taskStore.getTasks().find(t => t.id === id);
+        const title = task ? task.title : 'Task';
+        document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+        currentEditTaskId = null;
+        currentEditEmoji = null;
+        executeDeleteTask(id, title);
       }
     });
   }
@@ -1125,105 +3485,113 @@ function setupNavigationAndModals() {
     });
   }
 
-  function openDrawer() {
-    if (navDrawer && navDrawerBackdrop) {
-      navDrawer.classList.add('open');
-      navDrawerBackdrop.classList.remove('hidden');
-      navDrawer.setAttribute('aria-hidden', 'false');
-      mobileServices.hapticTap();
-    }
-  }
+  // Swipe right on timer screen to smoothly open nav menu; swipe left to smoothly minimize
+  let navTouchStartX = 0;
+  let navTouchStartY = 0;
+  let isNavSwiping = false;
+  let isDrawerOpenAtTouchStart = false;
 
-  function closeDrawer() {
-    if (navDrawer && navDrawerBackdrop) {
-      navDrawer.classList.remove('open');
-      navDrawerBackdrop.classList.add('hidden');
-      navDrawer.setAttribute('aria-hidden', 'true');
-    }
-  }
+  window.addEventListener('touchstart', (e) => {
+    if (!navDrawer || !navDrawerBackdrop) return;
+    const target = e.target;
 
-  function openSettings() {
-    closeDrawer();
-    if (toggleConfirmAdjust) {
-      toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
-    }
-    applyTheme(taskStore.getTheme());
-    if (settingsModalBackdrop) {
-      settingsModalBackdrop.classList.remove('hidden');
-    }
-    mobileServices.hapticTap();
-  }
-
-  function closeSettings() {
-    if (settingsModalBackdrop) {
-      settingsModalBackdrop.classList.add('hidden');
-    }
-  }
-
-  function openCalendar() {
-    closeDrawer();
-    renderCalendarModal();
-    if (calendarModalBackdrop) {
-      calendarModalBackdrop.classList.remove('hidden');
-    }
-    mobileServices.hapticTap();
-  }
-
-  function closeCalendar() {
-    if (calendarModalBackdrop) {
-      calendarModalBackdrop.classList.add('hidden');
-    }
-  }
-
-  function renderCalendarModal() {
-    if (!calendarTimelineList) return;
-    calendarTimelineList.innerHTML = '';
-
-    const tasks = runtime?.currentSchedule?.tasks || [];
-    if (tasks.length === 0) {
-      calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
+    // Guard: Never open side menu if ANY modal is currently open, or if touch is inside modal or drawer
+    const openModal = document.querySelector('.modal-backdrop:not(.hidden)');
+    if (openModal) return;
+    if (target.closest('.modal-backdrop, .calendar-modal, .settings-modal, .task-edit-modal, .add-task-modal, .emoji-picker-modal, .task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop')) {
       return;
     }
 
-    const activeIdx = runtime ? runtime.activeTaskIndex : 0;
-    const isRunning = runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED);
+    // Never start nav menu swipe if Today's Tasks drawer is open
+    if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
+      return;
+    }
 
-    tasks.forEach((task, idx) => {
-      let statusClass = 'pending';
-      let statusBadge = 'Upcoming';
+    // Inside timer wheel container: only exclude touches on the rotating dial / ticks / beads
+    if (target.closest('#dialHitRing, #rotaryDialGroup, #revolvingCircleGroup, #revolvingHitbox, #dialTicksGroup, #trackProgress, .progress-arc')) {
+      return;
+    }
 
-      if (task.isCompleted || (isRunning && idx < activeIdx)) {
-        statusClass = 'completed';
-        statusBadge = '✓ Done';
-      } else if (isRunning && idx === activeIdx) {
-        statusClass = 'current';
-        statusBadge = '▶ Active';
+    isDrawerOpenAtTouchStart = navDrawer.classList.contains('open');
+    const touch = e.touches[0];
+    navTouchStartX = touch.clientX;
+    navTouchStartY = touch.clientY;
+    isNavSwiping = false;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', (e) => {
+    if (!navDrawer || !navDrawerBackdrop) return;
+    if (isDraggingOuterDial || isScrubbingGreenLine) return;
+
+    // If Today's Tasks drawer is open, never swipe menu
+    if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
+      if (isNavSwiping) {
+        isNavSwiping = false;
+        closeDrawer();
       }
+      return;
+    }
 
-      const item = document.createElement('div');
-      item.className = `calendar-block ${statusClass}`;
-      item.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span class="calendar-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
-          <span style="font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;${
-            statusClass === 'completed'
-              ? 'background:rgba(16,185,129,0.2);color:var(--primary);'
-              : statusClass === 'current'
-              ? 'background:rgba(245,158,11,0.2);color:#f59e0b;'
-              : 'background:rgba(255,255,255,0.08);color:var(--text-dim);'
-          }">${statusBadge}</span>
-        </div>
-        <div class="calendar-block-title">${escapeHtml(task.title)}</div>
-        <div style="font-size:0.75rem;color:var(--text-dim);display:flex;gap:8px;">
-          <span>${task.allocatedDuration || task.plannedDuration}m</span>
-          <span>•</span>
-          <span>${escapeHtml(task.category || 'General')}</span>
-          ${task.isImmovable ? '<span style="color:var(--locked-color);font-weight:600">• Fixed</span>' : ''}
-        </div>
-      `;
-      calendarTimelineList.appendChild(item);
-    });
-  }
+    const touch = e.touches[0];
+    const diffX = touch.clientX - navTouchStartX;
+    const diffY = touch.clientY - navTouchStartY;
+
+    // Must be predominantly horizontal gesture (exclude 45 degree diagonal downward swipes)
+    if (Math.abs(diffX) > Math.abs(diffY) * 1.8 && Math.abs(diffX) > 20) {
+      const drawerW = navDrawer.offsetWidth || 280;
+      if (!isDrawerOpenAtTouchStart && diffX > 0) {
+        // Swiping right from closed state: smoothly pull menu open from left
+        isNavSwiping = true;
+        navDrawer.style.transition = 'none';
+        navDrawer.style.visibility = 'visible';
+        navDrawerBackdrop.classList.remove('hidden');
+        navDrawerBackdrop.style.transition = 'none';
+
+        const currentX = Math.min(0, -drawerW + diffX);
+        navDrawer.style.transform = `translateX(${currentX}px)`;
+        const progress = Math.max(0, Math.min(1, (drawerW + currentX) / drawerW));
+        navDrawerBackdrop.style.opacity = progress.toString();
+      } else if (isDrawerOpenAtTouchStart && diffX < 0) {
+        // Swiping left from open state: smoothly slide menu back left
+        isNavSwiping = true;
+        navDrawer.style.transition = 'none';
+        navDrawerBackdrop.style.transition = 'none';
+
+        const currentX = Math.min(0, diffX);
+        navDrawer.style.transform = `translateX(${currentX}px)`;
+        const progress = Math.max(0, Math.min(1, 1 + currentX / drawerW));
+        navDrawerBackdrop.style.opacity = progress.toString();
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', (e) => {
+    if (!isNavSwiping || !navDrawer || !navDrawerBackdrop) return;
+    isNavSwiping = false;
+    const touch = e.changedTouches[0];
+    const diffX = touch.clientX - navTouchStartX;
+
+    navDrawer.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
+    navDrawerBackdrop.style.transition = 'opacity 0.25s ease';
+
+    if (!isDrawerOpenAtTouchStart) {
+      if (diffX > 55) {
+        openDrawer();
+      } else {
+        closeDrawer();
+      }
+    } else {
+      if (diffX < -45) {
+        closeDrawer();
+      } else {
+        openDrawer();
+      }
+    }
+  });
+
+
+  // Bind interactive live drag reordering to calendar timeline
+  setupInteractiveTaskDrag(calendarTimelineList);
 
   // Drawer events
   if (btnOpenNav) btnOpenNav.addEventListener('click', openDrawer);
@@ -1245,8 +3613,6 @@ function setupNavigationAndModals() {
   if (navItemCalendar) {
     navItemCalendar.addEventListener('click', () => {
       openCalendar();
-      navItemCalendar.classList.add('active');
-      if (navItemTimer) navItemTimer.classList.remove('active');
     });
   }
 
@@ -1269,15 +3635,83 @@ function setupNavigationAndModals() {
       mobileServices.hapticTap();
     });
   }
+  if (toggleHardStopEnabled) {
+    toggleHardStopEnabled.checked = taskStore.getHardStopEnabled();
+    toggleHardStopEnabled.addEventListener('change', () => {
+      const enabled = toggleHardStopEnabled.checked;
+      taskStore.setHardStopEnabled(enabled);
+      runtime.setHardStopEnabled(enabled);
+      updateHardStopPillsUI(enabled);
+      mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Hard Stop enabled' : 'Hard Stop disabled');
+    });
+  }
 
-  // Calendar modal
+  const toggleAlertsEnabled = document.getElementById('toggleAlertsEnabled');
+  if (toggleAlertsEnabled) {
+    toggleAlertsEnabled.checked = taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission();
+    toggleAlertsEnabled.addEventListener('change', async () => {
+      if (toggleAlertsEnabled.checked) {
+        if (!mobileServices.hasNotificationPermission()) {
+          const granted = await mobileServices.requestNotificationPermission();
+          if (!granted) {
+            toggleAlertsEnabled.checked = false;
+            updateNotifToggleUI();
+            return;
+          }
+        }
+        taskStore.setAlertsEnabled(true);
+      } else {
+        taskStore.setAlertsEnabled(false);
+        mobileServices.cancelLiveNotification();
+      }
+      updateNotifToggleUI();
+      mobileServices.hapticTap();
+      showToastNotification(toggleAlertsEnabled.checked ? 'Alerts enabled' : 'Alerts disabled');
+    });
+  }
+
+  // Calendar modal buttons
   if (btnCloseCalendar) btnCloseCalendar.addEventListener('click', closeCalendar);
   if (calendarModalBackdrop) {
     calendarModalBackdrop.addEventListener('click', (e) => {
       if (e.target === calendarModalBackdrop) closeCalendar();
     });
   }
+
+  const btnCalendarAddTask = document.getElementById('btnCalendarAddTask');
+  const btnCalendarAddBreak = document.getElementById('btnCalendarAddBreak');
+  const btnDrawerAddTask = document.getElementById('btnDrawerAddTask');
+  const btnDrawerAddBreak = document.getElementById('btnDrawerAddBreak');
+
+  if (btnCalendarAddTask) {
+    btnCalendarAddTask.addEventListener('click', () => {
+      openAddTaskModal('work');
+    });
+  }
+
+  if (btnCalendarAddBreak) {
+    btnCalendarAddBreak.addEventListener('click', () => {
+      openAddTaskModal('break');
+    });
+  }
+
+  if (btnDrawerAddTask) {
+    btnDrawerAddTask.addEventListener('click', () => {
+      openAddTaskModal('work');
+    });
+  }
+
+  if (btnDrawerAddBreak) {
+    btnDrawerAddBreak.addEventListener('click', () => {
+      openAddTaskModal('break');
+    });
+  }
 }
 
-// Start application
-window.addEventListener('DOMContentLoaded', initApp);
+// Start application: immediately if DOM is already ready, or on DOMContentLoaded
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

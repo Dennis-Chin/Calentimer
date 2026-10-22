@@ -239,8 +239,9 @@ export function calculateSchedule(config) {
   }
 
   const { hardStop, startTime, options = {} } = config;
+  const disableHardStop = Boolean(config.disableHardStop || options.disableHardStop);
 
-  if (hardStop == null) {
+  if (hardStop == null && !disableHardStop) {
     return {
       success: false,
       error: {
@@ -257,19 +258,24 @@ export function calculateSchedule(config) {
 
   try {
     startMinutes = startTime != null ? parseTimeToMinutes(startTime) : parseTimeToMinutes(new Date());
-    hardStopMinutes = parseTimeToMinutes(hardStop);
+    hardStopMinutes = hardStop != null ? parseTimeToMinutes(hardStop) : (startMinutes + 480);
     availableMinutes = calculateAvailableMinutes(startMinutes, hardStopMinutes);
   } catch (err) {
-    return {
-      success: false,
-      error: {
-        code: "INVALID_TIME_INPUT",
-        message: err.message
-      }
-    };
+    if (!disableHardStop) {
+      return {
+        success: false,
+        error: {
+          code: "INVALID_TIME_INPUT",
+          message: err.message
+        }
+      };
+    }
+    startMinutes = parseTimeToMinutes(new Date());
+    hardStopMinutes = startMinutes + 480;
+    availableMinutes = 480;
   }
 
-  if (availableMinutes <= 0) {
+  if (availableMinutes <= 0 && !disableHardStop) {
     return {
       success: false,
       error: {
@@ -321,7 +327,7 @@ export function calculateSchedule(config) {
   const totalPlannedMinutes = totalLockedMinutes + totalUnlockedMinutes;
 
   // 5. Error rule: Locked tasks alone exceed available time
-  if (totalLockedMinutes > availableMinutes) {
+  if (!disableHardStop && totalLockedMinutes > availableMinutes) {
     return {
       success: false,
       error: {
@@ -341,8 +347,8 @@ export function calculateSchedule(config) {
   let isCompressed = false;
   let compressionRatio = 1.0;
 
-  if (totalPlannedMinutes <= availableMinutes) {
-    // Case A: Everything fits without compression
+  if (disableHardStop || totalPlannedMinutes <= availableMinutes) {
+    // Case A: Everything fits without compression (or Hard Stop disabled)
     tasks.forEach((task, idx) => {
       allocatedDurations[idx] = Math.round(task.plannedDuration);
     });
@@ -397,7 +403,9 @@ export function calculateSchedule(config) {
       title: task.title,
       category: task.category || null,
       tags: Array.isArray(task.tags) ? [...task.tags] : [],
+      emoji: task.emoji || '📌',
       isLocked: Boolean(task.isLocked || task.fixedStartTime),
+      useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : true,
       fixedStartTime: task.fixedStartTime || null,
       isImmovable: Boolean(task.fixedStartTime),
       plannedDuration: Math.round(task.plannedDuration),
