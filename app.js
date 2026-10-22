@@ -596,7 +596,6 @@ function updateActiveTaskDisplay() {
   updateActiveTaskTimeSpanDynamic();
   updateTimerQuickToggles();
 }
-}
 
 function updateScheduleUI(schedule) {
   if (!schedule || !schedule.success) return;
