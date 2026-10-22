@@ -1056,15 +1056,6 @@ function setupControls() {
       }
     });
   }
-              ? (activeTask.allocatedDuration || 25) * 60
-              : runtime.getRemainingSeconds(),
-            nextTask,
-            isPaused: runtime.status !== TimerStatus.RUNNING
-          });
-        }
-      }
-    });
-  }
 
   btnPlayPause.addEventListener('click', () => {
     mobileServices.hapticTap();
