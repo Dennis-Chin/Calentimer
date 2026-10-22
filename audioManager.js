@@ -7,6 +7,8 @@
 class AudioManager {
   constructor() {
     this.ctx = null;
+    this.masterGain = null;
+    this.volume = 0.8;
   }
 
   _initContext() {
@@ -19,6 +21,25 @@ class AudioManager {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
+    if (this.ctx && !this.masterGain) {
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+    }
+  }
+
+  setVolume(volume) {
+    this.volume = Math.max(0, Math.min(1, Number(volume) || 0));
+    if (this.masterGain && this.ctx) {
+      try {
+        this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      } catch (e) {}
+    }
+  }
+
+  _getDestination() {
+    this._initContext();
+    return this.masterGain || (this.ctx ? this.ctx.destination : null);
   }
 
   /**
@@ -28,6 +49,8 @@ class AudioManager {
     try {
       this._initContext();
       if (!this.ctx) return;
+      const dest = this._getDestination();
+      if (!dest) return;
 
       const now = this.ctx.currentTime;
       const frequencies = [587.33, 880.00]; // D5 and A5 notes (gentle notification)
@@ -45,7 +68,7 @@ class AudioManager {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.12 + 1.2);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(dest);
 
         osc.start(now + idx * 0.12);
         osc.stop(now + idx * 0.12 + 1.3);
@@ -62,6 +85,8 @@ class AudioManager {
     try {
       this._initContext();
       if (!this.ctx) return;
+      const dest = this._getDestination();
+      if (!dest) return;
 
       const now = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
@@ -75,7 +100,7 @@ class AudioManager {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(dest);
 
       osc.start(now);
       osc.stop(now + 0.035);
@@ -92,6 +117,8 @@ class AudioManager {
     try {
       this._initContext();
       if (!this.ctx) return;
+      const dest = this._getDestination();
+      if (!dest) return;
 
       const now = this.ctx.currentTime;
       // 7 distinct metallic coin bounces with decreasing intervals and pitch variations
@@ -113,7 +140,7 @@ class AudioManager {
         gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(dest);
 
         osc.start(t);
         osc.stop(t + 0.1);

@@ -96,6 +96,7 @@ class MobileServices {
    * Subtle tactile tick on rotary dial movement / second scrub
    */
   hapticTick() {
+    if (!taskStore.getHapticsEnabled()) return;
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate(10);
@@ -107,6 +108,7 @@ class MobileServices {
    * Crisp tap on buttons
    */
   hapticTap() {
+    if (!taskStore.getHapticsEnabled()) return;
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate(15);
@@ -118,6 +120,7 @@ class MobileServices {
    * Celebratory rhythmic vibration pattern when task completes
    */
   hapticCelebration() {
+    if (!taskStore.getHapticsEnabled()) return;
     if ('vibrate' in navigator) {
       try {
         // Rhythmic victory burst: tap, tap, buzz, long buzz
@@ -130,6 +133,7 @@ class MobileServices {
    * Warning vibration pattern (e.g. attempting to drag a locked task)
    */
   hapticWarning() {
+    if (!taskStore.getHapticsEnabled()) return;
     if ('vibrate' in navigator) {
       try {
         navigator.vibrate([40, 50, 40]);

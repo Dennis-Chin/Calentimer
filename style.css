@@ -2277,12 +2277,33 @@ body {
   margin: 10px 4px 6px;
   border-radius: var(--radius-sm);
   overflow: hidden;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(245, 158, 11, 0.08));
+  border: 1.5px dashed rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+  transition: all 0.25s ease;
+}
+
+.today-finish-line.is-disabled {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  opacity: 0.45;
 }
 
 .today-finish-line .finish-line-checkered {
-  height: 5px;
+  height: 6px;
+  width: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    #ffffff 0,
+    #ffffff 8px,
+    #0f172a 8px,
+    #0f172a 16px,
+    #f59e0b 16px,
+    #f59e0b 24px,
+    #0f172a 24px,
+    #0f172a 32px
+  );
 }
 
 .today-finish-line-content {
@@ -2290,11 +2311,15 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: 0.74rem;
   font-weight: 700;
-  color: var(--text-dim);
+  color: var(--accent-cyan);
   font-family: var(--font-mono);
+}
+
+.today-finish-line.is-disabled .today-finish-line-content {
+  color: var(--text-dim);
 }
 
 .today-finish-line-content .finish-flag {
@@ -2644,11 +2669,18 @@ body {
   justify-content: center;
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   z-index: 1; /* Always underneath .calendar-block (z-index: 2) */
-  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 
 .calendar-item-wrapper.has-swiped-open .calendar-swipe-delete-action,
+.calendar-item-wrapper.is-swiping .calendar-swipe-delete-action,
 .calendar-item-wrapper:has(.swiped-open) .calendar-swipe-delete-action {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
   z-index: 1;
 }
 
@@ -2734,6 +2766,158 @@ body {
 .add-task-modal .btn-modal-save {
   padding: 10px;
   font-size: 0.92rem;
+}
+
+/* Compact Edit Task Modal (Fits all fields and toggles on screen without scrolling) */
+#taskEditModal {
+  max-height: 90vh;
+  max-height: 90dvh;
+}
+
+#taskEditModal .modal-body {
+  padding: 8px 16px 12px;
+  max-height: calc(90vh - 56px);
+  max-height: calc(90dvh - 56px);
+  gap: 4px;
+  overflow-y: auto;
+}
+
+#taskEditModal .edit-task-form-group {
+  margin-bottom: 5px;
+}
+
+#taskEditModal .edit-task-label {
+  font-size: 0.72rem;
+  margin-bottom: 2px;
+}
+
+#taskEditModal .edit-task-input {
+  padding: 6px 10px;
+  font-size: 0.84rem;
+}
+
+#taskEditModal .quick-duration-chips {
+  margin-top: 2px;
+  margin-bottom: 4px;
+  gap: 4px;
+}
+
+#taskEditModal .duration-chip {
+  padding: 3px 8px;
+  font-size: 0.74rem;
+}
+
+#taskEditModal .category-chips-list {
+  margin-top: 2px;
+}
+
+#taskEditModal .setting-row {
+  padding: 5px 10px;
+  margin-top: 4px;
+}
+
+#taskEditModal .setting-label {
+  font-size: 0.82rem;
+}
+
+#taskEditModal .setting-desc {
+  font-size: 0.70rem;
+}
+
+#taskEditModal .edit-modal-footer {
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+#taskEditModal .btn-modal-save,
+#taskEditModal .btn-modal-delete {
+  padding: 8px 14px;
+  font-size: 0.88rem;
+}
+
+/* Duration Input with Clock Button Inside */
+.duration-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.duration-input-wrapper .edit-task-input {
+  width: 100%;
+  padding-right: 42px !important;
+}
+
+.duration-clock-addon-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  padding: 0;
+}
+
+.duration-clock-addon-btn:hover,
+.duration-clock-addon-btn:active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: var(--primary, #38bdf8);
+  color: #38bdf8;
+}
+
+/* Modal Setting Toggle Icons */
+.modal-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: var(--text-dim, #64748b);
+  opacity: 0.5;
+}
+
+.modal-toggle-icon.piggy-toggle-icon.active {
+  color: #f472b6;
+  filter: drop-shadow(0 0 6px rgba(244, 114, 182, 0.55));
+  opacity: 1;
+}
+
+.modal-toggle-icon.lock-toggle-icon.active {
+  color: #38bdf8;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+  opacity: 1;
+}
+
+/* Volume Slider in Settings */
+.volume-slider-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+}
+
+.volume-range-input {
+  flex: 1;
+  accent-color: var(--primary, #38bdf8);
+  height: 6px;
+  cursor: pointer;
+}
+
+.volume-percent-badge {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary, #38bdf8);
+  min-width: 36px;
+  text-align: right;
 }
 
 .calendar-block {

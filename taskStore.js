@@ -349,14 +349,14 @@ export class TaskStore {
 
   /**
    * Retrieves user theme mode ('system', 'light', 'dark').
-   * Default is 'system'.
+   * Default is 'dark'.
    * @returns {string}
    */
   getTheme() {
     try {
-      return safeGetItem('calentimer_theme') || 'system';
+      return safeGetItem('calentimer_theme') || 'dark';
     } catch (e) {
-      return 'system';
+      return 'dark';
     }
   }
 
@@ -367,6 +367,59 @@ export class TaskStore {
   setTheme(theme) {
     try {
       safeSetItem('calentimer_theme', theme);
+      this._notify();
+    } catch (e) {}
+  }
+
+  /**
+   * Retrieves whether haptic feedback (vibrations) is enabled.
+   * Default is true.
+   * @returns {boolean}
+   */
+  getHapticsEnabled() {
+    try {
+      return safeGetItem('calentimer_haptics_enabled') !== 'false';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  /**
+   * Sets whether haptic feedback is enabled.
+   * @param {boolean} enabled
+   */
+  setHapticsEnabled(enabled) {
+    try {
+      safeSetItem('calentimer_haptics_enabled', enabled ? 'true' : 'false');
+      this._notify();
+    } catch (e) {}
+  }
+
+  /**
+   * Retrieves alert volume (0.0 to 1.0).
+   * Default is 0.8.
+   * @returns {number}
+   */
+  getAlertVolume() {
+    try {
+      const v = safeGetItem('calentimer_alert_volume');
+      if (v !== null && !isNaN(parseFloat(v))) {
+        return Math.max(0, Math.min(1, parseFloat(v)));
+      }
+      return 0.8;
+    } catch (e) {
+      return 0.8;
+    }
+  }
+
+  /**
+   * Sets alert volume (0.0 to 1.0).
+   * @param {number} volume
+   */
+  setAlertVolume(volume) {
+    try {
+      const clamped = Math.max(0, Math.min(1, Number(volume) || 0));
+      safeSetItem('calentimer_alert_volume', String(clamped));
       this._notify();
     } catch (e) {}
   }

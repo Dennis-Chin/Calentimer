@@ -115,6 +115,16 @@ function updateHardStopPillsUI(enabled) {
       if (sub) sub.textContent = "HARD STOP DISABLED";
     }
   }
+  const todayFinishLine = document.getElementById('todayFinishLine');
+  if (todayFinishLine) {
+    if (enabled) {
+      todayFinishLine.classList.remove('is-disabled');
+      todayFinishLine.title = "Finish Line / Hard Stop Active";
+    } else {
+      todayFinishLine.classList.add('is-disabled');
+      todayFinishLine.title = "Finish Line disabled in Settings";
+    }
+  }
 }
 
 function initApp() {
@@ -153,7 +163,7 @@ function initApp() {
     updateNotifToggleUI();
     updateTimeBankDisplay();
     const initActiveTask = runtime.getActiveTask();
-    const initDurSec = (initActiveTask?.allocatedDuration || initActiveTask?.plannedDuration || 25) * 60;
+    const initDurSec = (initActiveTask?.allocatedDuration || initActiveTask?.plannedDuration || 30) * 60;
     updateFinishEarlyButtonText(initDurSec);
     renderClockTime(initDurSec);
     updateWheelProgress(0);
@@ -165,23 +175,21 @@ function initApp() {
 
 function updateNotifToggleUI() {
   if (!btnNotifToggle || !notifStatusText) return;
-  const hasPerm = mobileServices.hasNotificationPermission();
   const isEnabled = taskStore.getAlertsEnabled();
+  const hasPerm = mobileServices.hasNotificationPermission();
   const toggleAlerts = document.getElementById('toggleAlertsEnabled');
-  if (toggleAlerts) toggleAlerts.checked = isEnabled && hasPerm;
+  if (toggleAlerts) toggleAlerts.checked = isEnabled;
 
-  if (hasPerm && isEnabled) {
+  if (isEnabled) {
     btnNotifToggle.classList.add('granted');
     notifStatusText.textContent = 'Alerts On';
-    btnNotifToggle.title = 'Android notification panel countdown enabled (tap to toggle)';
-  } else if (hasPerm && !isEnabled) {
-    btnNotifToggle.classList.remove('granted');
-    notifStatusText.textContent = 'Alerts Off';
-    btnNotifToggle.title = 'Notifications muted (tap to enable)';
+    btnNotifToggle.title = hasPerm
+      ? 'Android notification panel countdown & sounds active (tap to toggle)'
+      : 'In-app audio chimes & countdown alerts active (tap to toggle)';
   } else {
     btnNotifToggle.classList.remove('granted');
-    notifStatusText.textContent = 'Alerts';
-    btnNotifToggle.title = 'Tap to enable Android notification panel alerts';
+    notifStatusText.textContent = 'Alerts Off';
+    btnNotifToggle.title = 'Alerts muted (tap to enable)';
   }
 }
 
@@ -470,7 +478,13 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   if (!activeTaskTimeSpan) return;
   const activeTask = runtime?.getActiveTask();
   if (!activeTask || runtime?.status === TimerStatus.COMPLETED) {
-    activeTaskTimeSpan.textContent = '--:-- → --:--';
+    // Idle/No task state: Live digital clock start time, end time = now + 30m
+    const d = new Date();
+    const startMinutes = d.getHours() * 60 + d.getMinutes();
+    const endMinutes = (startMinutes + 30) % 1440;
+    const startStr = formatMinutesToTime(startMinutes);
+    const endStr = formatMinutesToTime(endMinutes);
+    activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
     return;
   }
 
@@ -500,15 +514,19 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
 function updateActiveTaskDisplay() {
   const activeTask = runtime.getActiveTask();
   if (!activeTask || runtime.status === TimerStatus.COMPLETED) {
-    activeCategoryChip.textContent = 'DONE';
-    activeTaskTitle.textContent = 'All tasks completed!';
-    if (activeTaskTimeSpan) activeTaskTimeSpan.textContent = '--:-- → --:--';
+    activeCategoryChip.textContent = 'TASK';
+    activeTaskTitle.textContent = 'Add Task';
+    activeTaskTitle.style.cursor = 'pointer';
+    updateActiveTaskTimeSpanDynamic();
     taskTagsContainer.innerHTML = '';
     if (wheelContainer) wheelContainer.classList.remove('is-break-mode');
     document.body.classList.remove('is-break-mode');
+    renderClockTime(1800); // Default 30:00
+    updateWheelProgress(0);
     return;
   }
 
+  activeTaskTitle.style.cursor = 'default';
   const isBreak = (
     (activeTask.category && activeTask.category.toLowerCase() === 'break') ||
     (activeTask.title && activeTask.title.toLowerCase() === 'break') ||
@@ -623,7 +641,7 @@ function setupRotaryWheel() {
     scrubStartAngleRad = getAngleFromEvent(e);
 
     const activeTask = runtime.getActiveTask();
-    activeTotalSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60;
+    activeTotalSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 30) * 60;
     baseRemainingSecAtScrubStart = runtime.status === TimerStatus.IDLE
       ? activeTotalSec
       : runtime.getRemainingSeconds();
@@ -653,14 +671,13 @@ function setupRotaryWheel() {
 
     scrubStartAngleRad = currentAngleRad;
 
-    // Green dot is strictly used to REDUCE time:
-    // It can move clockwise from initialBeadDegAtStart towards 360 deg (0 seconds).
-    // It cannot move counter-clockwise past where it started (cannot increase time).
-    currentBeadDeg = Math.min(360, Math.max(initialBeadDegAtStart, currentBeadDeg + delta));
+    // Green dot can move clockwise towards 360 deg (0 seconds) to reduce time,
+    // or be held and dragged counter-clockwise towards 0 deg to add seconds back smoothly!
+    currentBeadDeg = Math.min(360, Math.max(0, currentBeadDeg + delta));
 
     // Progress ratio from 0 to 1 across 360 degrees
     const progressRatio = currentBeadDeg / 360;
-    const targetRemainingSec = Math.max(0, Math.round(activeTotalSec * (1 - progressRatio)));
+    const targetRemainingSec = Math.max(0, Math.min(activeTotalSec, Math.round(activeTotalSec * (1 - progressRatio))));
 
     // Instantly update visual bead position and track arc
     const angleRad = (currentBeadDeg - 90) * (Math.PI / 180);
@@ -959,7 +976,7 @@ function resetWholeDay() {
   }
   updateActiveTaskDisplay();
   const firstTask = runtime.getActiveTask();
-  const durSec = firstTask?.allocatedDuration * 60 || 1500;
+  const durSec = firstTask ? ((firstTask.allocatedDuration || firstTask.plannedDuration || 30) * 60) : 1800;
   renderClockTime(durSec);
   updateWheelProgress(0);
   updateFinishEarlyButtonText(durSec);
@@ -976,9 +993,16 @@ function setupControls() {
 
   function openAlertsModal() {
     if (!alertsModalBackdrop) return;
-    const isEnabled = taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission();
+    const isEnabled = taskStore.getAlertsEnabled();
+    const hasPerm = mobileServices.hasNotificationPermission();
     if (alertsModalToggle) alertsModalToggle.checked = isEnabled;
-    if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = isEnabled ? 'Notifications Active' : 'Notifications Muted';
+    if (alertsModalStatusLabel) {
+      if (isEnabled) {
+        alertsModalStatusLabel.textContent = hasPerm ? 'Notifications Active' : 'In-App Alerts Active';
+      } else {
+        alertsModalStatusLabel.textContent = 'Notifications Muted';
+      }
+    }
     alertsModalBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
   }
@@ -1002,17 +1026,14 @@ function setupControls() {
     alertsModalToggle.addEventListener('change', async () => {
       mobileServices.hapticTap();
       if (alertsModalToggle.checked) {
-        if (!mobileServices.hasNotificationPermission()) {
-          const granted = await mobileServices.requestNotificationPermission();
-          if (!granted) {
-            alertsModalToggle.checked = false;
-            if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = 'Permission Denied';
-            updateNotifToggleUI();
-            return;
-          }
-        }
         taskStore.setAlertsEnabled(true);
-        if (alertsModalStatusLabel) alertsModalStatusLabel.textContent = 'Notifications Active';
+        if ('Notification' in window && Notification.permission === 'default') {
+          await mobileServices.requestNotificationPermission();
+        }
+        const hasPerm = mobileServices.hasNotificationPermission();
+        if (alertsModalStatusLabel) {
+          alertsModalStatusLabel.textContent = hasPerm ? 'Notifications Active' : 'In-App Alerts Active';
+        }
       } else {
         taskStore.setAlertsEnabled(false);
         mobileServices.cancelLiveNotification();
@@ -1026,6 +1047,15 @@ function setupControls() {
           mobileServices.updateLiveNotification({
             activeTask,
             remainingSeconds: runtime.status === TimerStatus.IDLE
+              ? (activeTask.allocatedDuration || 30) * 60
+              : runtime.getRemainingSeconds(),
+            nextTask,
+            isPaused: runtime.status !== TimerStatus.RUNNING
+          });
+        }
+      }
+    });
+  }
               ? (activeTask.allocatedDuration || 25) * 60
               : runtime.getRemainingSeconds(),
             nextTask,
@@ -2342,6 +2372,26 @@ function setupCategorySelector(containerId, inputId, addBtnId, onSelectCategory)
 let refreshAddCategoryChips = null;
 let refreshEditCategoryChips = null;
 
+function syncModalToggleIcons() {
+  const addBank = document.getElementById('addModalTimeBank');
+  const addPiggy = document.getElementById('addModalPiggyIcon');
+  if (addPiggy && addBank) {
+    addPiggy.classList.toggle('active', Boolean(addBank.checked));
+  }
+
+  const editBank = document.getElementById('editTaskTimeBank');
+  const editPiggy = document.getElementById('editModalPiggyIcon');
+  if (editPiggy && editBank) {
+    editPiggy.classList.toggle('active', Boolean(editBank.checked));
+  }
+
+  const editLock = document.getElementById('editTaskIsLocked');
+  const editLockIcon = document.getElementById('editModalLockIcon');
+  if (editLockIcon && editLock) {
+    editLockIcon.classList.toggle('active', Boolean(editLock.checked));
+  }
+}
+
 // ==========================================
 // Work / Break Segmented Control for Add Task
 // ==========================================
@@ -2398,16 +2448,17 @@ function setAddTaskType(type) {
       titleInput.value = '';
     }
     if (titleInput) titleInput.placeholder = 'e.g. Core Reading & Practice';
-    if (durationInput) durationInput.value = '25';
+    if (durationInput) durationInput.value = '30';
     if (categoryInput && categoryInput.value === 'Break') categoryInput.value = 'Study';
     const bankInput = document.getElementById('addModalTimeBank');
     if (bankInput) bankInput.checked = true;
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('data-min') === '25');
+      c.classList.toggle('active', c.getAttribute('data-min') === '30');
     });
   }
 
+  syncModalToggleIcons();
   if (refreshAddCategoryChips) refreshAddCategoryChips();
 }
 
@@ -2427,16 +2478,17 @@ function openAddTaskModal(defaultType = 'work') {
   const emojiBadge = document.getElementById('addTaskHeaderEmoji');
 
   if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
-  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '25';
+  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '30';
   if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
   if (inputFixed) inputFixed.value = '';
   if (inputStart) inputStart.value = '';
   if (inputEnd) inputEnd.value = '';
-  if (toggleBank) toggleBank.checked = true;
+  if (toggleBank) toggleBank.checked = defaultType !== 'break';
 
   setAddTaskType(defaultType);
   if (emojiBadge) emojiBadge.textContent = currentAddTaskEmoji;
 
+  syncModalToggleIcons();
   if (refreshAddCategoryChips) refreshAddCategoryChips();
 
   modal.classList.remove('hidden');
@@ -2472,7 +2524,11 @@ function openTaskEditModal(taskId) {
 
   if (editTaskId) editTaskId.value = task.id;
   if (editTaskTitle) editTaskTitle.value = task.title || '';
-  if (editTaskDuration) editTaskDuration.value = task.plannedDuration || 25;
+  const durVal = task.plannedDuration || 30;
+  if (editTaskDuration) editTaskDuration.value = durVal;
+  document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(c => {
+    c.classList.toggle('active', c.getAttribute('data-min') === String(durVal));
+  });
   if (editTaskCategory) editTaskCategory.value = task.category || 'General';
   if (editTaskFixedTime) editTaskFixedTime.value = task.fixedStartTime || '';
   if (editTaskStartTime) editTaskStartTime.value = task.fixedStartTime || task.startTime || '';
@@ -2481,6 +2537,7 @@ function openTaskEditModal(taskId) {
   if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = currentEditEmoji;
   if (editTaskTimeBank) editTaskTimeBank.checked = task.useTimeBank !== false;
 
+  syncModalToggleIcons();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
 
   document.getElementById('taskEditModalBackdrop')?.classList.remove('hidden');
@@ -2491,7 +2548,7 @@ function saveCurrentTaskEdit() {
   if (!currentEditTaskId) return;
   const title = document.getElementById('editTaskTitle')?.value.trim();
   if (!title) return;
-  const plannedDuration = parseInt(document.getElementById('editTaskDuration')?.value, 10) || 25;
+  const plannedDuration = parseInt(document.getElementById('editTaskDuration')?.value, 10) || 30;
   const category = document.getElementById('editTaskCategory')?.value.trim() || 'General';
   const fixedStartTime = document.getElementById('editTaskStartTime')?.value || document.getElementById('editTaskFixedTime')?.value || null;
   const isLocked = document.getElementById('editTaskIsLocked')?.checked || Boolean(fixedStartTime);
@@ -2790,6 +2847,8 @@ function renderCalendarModal() {
     let hasMoved = false;
     let isSwiping = false;
     let holdTimer = null;
+    let startIsOpen = false;
+    let currentShiftPct = 0;
 
     const clearHold = () => {
       if (holdTimer) {
@@ -2806,6 +2865,8 @@ function renderCalendarModal() {
 
       hasMoved = false;
       isSwiping = false;
+      startIsOpen = item.classList.contains('swiped-open') || wrapper.classList.contains('has-swiped-open');
+      currentShiftPct = startIsOpen ? -25 : 0;
       touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
       touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
       clearHold();
@@ -2815,6 +2876,7 @@ function renderCalendarModal() {
         if (!hasMoved && !isSwiping) {
           wrapper.classList.add('has-swiped-open');
           item.classList.add('swiped-open');
+          item.style.removeProperty('transform');
           mobileServices.hapticTap();
         }
       }, 350);
@@ -2835,20 +2897,22 @@ function renderCalendarModal() {
         clearHold();
       }
 
-      // Swipe left or right
-      if ((diffX < -10 && (Math.abs(diffX) * 1.4 >= Math.abs(diffY))) ||
-          (diffX > 10 && wrapper.classList.contains('has-swiped-open'))) {
+      // Check if predominantly horizontal swipe
+      if (Math.abs(diffX) > 8 && Math.abs(diffX) * 1.3 >= Math.abs(diffY)) {
         isSwiping = true;
+        wrapper.classList.add('is-swiping');
         const itemW = item.offsetWidth || 300;
-        if (diffX < 0) {
-          const shiftPct = Math.max(-25, (diffX / itemW) * 100);
-          item.style.transition = 'none';
-          item.style.transform = `translateX(${shiftPct}%)`;
+        const deltaPct = (diffX / itemW) * 100;
+        const basePct = startIsOpen ? -25 : 0;
+        currentShiftPct = Math.min(0, Math.max(-25, basePct + deltaPct));
+
+        item.style.transition = 'none';
+        item.style.transform = `translateX(${currentShiftPct}%)`;
+
+        if (currentShiftPct < -5) {
           wrapper.classList.add('has-swiped-open');
-        } else if (diffX > 0 && wrapper.classList.contains('has-swiped-open')) {
-          const shiftPct = Math.min(0, -25 + (diffX / itemW) * 100);
-          item.style.transition = 'none';
-          item.style.transform = `translateX(${shiftPct}%)`;
+        } else {
+          wrapper.classList.remove('has-swiped-open');
         }
       }
     };
@@ -2856,11 +2920,12 @@ function renderCalendarModal() {
     const handleTaskTouchEnd = (e) => {
       clearHold();
       if (isSwiping) {
-        const clientX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : (e.clientX || touchStartX);
-        const diffX = clientX - touchStartX;
+        wrapper.classList.remove('is-swiping');
         item.style.transition = '';
-        item.style.transform = '';
-        if (diffX < -18) {
+        item.style.removeProperty('transform');
+
+        // If shifted at least halfway to -25% (<= -12%), snap open; otherwise snap closed
+        if (currentShiftPct <= -12) {
           wrapper.classList.add('has-swiped-open');
           item.classList.add('swiped-open');
           mobileServices.hapticTap();
@@ -2868,6 +2933,7 @@ function renderCalendarModal() {
           wrapper.classList.remove('has-swiped-open');
           item.classList.remove('swiped-open');
         }
+        isSwiping = false;
       }
     };
 
@@ -3289,24 +3355,30 @@ function setupNavigationAndModals() {
   window.addEventListener('mouseup', onPickerPointerEnd);
   window.addEventListener('touchend', onPickerPointerEnd);
 
-  // Trigger bindings
+  // Trigger bindings for rotary dial picker (only opened by clock button; inputs allow manual numberpad entry)
   const addModalDurationInput = document.getElementById('addModalDuration');
   const btnAddModalOpenDial = document.getElementById('btnAddModalOpenDial');
   const editTaskDurationInput = document.getElementById('editTaskDuration');
   const btnEditModalOpenDial = document.getElementById('btnEditModalOpenDial');
 
-  if (addModalDurationInput) {
-    addModalDurationInput.addEventListener('click', () => openDurationDialPicker(addModalDurationInput, 'add'));
-  }
   if (btnAddModalOpenDial) {
     btnAddModalOpenDial.addEventListener('click', () => openDurationDialPicker(addModalDurationInput, 'add'));
-  }
-  if (editTaskDurationInput) {
-    editTaskDurationInput.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
   }
   if (btnEditModalOpenDial) {
     btnEditModalOpenDial.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
   }
+
+  // Auto-colon formatter for time-num-input fields (e.g. typing "1430" auto-becomes "14:30")
+  document.querySelectorAll('.time-num-input').forEach(input => {
+    input.addEventListener('input', () => {
+      let val = input.value.replace(/[^0-9:]/g, '');
+      if (!val.includes(':') && val.length >= 3) {
+        val = val.slice(0, 2) + ':' + val.slice(2, 4);
+      }
+      if (val.length > 5) val = val.slice(0, 5);
+      input.value = val;
+    });
+  });
 
   // Start & End Time calculation listeners for Add Task Modal
   const addModalStartTime = document.getElementById('addModalStartTime');
@@ -3335,6 +3407,15 @@ function setupNavigationAndModals() {
   }
 
   if (addModalStartTime) {
+    addModalStartTime.addEventListener('input', () => {
+      if (addModalStartTime.value.length === 5) {
+        if (addModalEndTime?.value) {
+          updateAddModalDurationFromTimeSpan();
+        } else if (addModalDurationInput?.value) {
+          updateAddModalEndTimeFromDuration();
+        }
+      }
+    });
     addModalStartTime.addEventListener('change', () => {
       if (addModalEndTime?.value) {
         updateAddModalDurationFromTimeSpan();
@@ -3344,10 +3425,19 @@ function setupNavigationAndModals() {
     });
   }
   if (addModalEndTime) {
+    addModalEndTime.addEventListener('input', () => {
+      if (addModalEndTime.value.length === 5) updateAddModalDurationFromTimeSpan();
+    });
     addModalEndTime.addEventListener('change', updateAddModalDurationFromTimeSpan);
   }
   if (addModalDurationInput) {
-    addModalDurationInput.addEventListener('input', updateAddModalEndTimeFromDuration);
+    addModalDurationInput.addEventListener('input', () => {
+      updateAddModalEndTimeFromDuration();
+      const val = addModalDurationInput.value;
+      document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('data-min') === val);
+      });
+    });
     addModalDurationInput.addEventListener('change', updateAddModalEndTimeFromDuration);
   }
 
@@ -3378,6 +3468,15 @@ function setupNavigationAndModals() {
   }
 
   if (editTaskStartTime) {
+    editTaskStartTime.addEventListener('input', () => {
+      if (editTaskStartTime.value.length === 5) {
+        if (editTaskEndTime?.value) {
+          updateEditModalDurationFromTimeSpan();
+        } else if (editTaskDurationInput?.value) {
+          updateEditModalEndTimeFromDuration();
+        }
+      }
+    });
     editTaskStartTime.addEventListener('change', () => {
       if (editTaskEndTime?.value) {
         updateEditModalDurationFromTimeSpan();
@@ -3387,10 +3486,19 @@ function setupNavigationAndModals() {
     });
   }
   if (editTaskEndTime) {
+    editTaskEndTime.addEventListener('input', () => {
+      if (editTaskEndTime.value.length === 5) updateEditModalDurationFromTimeSpan();
+    });
     editTaskEndTime.addEventListener('change', updateEditModalDurationFromTimeSpan);
   }
   if (editTaskDurationInput) {
-    editTaskDurationInput.addEventListener('input', updateEditModalEndTimeFromDuration);
+    editTaskDurationInput.addEventListener('input', () => {
+      updateEditModalEndTimeFromDuration();
+      const val = editTaskDurationInput.value;
+      document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('data-min') === val);
+      });
+    });
     editTaskDurationInput.addEventListener('change', updateEditModalEndTimeFromDuration);
   }
 
@@ -3713,18 +3821,13 @@ function setupNavigationAndModals() {
 
   const toggleAlertsEnabled = document.getElementById('toggleAlertsEnabled');
   if (toggleAlertsEnabled) {
-    toggleAlertsEnabled.checked = taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission();
+    toggleAlertsEnabled.checked = taskStore.getAlertsEnabled();
     toggleAlertsEnabled.addEventListener('change', async () => {
       if (toggleAlertsEnabled.checked) {
-        if (!mobileServices.hasNotificationPermission()) {
-          const granted = await mobileServices.requestNotificationPermission();
-          if (!granted) {
-            toggleAlertsEnabled.checked = false;
-            updateNotifToggleUI();
-            return;
-          }
-        }
         taskStore.setAlertsEnabled(true);
+        if ('Notification' in window && Notification.permission === 'default') {
+          await mobileServices.requestNotificationPermission();
+        }
       } else {
         taskStore.setAlertsEnabled(false);
         mobileServices.cancelLiveNotification();
@@ -3734,6 +3837,64 @@ function setupNavigationAndModals() {
       showToastNotification(toggleAlertsEnabled.checked ? 'Alerts enabled' : 'Alerts disabled');
     });
   }
+
+  const toggleHapticsEnabled = document.getElementById('toggleHapticsEnabled');
+  if (toggleHapticsEnabled) {
+    toggleHapticsEnabled.checked = taskStore.getHapticsEnabled();
+    toggleHapticsEnabled.addEventListener('change', () => {
+      const enabled = toggleHapticsEnabled.checked;
+      taskStore.setHapticsEnabled(enabled);
+      if (enabled) mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Haptic feedback enabled' : 'Haptic feedback disabled');
+    });
+  }
+
+  const alertVolumeSlider = document.getElementById('alertVolumeSlider');
+  const alertVolumeLabel = document.getElementById('alertVolumeLabel');
+  if (alertVolumeSlider) {
+    const currentVol = taskStore.getAlertVolume();
+    const pct = Math.round(currentVol * 100);
+    alertVolumeSlider.value = pct;
+    if (alertVolumeLabel) alertVolumeLabel.textContent = `${pct}%`;
+    audioManager.setVolume(currentVol);
+
+    alertVolumeSlider.addEventListener('input', () => {
+      const val = parseInt(alertVolumeSlider.value, 10) || 0;
+      if (alertVolumeLabel) alertVolumeLabel.textContent = `${val}%`;
+      const normalized = val / 100;
+      taskStore.setAlertVolume(normalized);
+      audioManager.setVolume(normalized);
+    });
+    alertVolumeSlider.addEventListener('change', () => {
+      audioManager.playRotaryTick();
+    });
+  }
+
+  // Active Task Card tap to Add Task when idle
+  if (activeTaskTitle) {
+    activeTaskTitle.addEventListener('click', () => {
+      if (!runtime.getActiveTask() || activeTaskTitle.textContent.trim() === 'Add Task') {
+        openAddTaskModal('work');
+      }
+    });
+  }
+
+  // Toggle icon listeners for Piggy Bank and Padlock SVG indicators
+  const addModalTimeBank = document.getElementById('addModalTimeBank');
+  if (addModalTimeBank) addModalTimeBank.addEventListener('change', syncModalToggleIcons);
+  const editTaskTimeBank = document.getElementById('editTaskTimeBank');
+  if (editTaskTimeBank) editTaskTimeBank.addEventListener('change', syncModalToggleIcons);
+  const editTaskIsLocked = document.getElementById('editTaskIsLocked');
+  if (editTaskIsLocked) editTaskIsLocked.addEventListener('change', syncModalToggleIcons);
+
+  // Live Digital Clock ticker when timer is idle without an active task
+  setInterval(() => {
+    if (!runtime || !runtime.getActiveTask() || runtime.status === TimerStatus.IDLE) {
+      if (!runtime.getActiveTask()) {
+        updateActiveTaskTimeSpanDynamic();
+      }
+    }
+  }, 1000);
 
   // Calendar modal buttons
   if (btnCloseCalendar) btnCloseCalendar.addEventListener('click', closeCalendar);
