@@ -163,7 +163,7 @@ export class TimerRuntime {
       }
 
       // Future tasks in the order they appear in this.initialTasks!
-      const activeId = activeTask?.id;
+      const activeId = activeTask ? activeTask.id : null;
       for (const initTask of this.initialTasks) {
         if (initTask.id === activeId || completedTaskIds.has(initTask.id)) continue;
         remainingTasks.push({
@@ -202,7 +202,7 @@ export class TimerRuntime {
         this.currentSchedule = schedule;
       } else {
         // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category) are reflected
-        const completedTasks = (this.currentSchedule?.tasks || []).slice(0, this.activeTaskIndex).map(t => {
+        const completedTasks = ((this.currentSchedule && this.currentSchedule.tasks) || []).slice(0, this.activeTaskIndex).map(t => {
           const orig = this.initialTasks.find(init => init.id === t.id);
           return orig ? { ...t, emoji: orig.emoji, title: orig.title, category: orig.category } : t;
         });
@@ -304,7 +304,7 @@ export class TimerRuntime {
     this.overrunPausedElapsedMs = 0;
     if (this.taskDurationMs <= 0) {
       const activeTask = this.getActiveTask();
-      const allocatedMin = activeTask?.allocatedDuration || activeTask?.plannedDuration || 25;
+      const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 25;
       this.taskDurationMs = allocatedMin * 60 * 1000;
     }
     this.taskStartedAt = Date.now();
@@ -425,7 +425,7 @@ export class TimerRuntime {
    * If in IDLE state, skips ahead to the next task in queue without starting timer.
    */
   skipCurrentTask() {
-    const tasks = this.currentSchedule?.tasks || this.initialTasks || [];
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || this.initialTasks || [];
     if (tasks.length === 0) return;
 
     if (this.status === TimerStatus.IDLE) {
@@ -434,7 +434,7 @@ export class TimerRuntime {
       this.activeTaskIndex = nextIndex;
 
       const nextTask = tasks[this.activeTaskIndex];
-      this.taskDurationMs = (nextTask?.allocatedDuration || nextTask?.plannedDuration || 25) * 60 * 1000;
+      this.taskDurationMs = ((nextTask && (nextTask.allocatedDuration || nextTask.plannedDuration)) || 25) * 60 * 1000;
       this.accumulatedElapsedMs = 0;
       this.taskStartedAt = null;
       this.lastResumeTimestamp = null;
@@ -648,7 +648,7 @@ export class TimerRuntime {
   // ==========================================
 
   _startTask(index) {
-    const tasks = this.currentSchedule?.tasks || [];
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || [];
     if (index >= tasks.length) {
       this._stopTicker();
       this._setStatus(TimerStatus.COMPLETED);
@@ -690,7 +690,7 @@ export class TimerRuntime {
     this.initialOverrunBankSeconds = 0;
     this.overrunPausedElapsedMs = 0;
 
-    const tasks = this.currentSchedule?.tasks || [];
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || [];
     if (this.activeTaskIndex >= tasks.length) {
       this._stopTicker();
       this._setStatus(TimerStatus.COMPLETED);
@@ -700,8 +700,8 @@ export class TimerRuntime {
 
     // Reset task duration to the new task's own planned duration so it never inherits previous task's time
     const nextTask = tasks[this.activeTaskIndex];
-    const origNext = this.initialTasks.find(t => t.id === nextTask?.id) || nextTask;
-    this.taskDurationMs = (origNext?.allocatedDuration || origNext?.plannedDuration || 25) * 60 * 1000;
+    const origNext = this.initialTasks.find(t => t.id === (nextTask && nextTask.id)) || nextTask;
+    this.taskDurationMs = ((origNext && (origNext.allocatedDuration || origNext.plannedDuration)) || 25) * 60 * 1000;
 
     // Dynamic re-compression for remaining tasks from current wall-clock time
     this.recalculate();
@@ -858,7 +858,7 @@ export class TimerRuntime {
   seek(remainingSeconds) {
     if (this.taskDurationMs <= 0) {
       const activeTask = this.getActiveTask();
-      const allocatedMin = activeTask?.allocatedDuration || activeTask?.plannedDuration || 25;
+      const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 25;
       this.taskDurationMs = allocatedMin * 60 * 1000;
     }
 
@@ -908,7 +908,7 @@ export class TimerRuntime {
   // ==========================================
 
   getActiveTask() {
-    if (!this.currentSchedule?.tasks || this.currentSchedule.tasks.length === 0) return null;
+    if (!this.currentSchedule || !this.currentSchedule.tasks || this.currentSchedule.tasks.length === 0) return null;
     if (this.status === TimerStatus.COMPLETED) return null;
     const index = this.activeTaskIndex >= 0 ? this.activeTaskIndex : 0;
     return this.currentSchedule.tasks[index] || null;

@@ -157,13 +157,13 @@ function initApp() {
     // Initial render: calculate schedule and populate all lists immediately
     runtime.recalculate();
     updateScheduleUI(runtime.currentSchedule);
-    renderTaskList(runtime.currentSchedule?.tasks || tasks);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || tasks);
     updateActiveTaskDisplay();
     updateResetButtonUI();
     updateNotifToggleUI();
     updateTimeBankDisplay();
     const initActiveTask = runtime.getActiveTask();
-    const initDurSec = (initActiveTask?.allocatedDuration || initActiveTask?.plannedDuration || 30) * 60;
+    const initDurSec = ((initActiveTask ? initActiveTask.allocatedDuration : 0) || (initActiveTask ? initActiveTask.plannedDuration : 0) || 30) * 60;
     updateFinishEarlyButtonText(initDurSec);
     renderClockTime(initDurSec);
     updateWheelProgress(0);
@@ -238,7 +238,7 @@ function setupRuntimeEvents() {
 
     // Android notification panel live countdown update
     if (runtime.status === TimerStatus.RUNNING) {
-      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
       mobileServices.updateLiveNotification({
         activeTask: data.activeTask,
         remainingSeconds: data.remainingSeconds,
@@ -267,7 +267,7 @@ function setupRuntimeEvents() {
     if (statusBanner) statusBanner.classList.add('compressed');
     if (statusText) statusText.textContent = '🪙 Using Time Bank excess time';
     showToastNotification('🪙 Task overdue! Consuming excess time from Time Bank');
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     const calBackdrop = document.getElementById('calendarModalBackdrop');
     if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
       renderCalendarModal();
@@ -286,7 +286,7 @@ function setupRuntimeEvents() {
     updateTimeBankDisplay();
     audioManager.playTaskCompleteChime();
     showToastNotification('⚠️ Time Bank exhausted!');
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     const calBackdrop = document.getElementById('calendarModalBackdrop');
     if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
       renderCalendarModal();
@@ -297,32 +297,32 @@ function setupRuntimeEvents() {
     startContinuousWheelAnimation();
     updateActiveTaskDisplay();
     updateFinishEarlyButtonText(data.totalDurationSeconds);
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   });
 
   runtime.on('taskSkipped', (data) => {
     updateActiveTaskDisplay();
     const activeTask = runtime.getActiveTask();
     const durSec = runtime.status === TimerStatus.IDLE
-      ? (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60
+      ? ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 25) * 60
       : runtime.getRemainingSeconds();
     renderClockTime(durSec);
     updateWheelProgress(runtime.getProgress());
     updateFinishEarlyButtonText(durSec);
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   });
 
   runtime.on('taskComplete', (data) => {
     stopContinuousWheelAnimation();
     audioManager.playTaskCompleteChime();
     mobileServices.hapticCelebration();
-    const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+    const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
     mobileServices.notifyTaskComplete({
       completedTask: data.task,
       nextTask
     });
     updateActiveTaskDisplay();
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   });
 
   runtime.on('allTasksCompleted', () => {
@@ -331,7 +331,7 @@ function setupRuntimeEvents() {
     mobileServices.clearLiveNotification();
     updateActiveTaskDisplay();
     updateResetButtonUI();
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   });
 
   runtime.on('scheduleUpdate', (schedule) => {
@@ -357,7 +357,7 @@ function setupRuntimeEvents() {
       iconPause.classList.remove('hidden');
       mobileServices.enableWakeLock();
       const activeTask = runtime.getActiveTask();
-      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
       mobileServices.updateLiveNotification({
         activeTask,
         remainingSeconds: runtime.getRemainingSeconds(),
@@ -370,7 +370,7 @@ function setupRuntimeEvents() {
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
       const activeTask = runtime.getActiveTask();
-      const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+      const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
       mobileServices.updateLiveNotification({
         activeTask,
         remainingSeconds: runtime.getRemainingSeconds(),
@@ -385,7 +385,7 @@ function setupRuntimeEvents() {
       mobileServices.clearLiveNotification();
     }
     updateResetButtonUI();
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   });
 
   runtime.on('error', (err) => {
@@ -476,8 +476,8 @@ function updateWheelProgress(progressRatio) {
 
 function updateActiveTaskTimeSpanDynamic(remainingSec) {
   if (!activeTaskTimeSpan) return;
-  const activeTask = runtime?.getActiveTask();
-  if (!activeTask || runtime?.status === TimerStatus.COMPLETED) {
+  const activeTask = (runtime ? runtime.getActiveTask() : null);
+  if (!activeTask || (runtime && runtime.status) === TimerStatus.COMPLETED) {
     // Idle/No task state: Live digital clock start time, end time = now + 30m
     const d = new Date();
     const startMinutes = d.getHours() * 60 + d.getMinutes();
@@ -576,7 +576,7 @@ function updateScheduleUI(schedule) {
 // ==========================================
 function setupRotaryWheel() {
   function getAngleFromEvent(e) {
-    const rect = (rotarySvg || wheelContainer)?.getBoundingClientRect() || { left: 0, top: 0, width: 320, height: 320 };
+    const rect = ((rotarySvg || wheelContainer) ? (rotarySvg || wheelContainer).getBoundingClientRect() : null) || { left: 0, top: 0, width: 320, height: 320 };
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
 
@@ -641,7 +641,7 @@ function setupRotaryWheel() {
     scrubStartAngleRad = getAngleFromEvent(e);
 
     const activeTask = runtime.getActiveTask();
-    activeTotalSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 30) * 60;
+    activeTotalSec = ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60;
     baseRemainingSecAtScrubStart = runtime.status === TimerStatus.IDLE
       ? activeTotalSec
       : runtime.getRemainingSeconds();
@@ -736,7 +736,7 @@ function setupRotaryWheel() {
     lastAudibleMinuteTick = 0;
 
     baseDialSeconds = runtime.status === TimerStatus.IDLE
-      ? (runtime.getActiveTask()?.allocatedDuration || 25) * 60
+      ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) || 25) * 60
       : runtime.getRemainingSeconds();
 
     rotaryPreviewBadge.classList.remove('hidden');
@@ -820,12 +820,12 @@ function setupRotaryWheel() {
       }
       updateActiveTaskDisplay();
       const remainingSec = runtime.status === TimerStatus.IDLE
-        ? (runtime.getActiveTask()?.allocatedDuration * 60 || 1500)
+        ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) * 60 || 1500)
         : runtime.getRemainingSeconds();
       renderClockTime(remainingSec);
       updateWheelProgress(runtime.getProgress());
       updateFinishEarlyButtonText(remainingSec);
-      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       pendingMinuteAdjustment = 0;
 
       if (runtime.status === TimerStatus.RUNNING) {
@@ -982,7 +982,7 @@ function resetWholeDay() {
   updateFinishEarlyButtonText(durSec);
   updateScheduleUI(runtime.currentSchedule);
   updateResetButtonUI();
-  renderTaskList(runtime.currentSchedule?.tasks || []);
+  renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
 }
 
 function setupControls() {
@@ -1008,7 +1008,7 @@ function setupControls() {
   }
 
   function closeAlertsModal() {
-    alertsModalBackdrop?.classList.add('hidden');
+    if (alertsModalBackdrop) alertsModalBackdrop.classList.add("hidden");
   }
 
   if (btnNotifToggle) {
@@ -1043,7 +1043,7 @@ function setupControls() {
       if (taskStore.getAlertsEnabled() && mobileServices.hasNotificationPermission() && runtime) {
         const activeTask = runtime.getActiveTask();
         if (activeTask) {
-          const nextTask = runtime.currentSchedule?.tasks[runtime.activeTaskIndex + 1] || null;
+          const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
           mobileServices.updateLiveNotification({
             activeTask,
             remainingSeconds: runtime.status === TimerStatus.IDLE
@@ -1085,12 +1085,12 @@ function setupControls() {
       runtime.resetCurrentTask();
       updateActiveTaskDisplay();
       const activeTask = runtime.getActiveTask();
-      const durSec = (activeTask?.allocatedDuration || activeTask?.plannedDuration || 25) * 60;
+      const durSec = ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 25) * 60;
       renderClockTime(durSec);
       updateWheelProgress(0);
       updateFinishEarlyButtonText(durSec);
       updateResetButtonUI();
-      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     } else {
       resetWholeDay();
     }
@@ -1156,7 +1156,7 @@ function setupControls() {
   }
 
   function closeHardStopModal() {
-    hardStopModalBackdrop?.classList.add('hidden');
+    if (hardStopModalBackdrop) hardStopModalBackdrop.classList.add("hidden");
   }
 
   if (hardStopModalToggle) {
@@ -1171,7 +1171,7 @@ function setupControls() {
   if (btnHardStopHourUp) {
     btnHardStopHourUp.addEventListener('click', () => {
       mobileServices.hapticTick();
-      const cur = parseInt(hardStopHourInput?.value, 10) || 0;
+      const cur = parseInt((hardStopHourInput ? hardStopHourInput.value : "0"), 10) || 0;
       if (hardStopHourInput) hardStopHourInput.value = String((cur + 1) % 24).padStart(2, '0');
     });
   }
@@ -1179,7 +1179,7 @@ function setupControls() {
   if (btnHardStopHourDown) {
     btnHardStopHourDown.addEventListener('click', () => {
       mobileServices.hapticTick();
-      const cur = parseInt(hardStopHourInput?.value, 10) || 0;
+      const cur = parseInt((hardStopHourInput ? hardStopHourInput.value : "0"), 10) || 0;
       if (hardStopHourInput) hardStopHourInput.value = String((cur - 1 + 24) % 24).padStart(2, '0');
     });
   }
@@ -1187,7 +1187,7 @@ function setupControls() {
   if (btnHardStopMinUp) {
     btnHardStopMinUp.addEventListener('click', () => {
       mobileServices.hapticTick();
-      const cur = parseInt(hardStopMinInput?.value, 10) || 0;
+      const cur = parseInt((hardStopMinInput ? hardStopMinInput.value : "0"), 10) || 0;
       if (hardStopMinInput) hardStopMinInput.value = String((cur + 5) % 60).padStart(2, '0');
     });
   }
@@ -1195,7 +1195,7 @@ function setupControls() {
   if (btnHardStopMinDown) {
     btnHardStopMinDown.addEventListener('click', () => {
       mobileServices.hapticTick();
-      const cur = parseInt(hardStopMinInput?.value, 10) || 0;
+      const cur = parseInt((hardStopMinInput ? hardStopMinInput.value : "0"), 10) || 0;
       if (hardStopMinInput) hardStopMinInput.value = String((cur - 5 + 60) % 60).padStart(2, '0');
     });
   }
@@ -1206,8 +1206,8 @@ function setupControls() {
       const timeVal = btn.getAttribute('data-time');
       if (timeVal.startsWith('+')) {
         const addMin = parseInt(timeVal.replace('+', ''), 10);
-        const curH = parseInt(hardStopHourInput?.value, 10) || 0;
-        const curM = parseInt(hardStopMinInput?.value, 10) || 0;
+        const curH = parseInt((hardStopHourInput ? hardStopHourInput.value : "0"), 10) || 0;
+        const curM = parseInt((hardStopMinInput ? hardStopMinInput.value : "0"), 10) || 0;
         const total = (curH * 60 + curM + addMin) % 1440;
         if (hardStopHourInput) hardStopHourInput.value = String(Math.floor(total / 60)).padStart(2, '0');
         if (hardStopMinInput) hardStopMinInput.value = String(total % 60).padStart(2, '0');
@@ -1222,8 +1222,8 @@ function setupControls() {
   if (btnSaveHardStopModal) {
     btnSaveHardStopModal.addEventListener('click', () => {
       mobileServices.hapticTap();
-      const h = String(Math.max(0, Math.min(23, parseInt(hardStopHourInput?.value, 10) || 0))).padStart(2, '0');
-      const m = String(Math.max(0, Math.min(59, parseInt(hardStopMinInput?.value, 10) || 0))).padStart(2, '0');
+      const h = String(Math.max(0, Math.min(23, parseInt((hardStopHourInput ? hardStopHourInput.value : "0"), 10) || 0))).padStart(2, '0');
+      const m = String(Math.max(0, Math.min(59, parseInt((hardStopMinInput ? hardStopMinInput.value : "0"), 10) || 0))).padStart(2, '0');
       const newStop = `${h}:${m}`;
       const isEnabled = hardStopModalToggle ? hardStopModalToggle.checked : true;
 
@@ -1319,7 +1319,7 @@ function setupControls() {
     if (runtime) {
       runtime.deleteTask(taskId);
       updateActiveTaskDisplay();
-      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       renderCalendarModal();
       updateScheduleUI(runtime.currentSchedule);
       updateResetButtonUI();
@@ -1559,7 +1559,7 @@ function addBreakTask(duration = 10) {
   runtime.initialTasks = taskStore.getTasks();
   runtime.recalculate();
   updateActiveTaskDisplay();
-  renderTaskList(runtime.currentSchedule?.tasks || []);
+  renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   const calBackdrop = document.getElementById('calendarModalBackdrop');
   if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
     renderCalendarModal();
@@ -1638,7 +1638,7 @@ function setupInteractiveTaskDrag(container) {
     let slotSpacing = 68;
 
     const draggedCard = dragCard;
-    const draggedTaskId = draggedCard.getAttribute('data-id') || draggedCard.querySelector('[data-id]')?.getAttribute('data-id');
+    const draggedTaskId = draggedCard.getAttribute('data-id') || (() => { const _q = draggedCard.querySelector("[data-id]"); return _q ? _q.getAttribute("data-id") : null; })();
 
     // 200ms HOLD REQUIRED before dragging engages!
     holdTimer = setTimeout(() => {
@@ -1656,7 +1656,7 @@ function setupInteractiveTaskDrag(container) {
 
       cardSlotPositions = allCards.map((c, idx) => {
         const r = c.getBoundingClientRect();
-        const id = c.getAttribute('data-id') || c.querySelector('[data-id]')?.getAttribute('data-id');
+        const id = c.getAttribute('data-id') || (() => { const _q = c.querySelector("[data-id]"); return _q ? _q.getAttribute("data-id") : null; })();
         return {
           card: c,
           id: id,
@@ -1708,7 +1708,7 @@ function setupInteractiveTaskDrag(container) {
         return;
       }
 
-      const currentCenterY = initialCardTop + (cardSlotPositions[fromIndex]?.height || 60) / 2 + deltaY;
+      const currentCenterY = initialCardTop + ((cardSlotPositions[fromIndex] ? cardSlotPositions[fromIndex].height : 60) || 60) / 2 + deltaY;
       let closestSlot = fromIndex;
       let minDistance = Infinity;
       cardSlotPositions.forEach((slot, idx) => {
@@ -1776,7 +1776,7 @@ function setupInteractiveTaskDrag(container) {
         handle.releasePointerCapture(activePointerId);
       } catch (_) {}
 
-      const targetTaskId = cardSlotPositions[currentSlotIndex]?.id;
+      const targetTaskId = (cardSlotPositions[currentSlotIndex] ? cardSlotPositions[currentSlotIndex].id : null);
 
       allCards.forEach(c => {
         c.classList.remove('is-live-dragging', 'is-drag-sibling');
@@ -1793,7 +1793,7 @@ function setupInteractiveTaskDrag(container) {
           runtime.activeTaskIndex = 0;
         }
         updateActiveTaskDisplay();
-        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
         updateScheduleUI(runtime.currentSchedule);
         const activeTask = runtime.getActiveTask();
@@ -1882,13 +1882,13 @@ function setupTimeBankInfoModal() {
         const sec = taskStore.getTimeBankSeconds();
         balanceText.textContent = `Current balance: ${formatBankTime(sec)}`;
       }
-      modalBackdrop?.classList.remove('hidden');
+      if (modalBackdrop) modalBackdrop.classList.remove("hidden");
     });
   }
 
   if (btnClose) {
     btnClose.addEventListener('click', () => {
-      modalBackdrop?.classList.add('hidden');
+      if (modalBackdrop) modalBackdrop.classList.add("hidden");
     });
   }
 
@@ -1924,7 +1924,7 @@ function renderTaskList(tasks) {
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
     // When timer is RUNNING, the active in-progress task is locked. When PAUSED, user can toggle lock!
     const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
-    const isBreak = task.category === 'Break' || task.title?.toLowerCase() === 'break';
+    const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
 
     let statusClass = 'task-pending';
     let statusBadge = isBreak
@@ -1957,7 +1957,7 @@ function renderTaskList(tasks) {
       ? `🔒 Fixed in place at ${task.fixedStartTime} (Immovable)`
       : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
 
-    const isOverrunningTask = Boolean(runtime?.isOverrunning && runtime?.getActiveTask()?.id === task.id);
+    const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
 
     card.innerHTML = `
       <!-- Top Row: Status badge on top left, actions on top right -->
@@ -2121,7 +2121,7 @@ function renderTaskList(tasks) {
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
         updateActiveTaskDisplay();
-        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
         mobileServices.hapticTap();
       });
@@ -2139,7 +2139,7 @@ function renderTaskList(tasks) {
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
-      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       renderCalendarModal();
       mobileServices.hapticTap();
     });
@@ -2224,7 +2224,7 @@ function applyEmojiSelection(emoji) {
     runtime.initialTasks = taskStore.getTasks();
     runtime.recalculate();
     updateActiveTaskDisplay();
-    renderTaskList(runtime.currentSchedule?.tasks || []);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     const editHeaderEmoji = document.getElementById('editTaskHeaderEmoji');
     if (editHeaderEmoji) editHeaderEmoji.textContent = emoji;
     renderCalendarModal();
@@ -2241,7 +2241,7 @@ function openEmojiPicker(taskId) {
     currentTaskEmoji = currentAddTaskEmoji || '📚';
   } else if (taskId) {
     const t = taskStore.getTasks().find(item => item.id === taskId);
-    currentTaskEmoji = t?.emoji || currentEditEmoji || '📌';
+    currentTaskEmoji = (t ? t.emoji : "") || currentEditEmoji || '📌';
   }
   selectedEmojiInPicker = currentTaskEmoji;
 
@@ -2270,7 +2270,7 @@ function openEmojiPicker(taskId) {
       grid.appendChild(btn);
     });
   }
-  document.getElementById('emojiPickerModalBackdrop')?.classList.remove('hidden');
+  (() => { const _el = document.getElementById("emojiPickerModalBackdrop"); if (_el) _el.classList.remove("hidden"); })();
   mobileServices.hapticTap();
 }
 
@@ -2278,7 +2278,7 @@ function closeEmojiPicker(confirmSelected = true) {
   if (confirmSelected && selectedEmojiInPicker && currentEmojiTaskId) {
     applyEmojiSelection(selectedEmojiInPicker);
   } else {
-    document.getElementById('emojiPickerModalBackdrop')?.classList.add('hidden');
+    (() => { const _el = document.getElementById("emojiPickerModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
     currentEmojiTaskId = null;
     selectedEmojiInPicker = null;
   }
@@ -2496,7 +2496,7 @@ function openAddTaskModal(defaultType = 'work') {
 }
 
 function closeAddTaskModal() {
-  document.getElementById('addTaskModalBackdrop')?.classList.add('hidden');
+  (() => { const _el = document.getElementById("addTaskModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
 }
 
 // ==========================================
@@ -2540,20 +2540,20 @@ function openTaskEditModal(taskId) {
   syncModalToggleIcons();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
 
-  document.getElementById('taskEditModalBackdrop')?.classList.remove('hidden');
+  (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.remove("hidden"); })();
   mobileServices.hapticTap();
 }
 
 function saveCurrentTaskEdit() {
   if (!currentEditTaskId) return;
-  const title = document.getElementById('editTaskTitle')?.value.trim();
+  const title = (() => { const _el = document.getElementById("editTaskTitle"); return _el ? _el.value : ""; })().trim();
   if (!title) return;
-  const plannedDuration = parseInt(document.getElementById('editTaskDuration')?.value, 10) || 30;
-  const category = document.getElementById('editTaskCategory')?.value.trim() || 'General';
-  const fixedStartTime = document.getElementById('editTaskStartTime')?.value || document.getElementById('editTaskFixedTime')?.value || null;
-  const isLocked = document.getElementById('editTaskIsLocked')?.checked || Boolean(fixedStartTime);
+  const plannedDuration = parseInt((() => { const _el = document.getElementById("editTaskDuration"); return _el ? _el.value : ""; })(), 10) || 30;
+  const category = (() => { const _el = document.getElementById("editTaskCategory"); return _el ? _el.value : ""; })().trim() || 'General';
+  const fixedStartTime = (() => { const _el = document.getElementById("editTaskStartTime"); return _el ? _el.value : ""; })() || (() => { const _el = document.getElementById("editTaskFixedTime"); return _el ? _el.value : ""; })() || null;
+  const isLocked = (() => { const _el = document.getElementById("editTaskIsLocked"); return _el ? _el.checked : false; })() || Boolean(fixedStartTime);
   const useTimeBank = document.getElementById('editTaskTimeBank') ? document.getElementById('editTaskTimeBank').checked : true;
-  const emoji = currentEditEmoji || document.getElementById('editTaskHeaderEmoji')?.textContent.trim() || '📝';
+  const emoji = currentEditEmoji || (() => { const _el = document.getElementById("editTaskHeaderEmoji"); return _el ? _el.textContent : ""; })().trim() || '📝';
 
   if (category) taskStore.addCategory(category);
 
@@ -2570,12 +2570,12 @@ function saveCurrentTaskEdit() {
   runtime.initialTasks = taskStore.getTasks();
   runtime.recalculate();
   updateActiveTaskDisplay();
-  renderTaskList(runtime.currentSchedule?.tasks || []);
+  renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   renderCalendarModal();
 }
 
 function closeTaskEditModal() {
-  document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+  (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
   currentEditTaskId = null;
   currentEditEmoji = null;
 }
@@ -2686,7 +2686,7 @@ function renderCalendarModal() {
   if (!calendarTimelineList) return;
   calendarTimelineList.innerHTML = '';
 
-  const tasks = runtime?.currentSchedule?.tasks || [];
+  const tasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || [];
   if (tasks.length === 0) {
     calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
     return;
@@ -2701,8 +2701,8 @@ function renderCalendarModal() {
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
     // When timer is RUNNING, the active task is locked. When PAUSED, user can toggle lock!
     const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
-    const isOverrunningTask = Boolean(runtime?.isOverrunning && runtime?.getActiveTask()?.id === task.id);
-    const isBreak = task.category === 'Break' || task.title?.toLowerCase() === 'break';
+    const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
+    const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
     const catColor = getCategoryColor(task.category);
 
     let statusClass = 'pending';
@@ -2799,7 +2799,7 @@ function renderCalendarModal() {
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
         updateActiveTaskDisplay();
-        renderTaskList(runtime.currentSchedule?.tasks || []);
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
         mobileServices.hapticTap();
       });
@@ -2817,7 +2817,7 @@ function renderCalendarModal() {
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
-      renderTaskList(runtime.currentSchedule?.tasks || []);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       renderCalendarModal();
       mobileServices.hapticTap();
     });
@@ -2994,7 +2994,7 @@ function renderCalendarModal() {
     }, { passive: true });
 
     // Swipe delete button click
-    deleteAction.querySelector('.btn-swipe-delete')?.addEventListener('click', (e) => {
+    const _swpBtn = deleteAction.querySelector(".btn-swipe-delete"); if (_swpBtn) _swpBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
       executeDeleteTask(task.id, task.title);
@@ -3130,7 +3130,7 @@ function setupNavigationAndModals() {
     const startInput = currentPickerCallingModal === 'add'
       ? document.getElementById('addModalStartTime')
       : document.getElementById('editTaskStartTime');
-    const startVal = startInput?.value;
+    const startVal = (startInput ? startInput.value : "");
 
     if (startVal) {
       const startMin = parseTimeToMinutes(startVal);
@@ -3178,11 +3178,11 @@ function setupNavigationAndModals() {
     const titleInput = callingModal === 'add'
       ? document.getElementById('addModalTitle')
       : document.getElementById('editTaskTitle');
-    const taskTitle = titleInput?.value.trim() || (callingModal === 'add' ? 'New Task' : 'Edit Task');
+    const taskTitle = (titleInput ? titleInput.value : "").trim() || (callingModal === 'add' ? 'New Task' : 'Edit Task');
 
     if (durationDialTaskTitle) durationDialTaskTitle.textContent = taskTitle;
 
-    pickerMinutes = Math.max(1, parseInt(targetInput?.value, 10) || 25);
+    pickerMinutes = Math.max(1, parseInt((targetInput ? targetInput.value : ""), 10) || 25);
     pickerSeconds = 0;
     pickerAccumulatedDeltaDeg = 0;
 
@@ -3190,22 +3190,22 @@ function setupNavigationAndModals() {
     if (callingModal === 'add') {
       const catInput = document.getElementById('addModalCategory');
       const titleInput = document.getElementById('addModalTitle');
-      isBreak = (currentAddTaskType === 'break') || (catInput?.value.toLowerCase() === 'break') || (titleInput?.value.toLowerCase() === 'break');
+      isBreak = (currentAddTaskType === 'break') || ((catInput ? catInput.value : "").toLowerCase() === 'break') || ((titleInput ? titleInput.value : "").toLowerCase() === 'break');
     } else {
       const task = taskStore.getTasks().find(t => t.id === currentEditTaskId);
       const catInput = document.getElementById('editTaskCategory');
-      isBreak = (task?.category?.toLowerCase() === 'break') || (catInput?.value.toLowerCase() === 'break');
+      isBreak = (((task && task.category) ? task.category.toLowerCase() : "") === 'break') || ((catInput ? catInput.value : "").toLowerCase() === 'break');
     }
 
     renderPickerTicks(isBreak);
     updatePickerVisuals();
 
-    durationDialModalBackdrop?.classList.remove('hidden');
+    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.remove("hidden");
     mobileServices.hapticTap();
   }
 
   function closeDurationDialPicker() {
-    durationDialModalBackdrop?.classList.add('hidden');
+    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.add("hidden");
   }
 
   if (btnCloseDurationDial) btnCloseDurationDial.addEventListener('click', closeDurationDialPicker);
@@ -3385,7 +3385,7 @@ function setupNavigationAndModals() {
   const addModalEndTime = document.getElementById('addModalEndTime');
 
   function updateAddModalDurationFromTimeSpan() {
-    if (!addModalStartTime?.value || !addModalEndTime?.value) return;
+    if (!(addModalStartTime && addModalStartTime.value) || !(addModalEndTime && addModalEndTime.value)) return;
     const startMin = parseTimeToMinutes(addModalStartTime.value);
     const endMin = parseTimeToMinutes(addModalEndTime.value);
     let diff = endMin - startMin;
@@ -3399,7 +3399,7 @@ function setupNavigationAndModals() {
   }
 
   function updateAddModalEndTimeFromDuration() {
-    if (!addModalStartTime?.value || !addModalDurationInput?.value) return;
+    if (!(addModalStartTime && addModalStartTime.value) || !(addModalDurationInput && addModalDurationInput.value)) return;
     const startMin = parseTimeToMinutes(addModalStartTime.value);
     const dur = parseInt(addModalDurationInput.value, 10) || 0;
     const endMin = (startMin + dur) % 1440;
@@ -3409,17 +3409,17 @@ function setupNavigationAndModals() {
   if (addModalStartTime) {
     addModalStartTime.addEventListener('input', () => {
       if (addModalStartTime.value.length === 5) {
-        if (addModalEndTime?.value) {
+        if ((addModalEndTime && addModalEndTime.value)) {
           updateAddModalDurationFromTimeSpan();
-        } else if (addModalDurationInput?.value) {
+        } else if ((addModalDurationInput && addModalDurationInput.value)) {
           updateAddModalEndTimeFromDuration();
         }
       }
     });
     addModalStartTime.addEventListener('change', () => {
-      if (addModalEndTime?.value) {
+      if ((addModalEndTime && addModalEndTime.value)) {
         updateAddModalDurationFromTimeSpan();
-      } else if (addModalDurationInput?.value) {
+      } else if ((addModalDurationInput && addModalDurationInput.value)) {
         updateAddModalEndTimeFromDuration();
       }
     });
@@ -3446,7 +3446,7 @@ function setupNavigationAndModals() {
   const editTaskEndTime = document.getElementById('editTaskEndTime');
 
   function updateEditModalDurationFromTimeSpan() {
-    if (!editTaskStartTime?.value || !editTaskEndTime?.value) return;
+    if (!(editTaskStartTime && editTaskStartTime.value) || !(editTaskEndTime && editTaskEndTime.value)) return;
     const startMin = parseTimeToMinutes(editTaskStartTime.value);
     const endMin = parseTimeToMinutes(editTaskEndTime.value);
     let diff = endMin - startMin;
@@ -3460,7 +3460,7 @@ function setupNavigationAndModals() {
   }
 
   function updateEditModalEndTimeFromDuration() {
-    if (!editTaskStartTime?.value || !editTaskDurationInput?.value) return;
+    if (!(editTaskStartTime && editTaskStartTime.value) || !(editTaskDurationInput && editTaskDurationInput.value)) return;
     const startMin = parseTimeToMinutes(editTaskStartTime.value);
     const dur = parseInt(editTaskDurationInput.value, 10) || 0;
     const endMin = (startMin + dur) % 1440;
@@ -3470,17 +3470,17 @@ function setupNavigationAndModals() {
   if (editTaskStartTime) {
     editTaskStartTime.addEventListener('input', () => {
       if (editTaskStartTime.value.length === 5) {
-        if (editTaskEndTime?.value) {
+        if ((editTaskEndTime && editTaskEndTime.value)) {
           updateEditModalDurationFromTimeSpan();
-        } else if (editTaskDurationInput?.value) {
+        } else if ((editTaskDurationInput && editTaskDurationInput.value)) {
           updateEditModalEndTimeFromDuration();
         }
       }
     });
     editTaskStartTime.addEventListener('change', () => {
-      if (editTaskEndTime?.value) {
+      if ((editTaskEndTime && editTaskEndTime.value)) {
         updateEditModalDurationFromTimeSpan();
-      } else if (editTaskDurationInput?.value) {
+      } else if ((editTaskDurationInput && editTaskDurationInput.value)) {
         updateEditModalEndTimeFromDuration();
       }
     });
@@ -3527,14 +3527,14 @@ function setupNavigationAndModals() {
     }
 
     const durInput = document.getElementById('addModalDuration');
-    const duration = parseInt(durInput?.value, 10) || (currentAddTaskType === 'break' ? 10 : 25);
+    const duration = parseInt((durInput ? durInput.value : ""), 10) || (currentAddTaskType === 'break' ? 10 : 25);
 
     const catInput = document.getElementById('addModalCategory');
-    const category = catInput?.value.trim() || (currentAddTaskType === 'break' ? 'Break' : 'General');
+    const category = (catInput ? catInput.value : "").trim() || (currentAddTaskType === 'break' ? 'Break' : 'General');
 
     const fixedInput = document.getElementById('addModalFixedTime');
     const startInput = document.getElementById('addModalStartTime');
-    const fixedStartTime = startInput?.value || fixedInput?.value || null;
+    const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
 
     const bankInput = document.getElementById('addModalTimeBank');
     const useTimeBank = bankInput ? bankInput.checked : true;
@@ -3555,7 +3555,7 @@ function setupNavigationAndModals() {
     runtime.recalculate();
     updateScheduleUI(runtime.currentSchedule);
     updateActiveTaskDisplay();
-    renderTaskList(runtime.currentSchedule?.tasks || taskStore.getTasks());
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
     renderCalendarModal();
     closeAddTaskModal();
     mobileServices.hapticTap();
@@ -3607,7 +3607,7 @@ function setupNavigationAndModals() {
       e.stopPropagation();
     }
     saveCurrentTaskEdit();
-    document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+    (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
     currentEditTaskId = null;
     currentEditEmoji = null;
     mobileServices.hapticTap();
@@ -3619,7 +3619,7 @@ function setupNavigationAndModals() {
       e.preventDefault();
       e.stopPropagation();
     }
-    document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+    (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
     currentEditTaskId = null;
     currentEditEmoji = null;
   }
@@ -3639,7 +3639,7 @@ function setupNavigationAndModals() {
         const id = currentEditTaskId;
         const task = taskStore.getTasks().find(t => t.id === id);
         const title = task ? task.title : 'Task';
-        document.getElementById('taskEditModalBackdrop')?.classList.add('hidden');
+        (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.add("hidden"); })();
         currentEditTaskId = null;
         currentEditEmoji = null;
         executeDeleteTask(id, title);

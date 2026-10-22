@@ -846,7 +846,12 @@
       console.error('Unhandled runtime error:', e.error || e.message);
       var toast = document.getElementById('toastNotification');
       if (toast) {
-        toast.textContent = '⚠️ Script Error: ' + (e.message || 'Unknown error');
+        var loc = '';
+        if (e.lineno) {
+          var fn = e.filename ? e.filename.split('/').pop().split('?')[0] : '';
+          loc = ' (' + (fn ? fn + ':' : '') + e.lineno + (e.colno ? ':' + e.colno : '') + ')';
+        }
+        toast.textContent = '⚠️ Script Error' + loc + ': ' + (e.message || 'Unknown error');
         toast.classList.remove('hidden');
         toast.style.opacity = '1';
         toast.style.background = '#dc2626';
