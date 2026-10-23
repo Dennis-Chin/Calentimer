@@ -480,7 +480,6 @@ export class TimerRuntime {
         );
         targetTask.plannedDuration = newDur;
         targetTask.allocatedDuration = newDur;
-        targetTask.isLocked = true;
 
         this._ensureHardStopAccommodatesTasks();
         const schedule = this.recalculate();
@@ -506,13 +505,11 @@ export class TimerRuntime {
       const newDur = Math.ceil(this.taskDurationMs / 60000);
       activeTask.allocatedDuration = newDur;
       activeTask.plannedDuration = newDur;
-      activeTask.isLocked = true;
 
       // Also update in initialTasks so it persists
       const initialTask = this.initialTasks.find(t => t.id === activeTask.id);
       if (initialTask) {
         initialTask.plannedDuration = newDur;
-        initialTask.isLocked = true;
       }
 
       this._ensureHardStopAccommodatesTasks();
@@ -549,7 +546,6 @@ export class TimerRuntime {
         const targetMinutes = Math.max(1, Math.round(targetRemainingSec / 60));
         targetTask.plannedDuration = targetMinutes;
         targetTask.allocatedDuration = targetMinutes;
-        targetTask.isLocked = true;
         this.taskDurationMs = targetRemainingSec * 1000;
 
         this._ensureHardStopAccommodatesTasks();
@@ -574,12 +570,10 @@ export class TimerRuntime {
 
       activeTask.allocatedDuration = newTotalMinutes;
       activeTask.plannedDuration = newTotalMinutes;
-      activeTask.isLocked = true;
 
       const initialTask = this.initialTasks.find(t => t.id === activeTask.id);
       if (initialTask) {
         initialTask.plannedDuration = newTotalMinutes;
-        initialTask.isLocked = true;
       }
 
       this._ensureHardStopAccommodatesTasks();
@@ -937,6 +931,15 @@ export class TimerRuntime {
   }
 
   getRemainingSeconds() {
+    if (this.status === TimerStatus.COMPLETED) return 0;
+    if (this.status === TimerStatus.IDLE) {
+      if (this.taskDurationMs > 0) {
+        return Math.floor(this.taskDurationMs / 1000);
+      }
+      const activeTask = this.getActiveTask();
+      const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 30;
+      return allocatedMin * 60;
+    }
     const totalSeconds = Math.floor(this.taskDurationMs / 1000);
     return Math.max(0, totalSeconds - this.getElapsedSeconds());
   }

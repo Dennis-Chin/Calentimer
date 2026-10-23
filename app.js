@@ -485,7 +485,7 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   const activeTask = (runtime ? runtime.getActiveTask() : null);
   const totalDurEl = document.getElementById('activeTaskTotalDuration');
 
-  if (!activeTask || (runtime && runtime.status) === TimerStatus.COMPLETED) {
+  if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
     // Idle/No task state: Live digital clock start time, end time = now + 30m
     const d = new Date();
     const startMinutes = d.getHours() * 60 + d.getMinutes();
@@ -497,24 +497,44 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     return;
   }
 
+  const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
+
   let startMinutes;
-  if (runtime.taskStartedAt) {
+  if (!isIdle && runtime.taskStartedAt) {
     const d = new Date(runtime.taskStartedAt);
     startMinutes = d.getHours() * 60 + d.getMinutes();
-  } else if (activeTask.startTime) {
+  } else if (activeTask.fixedStartTime && activeTask.startTime) {
     startMinutes = parseTimeToMinutes(activeTask.startTime);
   } else {
+    // Before timer has started: dynamic live start time matching current clock!
     const d = new Date();
     startMinutes = d.getHours() * 60 + d.getMinutes();
   }
 
-  const elapsedSec = (runtime.getElapsedSeconds && typeof runtime.getElapsedSeconds === 'function')
-    ? runtime.getElapsedSeconds()
-    : 0;
-  const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
-  const totalSec = Math.max(60, elapsedSec + rem);
-  const totalMinutes = Math.max(1, Math.round(totalSec / 60));
-  const endMinutes = (startMinutes + totalMinutes) % 1440;
+  let totalMinutes;
+  if (isIdle) {
+    if (remainingSec !== undefined) {
+      totalMinutes = Math.max(1, Math.round(remainingSec / 60));
+    } else if (runtime && runtime.taskDurationMs > 0) {
+      totalMinutes = Math.max(1, Math.round(runtime.taskDurationMs / 60000));
+    } else {
+      totalMinutes = Math.max(1, (activeTask.allocatedDuration || activeTask.plannedDuration || 30));
+    }
+  } else {
+    const elapsedSec = (runtime.getElapsedSeconds && typeof runtime.getElapsedSeconds === 'function')
+      ? runtime.getElapsedSeconds()
+      : 0;
+    const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
+    const totalSec = Math.max(60, elapsedSec + rem);
+    totalMinutes = Math.max(1, Math.round(totalSec / 60));
+  }
+
+  let endMinutes;
+  if (activeTask.fixedEndTime && activeTask.endTime) {
+    endMinutes = parseTimeToMinutes(activeTask.endTime);
+  } else {
+    endMinutes = (startMinutes + totalMinutes) % 1440;
+  }
 
   const startStr = formatMinutesToTime(startMinutes);
   const endStr = formatMinutesToTime(endMinutes);
@@ -882,7 +902,7 @@ function setupRotaryWheel() {
       if (activeTask) {
         taskStore.updateTask(activeTask.id, {
           plannedDuration: activeTask.plannedDuration,
-          isLocked: true
+          isLocked: Boolean(activeTask.isLocked)
         });
       }
 
@@ -1491,6 +1511,14 @@ function setupControls() {
 
   if (btnClearCalendarSchedule) {
     btnClearCalendarSchedule.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openConfirmClearModal();
+    });
+  }
+
+  const btnClearDrawerSchedule = document.getElementById('btnClearDrawerSchedule');
+  if (btnClearDrawerSchedule) {
+    btnClearDrawerSchedule.addEventListener('click', (e) => {
       e.stopPropagation();
       openConfirmClearModal();
     });
@@ -4613,12 +4641,10 @@ function setupNavigationAndModals() {
   const editTaskIsLocked = document.getElementById('editTaskIsLocked');
   if (editTaskIsLocked) editTaskIsLocked.addEventListener('change', syncModalToggleIcons);
 
-  // Live Digital Clock ticker when timer is idle without an active task
+  // Live Digital Clock ticker: dynamic time span before timer starts
   setInterval(() => {
     if (!runtime || !runtime.getActiveTask() || runtime.status === TimerStatus.IDLE) {
-      if (!runtime.getActiveTask()) {
-        updateActiveTaskTimeSpanDynamic();
-      }
+      updateActiveTaskTimeSpanDynamic();
     }
   }, 1000);
 
@@ -4661,7 +4687,7 @@ function setupNavigationAndModals() {
 
   // To-Do Modal Events
   const btnCloseTodo = document.getElementById('btnCloseTodo');
-  const btnClearCompletedTodo = document.getElementById('btnClearCompletedTodo');
+  const btnClearTodoTasks = document.getElementById('btnClearTodoTasks') || document.getElementById('btnClearCompletedTodo');
   const btnOpenAddTodoModal = document.getElementById('btnOpenAddTodoModal');
   const todoModalBackdrop = document.getElementById('todoModalBackdrop');
 
@@ -4675,6 +4701,19 @@ function setupNavigationAndModals() {
   const btnCancelDeleteTodo = document.getElementById('btnCancelDeleteTodo');
   const btnConfirmDeleteTodo = document.getElementById('btnConfirmDeleteTodo');
 
+  const confirmClearTodoModalBackdrop = document.getElementById('confirmClearTodoModalBackdrop');
+  const btnCancelClearTodo = document.getElementById('btnCancelClearTodo');
+  const btnConfirmClearTodo = document.getElementById('btnConfirmClearTodo');
+
+  function openConfirmClearTodoModal() {
+    if (confirmClearTodoModalBackdrop) confirmClearTodoModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticWarning();
+  }
+
+  function closeConfirmClearTodoModal() {
+    if (confirmClearTodoModalBackdrop) confirmClearTodoModalBackdrop.classList.add('hidden');
+  }
+
   if (btnCloseTodo) btnCloseTodo.addEventListener('click', closeTodo);
   if (todoModalBackdrop) {
     todoModalBackdrop.addEventListener('click', (e) => {
@@ -4682,12 +4721,30 @@ function setupNavigationAndModals() {
     });
   }
 
-  if (btnClearCompletedTodo) {
-    btnClearCompletedTodo.addEventListener('click', () => {
-      taskStore.clearCompletedTodoTasks();
+  if (btnClearTodoTasks) {
+    btnClearTodoTasks.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openConfirmClearTodoModal();
+    });
+  }
+
+  if (btnCancelClearTodo) {
+    btnCancelClearTodo.addEventListener('click', closeConfirmClearTodoModal);
+  }
+
+  if (confirmClearTodoModalBackdrop) {
+    confirmClearTodoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmClearTodoModalBackdrop) closeConfirmClearTodoModal();
+    });
+  }
+
+  if (btnConfirmClearTodo) {
+    btnConfirmClearTodo.addEventListener('click', () => {
+      closeConfirmClearTodoModal();
+      taskStore.saveTodoTasks([]);
       renderTodoList();
-      mobileServices.hapticTap();
-      showToastNotification('Cleared completed tasks');
+      mobileServices.hapticBuzz();
+      showToastNotification("✓ Cleared all To-Do tasks");
     });
   }
 
