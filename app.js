@@ -2699,7 +2699,7 @@ function setAddTaskType(type) {
 // ==========================================
 // Add Task Modal Logic (Unified Planning UI)
 // ==========================================
-function openAddTaskModal(defaultType = 'work') {
+function openAddTaskModal(defaultType = 'work', prefillData = null) {
   const modal = document.getElementById('addTaskModalBackdrop');
   if (!modal) return;
   const inputTitle = document.getElementById('addModalTitle');
@@ -2712,7 +2712,6 @@ function openAddTaskModal(defaultType = 'work') {
   const toggleLock = document.getElementById('addModalIsLocked');
   const emojiBadge = document.getElementById('addTaskHeaderEmoji');
 
-  if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
   if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '30';
   if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
   if (inputFixed) inputFixed.value = '';
@@ -2722,6 +2721,18 @@ function openAddTaskModal(defaultType = 'work') {
   if (toggleLock) toggleLock.checked = false;
 
   setAddTaskType(defaultType);
+
+  if (prefillData && prefillData.title) {
+    if (inputTitle) inputTitle.value = prefillData.title;
+  } else {
+    if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
+  }
+
+  if (prefillData && prefillData.emoji) {
+    currentAddTaskEmoji = prefillData.emoji;
+  } else {
+    currentAddTaskEmoji = defaultType === 'break' ? '☕' : '📚';
+  }
   if (emojiBadge) emojiBadge.textContent = currentAddTaskEmoji;
 
   syncModalToggleIcons();
@@ -4694,8 +4705,93 @@ function setupNavigationAndModals() {
 
   const btnCalendarAddTask = document.getElementById('btnCalendarAddTask');
   const btnCalendarAddBreak = document.getElementById('btnCalendarAddBreak');
+  const btnCalendarAddTodo = document.getElementById('btnCalendarAddTodo');
   const btnDrawerAddTask = document.getElementById('btnDrawerAddTask');
   const btnDrawerAddBreak = document.getElementById('btnDrawerAddBreak');
+  const btnDrawerAddTodo = document.getElementById('btnDrawerAddTodo');
+
+  // Select To-Do to Schedule Modal
+  const selectTodoModalBackdrop = document.getElementById('selectTodoModalBackdrop');
+  const btnCloseSelectTodoModal = document.getElementById('btnCloseSelectTodoModal');
+  const btnSelectTodoOpenNew = document.getElementById('btnSelectTodoOpenNew');
+
+  function openSelectTodoModal() {
+    if (!selectTodoModalBackdrop) return;
+    renderSelectTodoList();
+    selectTodoModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeSelectTodoModal() {
+    if (selectTodoModalBackdrop) selectTodoModalBackdrop.classList.add('hidden');
+  }
+
+  function renderSelectTodoList() {
+    const container = document.getElementById('selectTodoListContainer');
+    const emptyState = document.getElementById('selectTodoEmptyState');
+    if (!container) return;
+
+    const todos = taskStore.getTodoTasks();
+    if (!todos || todos.length === 0) {
+      container.innerHTML = '';
+      if (emptyState) emptyState.classList.remove('hidden');
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+    container.innerHTML = todos.map(todo => `
+      <div class="select-todo-item ${todo.completed ? 'completed' : ''}" data-id="${todo.id}">
+        <span class="select-todo-emoji">${todo.emoji || '📌'}</span>
+        <span class="select-todo-title">${escapeHtml(todo.title)}</span>
+        <svg class="select-todo-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.select-todo-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-id');
+        const todo = todos.find(t => t.id === id);
+        if (!todo) return;
+        closeSelectTodoModal();
+        mobileServices.hapticTap();
+        openAddTaskModal('work', {
+          title: todo.title,
+          emoji: todo.emoji || '📌'
+        });
+      });
+    });
+  }
+
+  if (btnCalendarAddTodo) {
+    btnCalendarAddTodo.addEventListener('click', () => {
+      openSelectTodoModal();
+    });
+  }
+
+  if (btnDrawerAddTodo) {
+    btnDrawerAddTodo.addEventListener('click', () => {
+      openSelectTodoModal();
+    });
+  }
+
+  if (btnCloseSelectTodoModal) {
+    btnCloseSelectTodoModal.addEventListener('click', closeSelectTodoModal);
+  }
+
+  if (selectTodoModalBackdrop) {
+    selectTodoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === selectTodoModalBackdrop) closeSelectTodoModal();
+    });
+  }
+
+  if (btnSelectTodoOpenNew) {
+    btnSelectTodoOpenNew.addEventListener('click', () => {
+      closeSelectTodoModal();
+      openTodo();
+    });
+  }
 
   if (btnCalendarAddTask) {
     btnCalendarAddTask.addEventListener('click', () => {

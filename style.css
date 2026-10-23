@@ -2945,24 +2945,27 @@ body {
   transform: translateX(-25%);
 }
 
-.btn-calendar-add-task {
+.btn-calendar-add-task,
+.btn-calendar-add-todo {
   flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   background: var(--primary);
   color: #0c0e14;
   border: none;
-  padding: 11px 16px;
+  padding: 10px 8px;
   border-radius: var(--radius-md);
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.18s ease;
+  white-space: nowrap;
 }
 
-.btn-calendar-add-task:active {
+.btn-calendar-add-task:active,
+.btn-calendar-add-todo:active {
   background: var(--primary-hover);
   transform: scale(0.97);
 }
@@ -2975,12 +2978,13 @@ body {
   background: rgba(245, 158, 11, 0.16);
   border: 1px solid rgba(245, 158, 11, 0.35);
   color: #fbbf24;
-  padding: 11px 16px;
+  padding: 10px 10px;
   border-radius: var(--radius-md);
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.18s ease;
+  white-space: nowrap;
 }
 
 .btn-calendar-add-break:active {
@@ -3805,5 +3809,91 @@ body {
   background: var(--primary, #38bdf8);
   color: #0b0f19;
   font-weight: 700;
+}
+
+/* ==========================================================================
+   Select To-Do Task Modal
+   ========================================================================== */
+.select-todo-modal {
+  max-width: 400px;
+  width: 92%;
+}
+
+#selectTodoModalBackdrop {
+  z-index: 1200 !important;
+}
+
+.select-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.select-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.select-todo-item:hover,
+.select-todo-item:active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: var(--primary);
+  transform: translateX(3px);
+}
+
+.select-todo-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.select-todo-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-main);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select-todo-item.completed {
+  opacity: 0.6;
+}
+
+.select-todo-item.completed .select-todo-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.select-todo-arrow {
+  color: var(--text-dim);
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.select-todo-item:hover .select-todo-arrow,
+.select-todo-item:active .select-todo-arrow {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+
+.select-todo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 16px;
+  gap: 10px;
 }
 
