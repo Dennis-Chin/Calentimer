@@ -4400,8 +4400,8 @@ function setupNavigationAndModals() {
   }
 
   // Swipe right on screen to smoothly open nav menu; swipe left to smoothly close
-  let navTouchStartX = 0;
-  let navTouchStartY = 0;
+  let navTouchStartX = null;
+  let navTouchStartY = null;
   let isNavSwiping = false;
   let isDrawerOpenAtTouchStart = false;
 
@@ -4411,21 +4411,39 @@ function setupNavigationAndModals() {
 
     // Guard: Never open side menu if ANY modal is currently open
     const openModal = document.querySelector('.modal-backdrop:not(.hidden)');
-    if (openModal) return;
+    if (openModal) {
+      navTouchStartX = null;
+      navTouchStartY = null;
+      return;
+    }
 
     // Guard: If touch starts inside Today's Tasks drawer or its header pull pill, ignore for nav menu
-    if (target.closest('.task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop, .drawer-header, .drawer-pull-pill')) {
+    if (target.closest('.task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop, .drawer-header, #drawerHeader, .drawer-pull-pill')) {
+      navTouchStartX = null;
+      navTouchStartY = null;
+      return;
+    }
+
+    // Guard: If touch starts inside or on the timer wheel/dial elements, ignore for nav menu
+    // This directly prevents thumb interactions on the dial from accidentally triggering the menu bar
+    if (target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
+      navTouchStartX = null;
+      navTouchStartY = null;
       return;
     }
 
     const touch = e.touches[0];
-    // Guard: Bottom 60px of viewport is where collapsed Today's Tasks tab header sits
-    if (touch && touch.clientY > window.innerHeight - 60) {
+    // Guard: Bottom 95px of viewport is where collapsed Today's Tasks tab header sits
+    if (touch && touch.clientY > window.innerHeight - 95) {
+      navTouchStartX = null;
+      navTouchStartY = null;
       return;
     }
 
-    // Never start nav menu swipe if Today's Tasks drawer is open
-    if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
+    // Never start nav menu swipe if Today's Tasks drawer is open or being interacted with
+    if (isDrawerTouching || isDrawerPullingUp || isDrawerPullingDown || (taskDrawer && !taskDrawer.classList.contains('collapsed'))) {
+      navTouchStartX = null;
+      navTouchStartY = null;
       return;
     }
 
@@ -4437,7 +4455,14 @@ function setupNavigationAndModals() {
 
   window.addEventListener('touchmove', (e) => {
     if (!navDrawer || !navDrawerBackdrop) return;
-    if (isDraggingOuterDial || isScrubbingGreenLine) return;
+    if (navTouchStartX === null || navTouchStartY === null) return;
+    if (isDraggingOuterDial || isScrubbingGreenLine || isDrawerTouching || isDrawerPullingUp || isDrawerPullingDown) {
+      if (isNavSwiping) {
+        isNavSwiping = false;
+        closeDrawer();
+      }
+      return;
+    }
 
     // If Today's Tasks drawer is open, never swipe menu
     if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
@@ -4455,8 +4480,13 @@ function setupNavigationAndModals() {
 
     if (!isDrawerOpenAtTouchStart) {
       // Swiping right from closed state:
-      // Accepts even sharp angles (diffX > Math.abs(diffY) * 0.4) and swiping from right portion of screen
-      if (diffX > 14 && diffX > Math.abs(diffY) * 0.4) {
+      // Only open the menu for milder/flatter angles of swiping left to right:
+      // - Horizontal movement must be at least 22px
+      // - If swiping upwards (diffY < 0), require diffX >= Math.abs(diffY) * 1.85 (angle <= 28 deg from horizontal)
+      // - If swiping downwards (diffY >= 0), require diffX >= diffY * 1.5 (angle <= 33 deg from horizontal)
+      // This strictly prevents steep upward swipes or dial thumb gestures from opening the menu
+      const maxAllowedVertical = diffY < 0 ? (diffX / 1.85) : (diffX / 1.5);
+      if (diffX > 22 && Math.abs(diffY) <= maxAllowedVertical) {
         isNavSwiping = true;
         navDrawer.style.transition = 'none';
         navDrawer.style.visibility = 'visible';
@@ -4468,7 +4498,7 @@ function setupNavigationAndModals() {
         navDrawer.style.transform = `translateX(${currentX}px)`;
         navDrawerBackdrop.style.opacity = progress.toString();
       }
-    } else if (isDrawerOpenAtTouchStart && diffX < -12) {
+    } else if (isDrawerOpenAtTouchStart && diffX < -15) {
       // Swiping left from open state: smoothly slide menu back left
       isNavSwiping = true;
       navDrawer.style.transition = 'none';
@@ -4482,16 +4512,22 @@ function setupNavigationAndModals() {
   }, { passive: true });
 
   window.addEventListener('touchend', (e) => {
-    if (!isNavSwiping || !navDrawer || !navDrawerBackdrop) return;
+    if (!isNavSwiping || !navDrawer || !navDrawerBackdrop) {
+      navTouchStartX = null;
+      navTouchStartY = null;
+      return;
+    }
     isNavSwiping = false;
-    const touch = e.changedTouches[0];
-    const diffX = touch.clientX - navTouchStartX;
+    const touch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+    const diffX = (touch && navTouchStartX !== null) ? (touch.clientX - navTouchStartX) : 0;
+    navTouchStartX = null;
+    navTouchStartY = null;
 
     navDrawer.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
     navDrawerBackdrop.style.transition = 'opacity 0.25s ease';
 
     if (!isDrawerOpenAtTouchStart) {
-      if (diffX > 35) {
+      if (diffX > 40) {
         openDrawer();
       } else {
         closeDrawer();

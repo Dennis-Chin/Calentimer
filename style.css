@@ -758,7 +758,7 @@ body {
   justify-content: flex-start;
   pointer-events: none;
   text-align: center;
-  padding: calc(50% - 70px) 15px 0;
+  padding: calc(50% - 66px) 15px 0;
   box-sizing: border-box;
   z-index: 10;
 }
