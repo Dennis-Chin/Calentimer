@@ -89,6 +89,11 @@ let currentDialRotationDeg = 0;
 let pendingMinuteAdjustment = 0;
 let lastAudibleMinuteTick = 0;
 
+// Today's Tasks Drawer Touch/Pull State (Global so nav menu gestures can inspect drawer interaction)
+let isDrawerTouching = false;
+let isDrawerPullingDown = false;
+let isDrawerPullingUp = false;
+
 // Initialize Timer Runtime
 let runtime = null;
 
@@ -1591,9 +1596,9 @@ function setupControls() {
   let drawerTouchStartY = 0;
   let drawerTouchStartX = 0;
   let drawerTouchStartTime = 0;
-  let isDrawerTouching = false;
-  let isDrawerPullingDown = false;
-  let isDrawerPullingUp = false;
+  isDrawerTouching = false;
+  isDrawerPullingDown = false;
+  isDrawerPullingUp = false;
 
   function onDrawerTouchStart(e) {
     if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
@@ -3400,38 +3405,56 @@ function renderTodoList() {
     let isSwiping = false;
     let holdTimer = null;
     let startIsOpen = false;
+    let currentShiftPct = 0;
 
     item.addEventListener('touchstart', (e) => {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
+      touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
       isSwiping = false;
+      currentShiftPct = 0;
       startIsOpen = item.classList.contains('swiped-open') || wrapper.classList.contains('has-swiped-open');
 
       holdTimer = setTimeout(() => {
         if (!isSwiping) {
           wrapper.classList.add('has-swiped-open');
           item.classList.add('swiped-open');
-          item.style.transform = 'translateX(-70px)';
+          item.style.removeProperty('transform');
           mobileServices.hapticWarning();
         }
       }, 500);
     }, { passive: true });
 
     item.addEventListener('touchmove', (e) => {
-      const diffX = e.touches[0].clientX - touchStartX;
-      const diffY = e.touches[0].clientY - touchStartY;
-      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact') || e.target.closest('[data-action="pick-todo-emoji"]')) {
+        return;
+      }
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+      const diffX = clientX - touchStartX;
+      const diffY = clientY - touchStartY;
+
+      if (Math.hypot(diffX, diffY) > 8) {
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
         }
       }
-      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
+
+      if (Math.abs(diffX) > 8 && Math.abs(diffX) * 1.3 >= Math.abs(diffY)) {
         isSwiping = true;
-        if (!startIsOpen && diffX < 0) {
-          item.style.transform = `translateX(${Math.max(-70, diffX)}px)`;
-        } else if (startIsOpen && diffX > 0) {
-          item.style.transform = `translateX(${Math.min(0, -70 + diffX)}px)`;
+        wrapper.classList.add('is-swiping');
+        const itemW = item.offsetWidth || 300;
+        const deltaPct = (diffX / itemW) * 100;
+        const basePct = startIsOpen ? -25 : 0;
+        currentShiftPct = Math.min(0, Math.max(-25, basePct + deltaPct));
+
+        item.style.transition = 'none';
+        item.style.transform = `translateX(${currentShiftPct}%)`;
+
+        if (currentShiftPct < -5) {
+          wrapper.classList.add('has-swiped-open');
+        } else {
+          wrapper.classList.remove('has-swiped-open');
         }
       }
     }, { passive: true });
@@ -3442,32 +3465,19 @@ function renderTodoList() {
         holdTimer = null;
       }
       if (isSwiping) {
-        const diffX = e.changedTouches[0].clientX - touchStartX;
-        item.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
-        if (!startIsOpen) {
-          if (diffX < -35) {
-            wrapper.classList.add('has-swiped-open');
-            item.classList.add('swiped-open');
-            item.style.transform = 'translateX(-70px)';
-          } else {
-            wrapper.classList.remove('has-swiped-open');
-            item.classList.remove('swiped-open');
-            item.style.transform = '';
-          }
+        wrapper.classList.remove('is-swiping');
+        item.style.transition = '';
+        item.style.removeProperty('transform');
+
+        if (currentShiftPct <= -12) {
+          wrapper.classList.add('has-swiped-open');
+          item.classList.add('swiped-open');
+          mobileServices.hapticTap();
         } else {
-          if (diffX > 25) {
-            wrapper.classList.remove('has-swiped-open');
-            item.classList.remove('swiped-open');
-            item.style.transform = '';
-          } else {
-            wrapper.classList.add('has-swiped-open');
-            item.classList.add('swiped-open');
-            item.style.transform = 'translateX(-70px)';
-          }
+          wrapper.classList.remove('has-swiped-open');
+          item.classList.remove('swiped-open');
         }
-        setTimeout(() => {
-          if (item) item.style.transition = '';
-        }, 220);
+        isSwiping = false;
       }
     });
 
@@ -3483,21 +3493,22 @@ function renderTodoList() {
       if (wrapper.classList.contains('has-swiped-open') || item.classList.contains('swiped-open')) {
         wrapper.classList.remove('has-swiped-open');
         item.classList.remove('swiped-open');
-        item.style.transform = '';
+        item.style.removeProperty('transform');
         e.stopPropagation();
       }
     });
 
     // Swiping right on deleteAction to slide X closed
     deleteAction.addEventListener('touchstart', (e) => {
-      touchStartX = e.touches[0].clientX;
+      touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
     }, { passive: true });
     deleteAction.addEventListener('touchmove', (e) => {
-      const diffX = e.touches[0].clientX - touchStartX;
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      const diffX = clientX - touchStartX;
       if (diffX > 15) {
         wrapper.classList.remove('has-swiped-open');
         item.classList.remove('swiped-open');
-        item.style.transform = '';
+        item.style.removeProperty('transform');
       }
     }, { passive: true });
 

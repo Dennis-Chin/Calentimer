@@ -2671,11 +2671,14 @@ body {
 
 .calendar-item-wrapper.has-swiped-open .calendar-swipe-delete-action,
 .calendar-item-wrapper.is-swiping .calendar-swipe-delete-action,
-.calendar-item-wrapper:has(.swiped-open) .calendar-swipe-delete-action {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  z-index: 1;
+.calendar-item-wrapper:has(.swiped-open) .calendar-swipe-delete-action,
+.todo-item-wrapper.has-swiped-open .calendar-swipe-delete-action,
+.todo-item-wrapper.is-swiping .calendar-swipe-delete-action,
+.todo-item-wrapper:has(.swiped-open) .calendar-swipe-delete-action {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
 }
 
 .btn-swipe-delete {
@@ -2941,12 +2944,63 @@ body {
   will-change: transform;
 }
 
-.calendar-block.swiped-open {
-  transform: translateX(-25%);
+.calendar-block.swiped-open,
+.todo-block.swiped-open {
+  transform: translateX(-25%) !important;
 }
 
-.btn-calendar-add-task,
+/* Today's Tasks drawer header clear button: hidden when collapsed, pops up when fully displayed */
+#btnClearDrawerSchedule {
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s ease;
+}
+
+.task-drawer.collapsed #btnClearDrawerSchedule {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: scale(0.75);
+}
+
+.task-drawer:not(.collapsed) #btnClearDrawerSchedule {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: scale(1);
+}
+
 .btn-calendar-add-todo {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: #38bdf8;
+  color: #082f49;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  padding: 10px 8px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.btn-calendar-add-todo:active {
+  background: #0284c7;
+  color: #ffffff;
+  transform: scale(0.97);
+}
+
+[data-theme="light"] .btn-calendar-add-todo {
+  background: #7dd3fc;
+  color: #0369a1;
+  border-color: #38bdf8;
+}
+
+.btn-calendar-add-task {
   flex: 1;
   display: inline-flex;
   align-items: center;
@@ -2957,15 +3011,16 @@ body {
   border: none;
   padding: 10px 8px;
   border-radius: var(--radius-md);
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 0.82rem;
+  letter-spacing: 0.2px;
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
 }
 
-.btn-calendar-add-task:active,
-.btn-calendar-add-todo:active {
+.btn-calendar-add-task:active {
   background: var(--primary-hover);
   transform: scale(0.97);
 }
@@ -2980,8 +3035,10 @@ body {
   color: #fbbf24;
   padding: 10px 10px;
   border-radius: var(--radius-md);
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 0.82rem;
+  letter-spacing: 0.2px;
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
