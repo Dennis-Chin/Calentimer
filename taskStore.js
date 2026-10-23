@@ -11,7 +11,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'calentimer_settings_v1',
   TIME_BANK: 'calentimer_time_bank_v1',
   CATEGORIES: 'calentimer_categories_v1',
-  ALERTS_ENABLED: 'calentimer_alerts_enabled_v1'
+  ALERTS_ENABLED: 'calentimer_alerts_enabled_v1',
+  DURATION_PRESETS: 'calentimer_duration_presets_v1'
 };
 
 const memoryStorage = {};
@@ -505,6 +506,67 @@ export class TaskStore {
       safeSetItem(STORAGE_KEYS.ALERTS_ENABLED, enabled ? 'true' : 'false');
       this._notify();
     } catch (e) {}
+  }
+  /**
+   * Gets remembered duration presets in ascending numerical order.
+   * @returns {number[]}
+   */
+  getDurationPresets() {
+    try {
+      const data = safeGetItem(STORAGE_KEYS.DURATION_PRESETS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(Number).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+        }
+      }
+    } catch (_) {}
+    return [15, 30, 45, 60, 90, 120];
+  }
+
+  /**
+   * Saves duration presets.
+   * @param {number[]} presets 
+   * @returns {number[]}
+   */
+  saveDurationPresets(presets) {
+    const list = Array.isArray(presets) ? presets : [];
+    const unique = [];
+    list.map(Number).filter(n => !isNaN(n) && n > 0).forEach(n => {
+      if (unique.indexOf(n) === -1) unique.push(n);
+    });
+    unique.sort((a, b) => a - b);
+    try {
+      safeSetItem(STORAGE_KEYS.DURATION_PRESETS, JSON.stringify(unique));
+      this._notify();
+    } catch (_) {}
+    return unique;
+  }
+
+  /**
+   * Adds a new preset and saves.
+   * @param {number|string} min 
+   * @returns {number[]}
+   */
+  addDurationPreset(min) {
+    const n = parseInt(min, 10);
+    if (isNaN(n) || n <= 0) return this.getDurationPresets();
+    const current = this.getDurationPresets();
+    if (current.indexOf(n) === -1) {
+      current.push(n);
+    }
+    return this.saveDurationPresets(current);
+  }
+
+  /**
+   * Deletes a preset and saves.
+   * @param {number|string} min 
+   * @returns {number[]}
+   */
+  deleteDurationPreset(min) {
+    const n = parseInt(min, 10);
+    const current = this.getDurationPresets().filter(m => m !== n);
+    return this.saveDurationPresets(current);
   }
 }
 

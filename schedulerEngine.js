@@ -330,8 +330,12 @@ export function calculateSchedule(config) {
 
   const totalPlannedMinutes = totalLockedMinutes + totalUnlockedMinutes;
 
-  // 5. Error rule: Locked tasks alone exceed available time
-  if (!disableHardStop && totalLockedMinutes > availableMinutes) {
+  // 5. Compression Mechanic (Isolated: Disabled by default across the entire app)
+  // Tasks retain full duration. Padlock is strictly for rigidity (stops moving/time adjustments).
+  // Hard Stop is strictly target finish time.
+  const enableCompression = Boolean(options.enableCompression);
+
+  if (enableCompression && !disableHardStop && totalLockedMinutes > availableMinutes) {
     return {
       success: false,
       error: {
@@ -346,18 +350,18 @@ export function calculateSchedule(config) {
     };
   }
 
-  // 6. Compression / Duration Allocation
+  // 6. Duration Allocation
   const allocatedDurations = new Array(tasks.length);
   let isCompressed = false;
   let compressionRatio = 1.0;
 
-  if (disableHardStop || totalPlannedMinutes <= availableMinutes) {
-    // Case A: Everything fits without compression (or Hard Stop disabled)
+  if (!enableCompression || disableHardStop || totalPlannedMinutes <= availableMinutes) {
+    // Normal / Uncompressed mode: Every task retains exact planned duration without shrinking
     tasks.forEach((task, idx) => {
-      allocatedDurations[idx] = Math.round(task.plannedDuration);
+      allocatedDurations[idx] = Math.max(1, Math.round(task.plannedDuration || 1));
     });
   } else {
-    // Case B: Compression required
+    // Isolated legacy compression mode (only if options.enableCompression === true)
     isCompressed = true;
     const availableForUnlocked = availableMinutes - totalLockedMinutes;
 

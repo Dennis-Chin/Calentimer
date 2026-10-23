@@ -469,13 +469,31 @@
 
         <!-- Optional Time Span (Start & End Time) -->
         <div class="edit-task-row time-span-row">
-          <div class="edit-task-form-group" style="flex: 1;">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">Start Time (Optional)</label>
-            <input type="text" inputmode="numeric" id="addModalStartTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="Start Time">
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="addModalStartTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="Start Time">
+              <button type="button" class="time-clock-addon-btn" id="btnAddModalStartTimeClock" title="Pick start time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="addModalStartTimeNative" tabindex="-1">
+            </div>
           </div>
-          <div class="edit-task-form-group" style="flex: 1;">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">End Time (Optional)</label>
-            <input type="text" inputmode="numeric" id="addModalEndTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="End Time">
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="addModalEndTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="End Time">
+              <button type="button" class="time-clock-addon-btn" id="btnAddModalEndTimeClock" title="Pick end time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="addModalEndTimeNative" tabindex="-1">
+            </div>
           </div>
         </div>
 
@@ -489,11 +507,6 @@
           <div class="category-chips-list" id="addModalCategoryChips">
             <!-- Rendered dynamically with × delete button -->
           </div>
-        </div>
-
-        <div class="edit-task-form-group">
-          <label class="edit-task-label">Fixed Start Time (Optional)</label>
-          <input type="text" inputmode="numeric" id="addModalFixedTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="Sets immovable start time">
         </div>
 
         <div class="setting-row" style="margin-top: 6px;">
@@ -511,6 +524,24 @@
           </div>
           <label class="toggle-switch">
             <input type="checkbox" id="addModalTimeBank" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row" style="margin-top: 6px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="modal-toggle-icon lock-toggle-icon" id="addModalLockIcon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </span>
+              <span class="setting-label">Lock Duration</span>
+            </div>
+            <span class="setting-desc">Prevent task from being moved or time adjusted</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="addModalIsLocked">
             <span class="toggle-slider"></span>
           </label>
         </div>
@@ -570,13 +601,31 @@
 
         <!-- Optional Time Span (Start & End Time) -->
         <div class="edit-task-row time-span-row">
-          <div class="edit-task-form-group" style="flex: 1;">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">Start Time (Optional)</label>
-            <input type="text" inputmode="numeric" id="editTaskStartTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="Start Time">
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="editTaskStartTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="Start Time">
+              <button type="button" class="time-clock-addon-btn" id="btnEditTaskStartTimeClock" title="Pick start time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="editTaskStartTimeNative" tabindex="-1">
+            </div>
           </div>
-          <div class="edit-task-form-group" style="flex: 1;">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">End Time (Optional)</label>
-            <input type="text" inputmode="numeric" id="editTaskEndTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="End Time">
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="editTaskEndTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" title="End Time">
+              <button type="button" class="time-clock-addon-btn" id="btnEditTaskEndTimeClock" title="Pick end time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="editTaskEndTimeNative" tabindex="-1">
+            </div>
           </div>
         </div>
 
@@ -587,12 +636,6 @@
             <button type="button" class="btn-add-category hidden" id="btnEditAddCategory" title="Add this category to remembered list">+ Add</button>
           </div>
           <div class="category-chips-list" id="editModalCategoryChips"></div>
-        </div>
-
-        <div class="edit-task-form-group">
-          <label class="edit-task-label">Fixed Start Time (Optional)</label>
-          <input type="text" inputmode="numeric" id="editTaskFixedTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5">
-          <span class="setting-desc" style="margin-top: 2px;">Set a fixed start time if this task cannot move.</span>
         </div>
 
         <div class="setting-row" style="margin-top: 6px;">
@@ -624,7 +667,7 @@
               </span>
               <span class="setting-label">Lock Duration</span>
             </div>
-            <span class="setting-desc">Prevent scheduler from compressing this task</span>
+            <span class="setting-desc">Prevent task from being moved or time adjusted</span>
           </div>
           <label class="toggle-switch">
             <input type="checkbox" id="editTaskIsLocked">
@@ -691,16 +734,20 @@
       </div>
       <div class="modal-body duration-dial-body">
         <div class="dial-picker-container" id="dialPickerContainer">
-          <svg class="picker-rotary-svg" id="pickerRotarySvg" viewBox="0 0 260 260">
-            <circle cx="130" cy="130" r="114" class="picker-bg-track"/>
-            <g id="pickerTicksGroup"></g>
-            <circle cx="130" cy="130" r="95" class="picker-inner-track"/>
-            <circle cx="130" cy="130" r="95" class="picker-progress-arc" id="pickerProgressArc"/>
-            <circle id="pickerGreenHandle" cx="130" cy="35" r="9" class="picker-green-handle"/>
+          <svg class="picker-rotary-svg" id="pickerRotarySvg" viewBox="0 0 320 320">
+            <!-- Outer Rotatable Dial Bezel with notches (Visibly turns when dragged) -->
+            <g id="pickerRotaryDialGroup" class="rotary-dial-group">
+              <circle class="dial-hit-ring" id="pickerDialHitRing" cx="160" cy="160" r="145" stroke="transparent" stroke-width="50" fill="none" pointer-events="stroke" cursor="grab" />
+              <circle class="bezel-rim" cx="160" cy="160" r="150" />
+              <g id="pickerTicksGroup" class="dial-ticks-group"></g>
+            </g>
+
+            <!-- Stationary Progress Track -->
+            <circle class="track-bg" cx="160" cy="160" r="130" />
           </svg>
           <div class="picker-center-display">
-            <input type="text" class="picker-digital-input" id="pickerDigitalInput" value="30:00" maxlength="5" title="Tap to enter exact minutes and seconds">
-            <span class="picker-hint">Rotate outer ticks for min • Green for sec</span>
+            <input type="text" class="picker-digital-input" id="pickerDigitalInput" value="30m" maxlength="5" inputmode="numeric" title="Tap to enter exact minutes">
+            <span class="picker-hint">Rotate outer dial to adjust duration</span>
           </div>
         </div>
         <div class="picker-quick-chips" id="pickerQuickChips">

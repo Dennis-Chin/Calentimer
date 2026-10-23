@@ -2559,6 +2559,12 @@ function syncModalToggleIcons() {
     addPiggy.classList.toggle('active', Boolean(addBank.checked));
   }
 
+  const addLock = document.getElementById('addModalIsLocked');
+  const addLockIcon = document.getElementById('addModalLockIcon');
+  if (addLockIcon && addLock) {
+    addLockIcon.classList.toggle('active', Boolean(addLock.checked));
+  }
+
   const editBank = document.getElementById('editTaskTimeBank');
   const editPiggy = document.getElementById('editModalPiggyIcon');
   if (editPiggy && editBank) {
@@ -2655,6 +2661,7 @@ function openAddTaskModal(defaultType = 'work') {
   const inputStart = document.getElementById('addModalStartTime');
   const inputEnd = document.getElementById('addModalEndTime');
   const toggleBank = document.getElementById('addModalTimeBank');
+  const toggleLock = document.getElementById('addModalIsLocked');
   const emojiBadge = document.getElementById('addTaskHeaderEmoji');
 
   if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
@@ -2664,11 +2671,13 @@ function openAddTaskModal(defaultType = 'work') {
   if (inputStart) inputStart.value = '';
   if (inputEnd) inputEnd.value = '';
   if (toggleBank) toggleBank.checked = defaultType !== 'break';
+  if (toggleLock) toggleLock.checked = false;
 
   setAddTaskType(defaultType);
   if (emojiBadge) emojiBadge.textContent = currentAddTaskEmoji;
 
   syncModalToggleIcons();
+  if (typeof renderAllDurationPresetChips === 'function') renderAllDurationPresetChips();
   if (refreshAddCategoryChips) refreshAddCategoryChips();
 
   modal.classList.remove('hidden');
@@ -2718,6 +2727,7 @@ function openTaskEditModal(taskId) {
   if (editTaskTimeBank) editTaskTimeBank.checked = task.useTimeBank !== false;
 
   syncModalToggleIcons();
+  if (typeof renderAllDurationPresetChips === 'function') renderAllDurationPresetChips();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
 
   (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.remove("hidden"); })();
@@ -3238,31 +3248,125 @@ function setupNavigationAndModals() {
     });
   }
 
-  // Quick duration chips in Add Task modal
-  const durationChips = document.querySelectorAll('#addModalDurationChips .duration-chip');
-  durationChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      const dur = chip.getAttribute('data-min');
-      const inputDur = document.getElementById('addModalDuration');
-      if (inputDur && dur) {
-        inputDur.value = dur;
-        durationChips.forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        updateAddModalEndTimeFromDuration();
+  // Dynamic duration presets rendering with "+" button & long-press deletion
+  function renderAllDurationPresetChips() {
+    const presets = taskStore.getDurationPresets();
+
+    function populateContainer(containerId, inputElement, onChangeCallback) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      const currentVal = inputElement ? parseInt(inputElement.value, 10) : 0;
+
+      presets.forEach(min => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'duration-chip' + (min === currentVal ? ' active' : '');
+        chip.setAttribute('data-min', String(min));
+        chip.textContent = min + 'm';
+
+        let holdTimer = null;
+        let hasLongPressed = false;
+
+        function startHold() {
+          hasLongPressed = false;
+          holdTimer = setTimeout(() => {
+            hasLongPressed = true;
+            mobileServices.hapticWarning();
+            const confirmed = window.confirm('Delete the ' + min + 'm duration preset?');
+            if (confirmed) {
+              taskStore.deleteDurationPreset(min);
+              renderAllDurationPresetChips();
+              showToastNotification('Removed ' + min + 'm preset');
+            }
+          }, 550);
+        }
+
+        function cancelHold() {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+        }
+
+        chip.addEventListener('mousedown', startHold);
+        chip.addEventListener('touchstart', startHold, { passive: true });
+        chip.addEventListener('mouseup', cancelHold);
+        chip.addEventListener('mouseleave', cancelHold);
+        chip.addEventListener('touchend', cancelHold);
+        chip.addEventListener('touchcancel', cancelHold);
+
+        chip.addEventListener('click', (e) => {
+          if (hasLongPressed) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (inputElement) {
+            inputElement.value = min;
+            inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+            inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          container.querySelectorAll('.duration-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          if (onChangeCallback) onChangeCallback(min);
+          mobileServices.hapticTap();
+        });
+
+        container.appendChild(chip);
+      });
+
+      // "+" button to add custom duration preset
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'duration-chip duration-chip-add-btn';
+      addBtn.title = 'Add custom duration preset';
+      addBtn.textContent = '+';
+      addBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         mobileServices.hapticTap();
-      }
+        const entered = window.prompt('Enter new duration preset in minutes (e.g. 20, 75):');
+        if (entered) {
+          const parsed = parseInt(entered.trim(), 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed <= 720) {
+            taskStore.addDurationPreset(parsed);
+            renderAllDurationPresetChips();
+            showToastNotification('✓ Added ' + parsed + 'm preset');
+          } else {
+            showToastNotification('Please enter a valid number of minutes (1 to 720).');
+          }
+        }
+      });
+      container.appendChild(addBtn);
+    }
+
+    const addInput = document.getElementById('addModalDuration');
+    populateContainer('addModalDurationChips', addInput, () => {
+      updateAddModalEndTimeFromDuration();
     });
-  });
+
+    const editInput = document.getElementById('editTaskDuration');
+    populateContainer('editModalDurationChips', editInput, () => {
+      updateEditModalEndTimeFromDuration();
+    });
+
+    populateContainer('pickerQuickChips', null, (min) => {
+      pickerMinutes = min;
+      updatePickerVisuals();
+    });
+  }
+  window.renderAllDurationPresetChips = renderAllDurationPresetChips;
+  renderAllDurationPresetChips();
 
   // ==========================================
   // Interactive Rotary Duration Dial Picker Modal
   // ==========================================
   let currentPickerTarget = null;
   let currentPickerCallingModal = null;
-  let pickerMinutes = 25;
-  let pickerSeconds = 0;
-  let isDraggingPickerMinutes = false;
-  let isDraggingPickerSeconds = false;
+  let pickerMinutes = 30;
+  let isDraggingPickerDial = false;
+  let pickerDialRotationDeg = 0;
   let pickerDialStartAngleRad = 0;
   let pickerAccumulatedDeltaDeg = 0;
 
@@ -3271,33 +3375,33 @@ function setupNavigationAndModals() {
   const btnCancelDurationDial = document.getElementById('btnCancelDurationDial');
   const btnConfirmDurationDial = document.getElementById('btnConfirmDurationDial');
   const pickerRotarySvg = document.getElementById('pickerRotarySvg');
+  const pickerRotaryDialGroup = document.getElementById('pickerRotaryDialGroup');
+  const pickerDialHitRing = document.getElementById('pickerDialHitRing');
   const pickerTicksGroup = document.getElementById('pickerTicksGroup');
-  const pickerProgressArc = document.getElementById('pickerProgressArc');
-  const pickerGreenHandle = document.getElementById('pickerGreenHandle');
   const pickerDigitalInput = document.getElementById('pickerDigitalInput');
   const durationDialTaskTitle = document.getElementById('durationDialTaskTitle');
   const durationDialTimeSpan = document.getElementById('durationDialTimeSpan');
 
-  function renderPickerTicks(isBreak = false) {
+  function renderPickerTicks(isBreak) {
     if (!pickerTicksGroup) return;
     pickerTicksGroup.innerHTML = '';
     const majorColor = isBreak ? '#f59e0b' : 'var(--accent-cyan)';
     for (let i = 0; i < 60; i++) {
       const isMajor = i % 5 === 0;
       const angleRad = (i * 6 - 90) * (Math.PI / 180);
-      const r1 = isMajor ? 104 : 109;
-      const r2 = 118;
-      const x1 = 130 + r1 * Math.cos(angleRad);
-      const y1 = 130 + r1 * Math.sin(angleRad);
-      const x2 = 130 + r2 * Math.cos(angleRad);
-      const y2 = 130 + r2 * Math.sin(angleRad);
+      const r1 = isMajor ? 133 : 139;
+      const r2 = 151;
+      const x1 = 160 + r1 * Math.cos(angleRad);
+      const y1 = 160 + r1 * Math.sin(angleRad);
+      const x2 = 160 + r2 * Math.cos(angleRad);
+      const y2 = 160 + r2 * Math.sin(angleRad);
 
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', x1);
       line.setAttribute('y1', y1);
       line.setAttribute('x2', x2);
       line.setAttribute('y2', y2);
-      line.setAttribute('class', `dial-tick ${isMajor ? 'major' : ''}`);
+      line.setAttribute('class', 'dial-tick' + (isMajor ? ' major' : ''));
       line.style.stroke = isMajor ? majorColor : 'rgba(255, 255, 255, 0.28)';
       line.style.strokeWidth = isMajor ? '3.5' : '2';
       line.style.strokeLinecap = 'round';
@@ -3310,64 +3414,47 @@ function setupNavigationAndModals() {
     const startInput = currentPickerCallingModal === 'add'
       ? document.getElementById('addModalStartTime')
       : document.getElementById('editTaskStartTime');
-    const startVal = (startInput ? startInput.value : "");
+    const startVal = (startInput ? startInput.value : "").trim();
 
-    if (startVal) {
+    if (startVal && startVal.length === 5) {
       const startMin = parseTimeToMinutes(startVal);
-      const endMin = (startMin + pickerMinutes + (pickerSeconds > 0 ? 1 : 0)) % 1440;
-      durationDialTimeSpan.textContent = `${startVal} → ${formatMinutesToTime(endMin)}`;
+      const endMin = (startMin + pickerMinutes) % 1440;
+      durationDialTimeSpan.textContent = startVal + ' → ' + formatMinutesToTime(endMin) + ' (' + pickerMinutes + 'm)';
     } else {
-      durationDialTimeSpan.textContent = pickerSeconds > 0
-        ? `${pickerMinutes}m ${pickerSeconds}s`
-        : `${pickerMinutes} minutes`;
+      durationDialTimeSpan.textContent = pickerMinutes + ' minutes';
     }
   }
 
   function updatePickerVisuals() {
-    const arcCircum = 2 * Math.PI * 95;
-    const secRatio = (pickerSeconds % 60) / 60;
-
-    if (pickerProgressArc) {
-      pickerProgressArc.style.strokeDasharray = arcCircum;
-      pickerProgressArc.style.strokeDashoffset = arcCircum * (1 - secRatio);
-    }
-
-    if (pickerGreenHandle) {
-      const angleRad = (secRatio * 360 - 90) * (Math.PI / 180);
-      const cx = 130 + 95 * Math.cos(angleRad);
-      const cy = 130 + 95 * Math.sin(angleRad);
-      pickerGreenHandle.setAttribute('cx', cx);
-      pickerGreenHandle.setAttribute('cy', cy);
-    }
-
     if (pickerDigitalInput && document.activeElement !== pickerDigitalInput) {
-      pickerDigitalInput.value = `${pickerMinutes}:${String(pickerSeconds).padStart(2, '0')}`;
+      pickerDigitalInput.value = pickerMinutes + 'm';
     }
-
     updatePickerSubtitle();
-
     document.querySelectorAll('#pickerQuickChips .duration-chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('data-min') === String(pickerMinutes) && pickerSeconds === 0);
+      c.classList.toggle('active', c.getAttribute('data-min') === String(pickerMinutes));
     });
   }
 
-  function openDurationDialPicker(targetInput, callingModal = 'add') {
+  function openDurationDialPicker(targetInput, callingModal) {
     currentPickerTarget = targetInput;
-    currentPickerCallingModal = callingModal;
+    currentPickerCallingModal = callingModal || 'add';
 
-    const titleInput = callingModal === 'add'
+    const titleInput = currentPickerCallingModal === 'add'
       ? document.getElementById('addModalTitle')
       : document.getElementById('editTaskTitle');
-    const taskTitle = (titleInput ? titleInput.value : "").trim() || (callingModal === 'add' ? 'New Task' : 'Edit Task');
+    const taskTitle = (titleInput ? titleInput.value : "").trim() || (currentPickerCallingModal === 'add' ? 'New Task' : 'Edit Task');
 
     if (durationDialTaskTitle) durationDialTaskTitle.textContent = taskTitle;
 
-    pickerMinutes = Math.max(1, parseInt((targetInput ? targetInput.value : ""), 10) || 25);
-    pickerSeconds = 0;
+    pickerMinutes = Math.max(1, parseInt((targetInput ? targetInput.value : ""), 10) || 30);
+    pickerDialRotationDeg = 0;
     pickerAccumulatedDeltaDeg = 0;
+    if (pickerRotaryDialGroup) {
+      pickerRotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
+    }
 
     let isBreak = false;
-    if (callingModal === 'add') {
+    if (currentPickerCallingModal === 'add') {
       const catInput = document.getElementById('addModalCategory');
       const titleInput = document.getElementById('addModalTitle');
       isBreak = (currentAddTaskType === 'break') || ((catInput ? catInput.value : "").toLowerCase() === 'break') || ((titleInput ? titleInput.value : "").toLowerCase() === 'break');
@@ -3378,14 +3465,19 @@ function setupNavigationAndModals() {
     }
 
     renderPickerTicks(isBreak);
+    renderAllDurationPresetChips();
     updatePickerVisuals();
 
-    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.remove("hidden");
+    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
   }
 
   function closeDurationDialPicker() {
-    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.add("hidden");
+    if (durationDialModalBackdrop) durationDialModalBackdrop.classList.add('hidden');
+    pickerDialRotationDeg = 0;
+    if (pickerRotaryDialGroup) {
+      pickerRotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
+    }
   }
 
   if (btnCloseDurationDial) btnCloseDurationDial.addEventListener('click', closeDurationDialPicker);
@@ -3408,33 +3500,20 @@ function setupNavigationAndModals() {
     });
   }
 
-  document.querySelectorAll('#pickerQuickChips .duration-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      mobileServices.hapticTap();
-      const val = parseInt(chip.getAttribute('data-min'), 10) || 25;
-      pickerMinutes = val;
-      pickerSeconds = 0;
-      updatePickerVisuals();
-    });
-  });
-
   if (pickerDigitalInput) {
     pickerDigitalInput.addEventListener('input', () => {
-      const val = pickerDigitalInput.value.trim();
-      if (val.includes(':')) {
-        const [m, s] = val.split(':');
-        const mins = parseInt(m, 10);
-        const secs = parseInt(s, 10);
-        if (!isNaN(mins)) pickerMinutes = Math.max(1, mins);
-        if (!isNaN(secs)) pickerSeconds = Math.max(0, Math.min(59, secs));
-      } else {
-        const mins = parseInt(val, 10);
-        if (!isNaN(mins)) {
-          pickerMinutes = Math.max(1, mins);
-          pickerSeconds = 0;
-        }
+      const raw = pickerDigitalInput.value.replace(/[^0-9]/g, '');
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        pickerMinutes = Math.min(720, parsed);
+        updatePickerSubtitle();
+        document.querySelectorAll('#pickerQuickChips .duration-chip').forEach(c => {
+          c.classList.toggle('active', c.getAttribute('data-min') === String(pickerMinutes));
+        });
       }
-      updatePickerVisuals();
+    });
+    pickerDigitalInput.addEventListener('blur', () => {
+      pickerDigitalInput.value = pickerMinutes + 'm';
     });
   }
 
@@ -3456,68 +3535,52 @@ function setupNavigationAndModals() {
 
   function onPickerPointerStart(e) {
     if (e.target && e.target.id === 'pickerDigitalInput') return;
-
     const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
     const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
     const radius = getPickerRadius(clientX, clientY);
 
-    if (radius < 45) return;
+    // Grab on outer bezel ticks area (radius >= 55)
+    if (radius < 55) return;
     if (e.cancelable) e.preventDefault();
 
+    isDraggingPickerDial = true;
     pickerDialStartAngleRad = getPickerAngle(clientX, clientY);
     pickerAccumulatedDeltaDeg = 0;
-
-    if (radius >= 92) {
-      isDraggingPickerMinutes = true;
-    } else {
-      isDraggingPickerSeconds = true;
-      let clockDeg = (pickerDialStartAngleRad * (180 / Math.PI) + 90) % 360;
-      if (clockDeg < 0) clockDeg += 360;
-      pickerSeconds = Math.round((clockDeg / 360) * 60) % 60;
-      updatePickerVisuals();
-      mobileServices.hapticTick();
-      audioManager.playRotaryTick();
-    }
   }
 
   function onPickerPointerMove(e) {
-    if (!isDraggingPickerMinutes && !isDraggingPickerSeconds) return;
+    if (!isDraggingPickerDial) return;
     if (e.cancelable) e.preventDefault();
     const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
     const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
     const currentAngleRad = getPickerAngle(clientX, clientY);
 
-    if (isDraggingPickerMinutes) {
-      let diff = (currentAngleRad - pickerDialStartAngleRad) * (180 / Math.PI);
-      if (diff > 180) diff -= 360;
-      if (diff < -180) diff += 360;
-      pickerDialStartAngleRad = currentAngleRad;
-      pickerAccumulatedDeltaDeg += diff;
+    let diff = (currentAngleRad - pickerDialStartAngleRad) * (180 / Math.PI);
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
 
-      const minutesDelta = Math.round(pickerAccumulatedDeltaDeg / 6);
-      if (minutesDelta !== 0) {
-        pickerMinutes = Math.max(1, pickerMinutes + minutesDelta);
-        pickerAccumulatedDeltaDeg -= minutesDelta * 6;
-        mobileServices.hapticTick();
-        audioManager.playRotaryTick();
-        updatePickerVisuals();
-      }
-    } else if (isDraggingPickerSeconds) {
-      let clockDeg = (currentAngleRad * (180 / Math.PI) + 90) % 360;
-      if (clockDeg < 0) clockDeg += 360;
-      const targetSec = Math.round((clockDeg / 360) * 60) % 60;
-      if (targetSec !== pickerSeconds) {
-        pickerSeconds = targetSec;
-        mobileServices.hapticTick();
-        audioManager.playRotaryTick();
-        updatePickerVisuals();
-      }
+    pickerDialStartAngleRad = currentAngleRad;
+    pickerDialRotationDeg += diff;
+    pickerAccumulatedDeltaDeg += diff;
+
+    // Physically rotate outer bezel ticks
+    if (pickerRotaryDialGroup) {
+      pickerRotaryDialGroup.setAttribute('transform', 'rotate(' + pickerDialRotationDeg + ' 160 160)');
+    }
+
+    // 6 degrees of rotation = 1 minute
+    const minutesDelta = Math.round(pickerAccumulatedDeltaDeg / 6);
+    if (minutesDelta !== 0) {
+      pickerMinutes = Math.max(1, Math.min(720, pickerMinutes + minutesDelta));
+      pickerAccumulatedDeltaDeg -= minutesDelta * 6;
+      audioManager.playRotaryTick();
+      mobileServices.hapticTick();
+      updatePickerVisuals();
     }
   }
 
   function onPickerPointerEnd() {
-    isDraggingPickerMinutes = false;
-    isDraggingPickerSeconds = false;
+    isDraggingPickerDial = false;
   }
 
   const dialPickerContainer = document.getElementById('dialPickerContainer');
@@ -3527,15 +3590,15 @@ function setupNavigationAndModals() {
   }
 
   window.addEventListener('mousemove', (e) => {
-    if (isDraggingPickerMinutes || isDraggingPickerSeconds) onPickerPointerMove(e);
+    if (isDraggingPickerDial) onPickerPointerMove(e);
   });
   window.addEventListener('touchmove', (e) => {
-    if (isDraggingPickerMinutes || isDraggingPickerSeconds) onPickerPointerMove(e);
+    if (isDraggingPickerDial) onPickerPointerMove(e);
   }, { passive: false });
   window.addEventListener('mouseup', onPickerPointerEnd);
   window.addEventListener('touchend', onPickerPointerEnd);
 
-  // Trigger bindings for rotary dial picker (only opened by clock button; inputs allow manual numberpad entry)
+  // Trigger bindings for duration dial picker
   const addModalDurationInput = document.getElementById('addModalDuration');
   const btnAddModalOpenDial = document.getElementById('btnAddModalOpenDial');
   const editTaskDurationInput = document.getElementById('editTaskDuration');
@@ -3548,17 +3611,59 @@ function setupNavigationAndModals() {
     btnEditModalOpenDial.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
   }
 
-  // Auto-colon formatter for time-num-input fields (e.g. typing "1430" auto-becomes "14:30")
+  // Auto-colon formatter for time-num-input fields (fills HH:MM from left to right)
   document.querySelectorAll('.time-num-input').forEach(input => {
-    input.addEventListener('input', () => {
-      let val = input.value.replace(/[^0-9:]/g, '');
-      if (!val.includes(':') && val.length >= 3) {
-        val = val.slice(0, 2) + ':' + val.slice(2, 4);
+    input.addEventListener('input', (e) => {
+      let raw = input.value.replace(/[^0-9]/g, '');
+      if (raw.length > 4) raw = raw.slice(0, 4);
+
+      if (raw.length >= 3) {
+        input.value = raw.slice(0, 2) + ':' + raw.slice(2);
+      } else if (raw.length === 2 && e.inputType !== 'deleteContentBackward') {
+        input.value = raw + ':';
+      } else {
+        input.value = raw;
       }
-      if (val.length > 5) val = val.slice(0, 5);
-      input.value = val;
     });
   });
+
+  // Setup clock picker buttons inside time input boxes
+  function bindClockPicker(btnId, nativeInputId, textInputId, onTimeSelected) {
+    const btn = document.getElementById(btnId);
+    const nativeInput = document.getElementById(nativeInputId);
+    const textInput = document.getElementById(textInputId);
+
+    if (btn && nativeInput) {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mobileServices.hapticTap();
+        if (textInput && textInput.value && textInput.value.length === 5) {
+          nativeInput.value = textInput.value;
+        }
+        if (typeof nativeInput.showPicker === 'function') {
+          try {
+            nativeInput.showPicker();
+          } catch (err) {
+            nativeInput.focus();
+            nativeInput.click();
+          }
+        } else {
+          nativeInput.focus();
+          nativeInput.click();
+        }
+      });
+
+      nativeInput.addEventListener('change', () => {
+        if (nativeInput.value && textInput) {
+          textInput.value = nativeInput.value;
+          textInput.dispatchEvent(new Event('input', { bubbles: true }));
+          textInput.dispatchEvent(new Event('change', { bubbles: true }));
+          if (onTimeSelected) onTimeSelected();
+        }
+      });
+    }
+  }
 
   // Start & End Time calculation listeners for Add Task Modal
   const addModalStartTime = document.getElementById('addModalStartTime');
@@ -3586,20 +3691,32 @@ function setupNavigationAndModals() {
     if (addModalEndTime) addModalEndTime.value = formatMinutesToTime(endMin);
   }
 
+  bindClockPicker('btnAddModalStartTimeClock', 'addModalStartTimeNative', 'addModalStartTime', () => {
+    if (addModalEndTime && addModalEndTime.value) {
+      updateAddModalDurationFromTimeSpan();
+    } else {
+      updateAddModalEndTimeFromDuration();
+    }
+  });
+
+  bindClockPicker('btnAddModalEndTimeClock', 'addModalEndTimeNative', 'addModalEndTime', () => {
+    updateAddModalDurationFromTimeSpan();
+  });
+
   if (addModalStartTime) {
     addModalStartTime.addEventListener('input', () => {
       if (addModalStartTime.value.length === 5) {
-        if ((addModalEndTime && addModalEndTime.value)) {
+        if (addModalEndTime && addModalEndTime.value) {
           updateAddModalDurationFromTimeSpan();
-        } else if ((addModalDurationInput && addModalDurationInput.value)) {
+        } else if (addModalDurationInput && addModalDurationInput.value) {
           updateAddModalEndTimeFromDuration();
         }
       }
     });
     addModalStartTime.addEventListener('change', () => {
-      if ((addModalEndTime && addModalEndTime.value)) {
+      if (addModalEndTime && addModalEndTime.value) {
         updateAddModalDurationFromTimeSpan();
-      } else if ((addModalDurationInput && addModalDurationInput.value)) {
+      } else if (addModalDurationInput && addModalDurationInput.value) {
         updateAddModalEndTimeFromDuration();
       }
     });
@@ -3647,20 +3764,32 @@ function setupNavigationAndModals() {
     if (editTaskEndTime) editTaskEndTime.value = formatMinutesToTime(endMin);
   }
 
+  bindClockPicker('btnEditTaskStartTimeClock', 'editTaskStartTimeNative', 'editTaskStartTime', () => {
+    if (editTaskEndTime && editTaskEndTime.value) {
+      updateEditModalDurationFromTimeSpan();
+    } else {
+      updateEditModalEndTimeFromDuration();
+    }
+  });
+
+  bindClockPicker('btnEditTaskEndTimeClock', 'editTaskEndTimeNative', 'editTaskEndTime', () => {
+    updateEditModalDurationFromTimeSpan();
+  });
+
   if (editTaskStartTime) {
     editTaskStartTime.addEventListener('input', () => {
       if (editTaskStartTime.value.length === 5) {
-        if ((editTaskEndTime && editTaskEndTime.value)) {
+        if (editTaskEndTime && editTaskEndTime.value) {
           updateEditModalDurationFromTimeSpan();
-        } else if ((editTaskDurationInput && editTaskDurationInput.value)) {
+        } else if (editTaskDurationInput && editTaskDurationInput.value) {
           updateEditModalEndTimeFromDuration();
         }
       }
     });
     editTaskStartTime.addEventListener('change', () => {
-      if ((editTaskEndTime && editTaskEndTime.value)) {
+      if (editTaskEndTime && editTaskEndTime.value) {
         updateEditModalDurationFromTimeSpan();
-      } else if ((editTaskDurationInput && editTaskDurationInput.value)) {
+      } else if (editTaskDurationInput && editTaskDurationInput.value) {
         updateEditModalEndTimeFromDuration();
       }
     });
@@ -3681,20 +3810,6 @@ function setupNavigationAndModals() {
     });
     editTaskDurationInput.addEventListener('change', updateEditModalEndTimeFromDuration);
   }
-
-  // Duration chips in Edit Task modal
-  document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const dur = chip.getAttribute('data-min');
-      if (editTaskDurationInput && dur) {
-        editTaskDurationInput.value = dur;
-        document.querySelectorAll('#editModalDurationChips .duration-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        updateEditModalEndTimeFromDuration();
-        mobileServices.hapticTap();
-      }
-    });
-  });
 
   setupTimeBankInfoModal();
 
@@ -3719,6 +3834,9 @@ function setupNavigationAndModals() {
     const bankInput = document.getElementById('addModalTimeBank');
     const useTimeBank = bankInput ? bankInput.checked : true;
 
+    const lockInput = document.getElementById('addModalIsLocked');
+    const isLocked = lockInput ? lockInput.checked : Boolean(fixedStartTime);
+
     if (category) taskStore.addCategory(category);
 
     taskStore.addTask({
@@ -3726,7 +3844,7 @@ function setupNavigationAndModals() {
       plannedDuration: duration,
       category,
       fixedStartTime,
-      isLocked: Boolean(fixedStartTime),
+      isLocked: Boolean(isLocked),
       useTimeBank,
       emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝')
     });
@@ -3868,6 +3986,12 @@ function setupNavigationAndModals() {
     const touch = e.touches[0];
     navTouchStartX = touch.clientX;
     navTouchStartY = touch.clientY;
+
+    // Never start nav menu swipe if touch starts in bottom drawer pull area (bottom 150px)
+    if (navTouchStartY > window.innerHeight - 150) {
+      return;
+    }
+
     isNavSwiping = false;
   }, { passive: true });
 
@@ -3888,8 +4012,17 @@ function setupNavigationAndModals() {
     const diffX = touch.clientX - navTouchStartX;
     const diffY = touch.clientY - navTouchStartY;
 
-    // Must be predominantly horizontal gesture (exclude 45 degree diagonal downward swipes)
-    if (Math.abs(diffX) > Math.abs(diffY) * 1.8 && Math.abs(diffX) > 20) {
+    // If gesture has any upward movement (e.g. swiping up Today's Tasks at an angle), never swipe side menu!
+    if (diffY < -8) {
+      if (isNavSwiping) {
+        isNavSwiping = false;
+        closeDrawer();
+      }
+      return;
+    }
+
+    // Must be predominantly horizontal gesture (exclude diagonal swipes)
+    if (Math.abs(diffX) > Math.abs(diffY) * 2.0 && Math.abs(diffX) > 20) {
       const drawerW = navDrawer.offsetWidth || 280;
       if (!isDrawerOpenAtTouchStart && diffX > 0) {
         // Swiping right from closed state: smoothly pull menu open from left
@@ -4062,6 +4195,8 @@ function setupNavigationAndModals() {
   // Toggle icon listeners for Piggy Bank and Padlock SVG indicators
   const addModalTimeBank = document.getElementById('addModalTimeBank');
   if (addModalTimeBank) addModalTimeBank.addEventListener('change', syncModalToggleIcons);
+  const addModalIsLocked = document.getElementById('addModalIsLocked');
+  if (addModalIsLocked) addModalIsLocked.addEventListener('change', syncModalToggleIcons);
   const editTaskTimeBank = document.getElementById('editTaskTimeBank');
   if (editTaskTimeBank) editTaskTimeBank.addEventListener('change', syncModalToggleIcons);
   const editTaskIsLocked = document.getElementById('editTaskIsLocked');

@@ -80,6 +80,7 @@ console.log('\n--- 5. Testing Proportional Compression with Whole Minutes ---');
 const compressedResult = calculateSchedule({
   hardStop: "13:00",
   startTime: "12:00",
+  options: { enableCompression: true },
   tasks: [
     { id: 't1', title: 'Problem Set', plannedDuration: 50, isLocked: false, category: 'Physics' },
     { id: 't2', title: 'Flashcards', plannedDuration: 25, isLocked: false, category: 'Biology' },
@@ -109,6 +110,7 @@ console.log('\n--- 6. Testing Error: Locked Tasks Exceed Hard Stop ---');
 const lockedExceedResult = calculateSchedule({
   hardStop: "12:30",
   startTime: "12:00",
+  options: { enableCompression: true },
   tasks: [
     { id: 'l1', title: 'Mandatory Lecture', plannedDuration: 45, isLocked: true },
     { id: 'u1', title: 'Optional Reading', plannedDuration: 20, isLocked: false }
