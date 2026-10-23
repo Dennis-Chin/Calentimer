@@ -252,6 +252,14 @@
         </svg>
         <span class="nav-item-label">Calendar</span>
       </button>
+
+      <button class="nav-item" id="navItemTodo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 11 12 14 22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        <span class="nav-item-label">To-Do</span>
+      </button>
     </nav>
 
     <div class="nav-drawer-footer">
@@ -413,6 +421,89 @@
         <button type="button" class="btn-calendar-add-break" id="btnCalendarAddBreak" title="Add break to today's schedule">
           <span>☕ Add Break</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- To-Do View Modal -->
+  <div class="modal-backdrop hidden" id="todoModalBackdrop">
+    <div class="calendar-modal todo-modal" id="todoModal">
+      <div class="modal-header calendar-modal-header">
+        <div class="modal-title-wrap">
+          <span style="font-size: 1.3rem;">☑️</span>
+          <span class="modal-title">To-Do</span>
+          <span class="task-count-badge" id="todoCountBadge" style="margin-left: 8px;">0 tasks</span>
+        </div>
+
+        <div class="calendar-header-actions">
+          <button type="button" class="btn-clear-schedule" id="btnClearCompletedTodo" title="Clear completed tasks">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+          <button type="button" class="btn-close-modal" id="btnCloseTodo" title="Close To-Do list">✕</button>
+        </div>
+      </div>
+
+      <div class="modal-body todo-modal-body" style="padding-bottom: 80px;">
+        <div class="todo-list" id="todoListContainer">
+          <!-- To-Do items generated dynamically -->
+        </div>
+        <div class="todo-empty-state hidden" id="todoEmptyState">
+          <span class="todo-empty-icon">📝</span>
+          <span class="todo-empty-text">No to-do tasks yet.<br>Tap below to add one!</span>
+        </div>
+      </div>
+
+      <div class="calendar-modal-footer">
+        <button type="button" class="btn-calendar-add-task btn-add-todo" id="btnOpenAddTodoModal" title="Add a To-Do Task">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Add To-Do Task</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add To-Do Task Modal -->
+  <div class="modal-backdrop hidden" id="addTodoModalBackdrop">
+    <div class="settings-modal add-todo-modal" id="addTodoModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <button type="button" class="edit-task-emoji-badge" id="btnAddTodoEmoji" title="Click to choose emoji">
+            <span id="addTodoHeaderEmoji">📌</span>
+            <span class="emoji-edit-hint">✏️</span>
+          </button>
+          <span class="modal-title">Add To-Do Task</span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseAddTodoModal" title="Close">✕</button>
+      </div>
+
+      <form class="modal-body" id="formAddTodoTask">
+        <div class="edit-task-form-group">
+          <label class="edit-task-label">Task Name</label>
+          <input type="text" id="addTodoTitle" class="edit-task-input" required placeholder="What needs to be done?" autocomplete="off">
+        </div>
+
+        <div class="edit-modal-footer" style="margin-top: 16px;">
+          <button type="submit" class="btn-modal-save" id="btnAddTodoSubmit">+ Add Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Custom Confirmation Modal for Deleting To-Do Task -->
+  <div class="modal-backdrop hidden" id="confirmDeleteTodoModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon">🗑️</div>
+      <div class="confirm-modal-title" id="confirmDeleteTodoTitle">Delete To-Do Task?</div>
+      <div class="confirm-modal-desc" id="confirmDeleteTodoDesc">Are you sure you want to delete this task?</div>
+      <div class="confirm-modal-actions">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelDeleteTodo">Cancel</button>
+        <button type="button" class="btn-confirm-danger" id="btnConfirmDeleteTodo">Delete</button>
       </div>
     </div>
   </div>

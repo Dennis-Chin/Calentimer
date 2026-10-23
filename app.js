@@ -161,6 +161,7 @@ function initApp() {
     updateResetButtonUI();
     updateNotifToggleUI();
     updateTimeBankDisplay();
+    renderTodoList();
     const initActiveTask = runtime.getActiveTask();
     const initDurSec = ((initActiveTask ? initActiveTask.allocatedDuration : 0) || (initActiveTask ? initActiveTask.plannedDuration : 0) || 30) * 60;
     updateFinishEarlyButtonText(initDurSec);
@@ -2387,6 +2388,7 @@ function applyTheme(theme) {
 const CURATED_EMOJIS = ['📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃', '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌'];
 let currentEmojiTaskId = null;
 let currentAddTaskEmoji = '📚';
+let currentTodoEmoji = '📌';
 let currentEditEmoji = null;
 let selectedEmojiInPicker = null;
 
@@ -2398,6 +2400,18 @@ function applyEmojiSelection(emoji) {
     if (addModalEmoji) addModalEmoji.textContent = emoji;
     closeEmojiPicker(false);
     mobileServices.hapticTap();
+  } else if (currentEmojiTaskId === 'NEW_TODO') {
+    currentTodoEmoji = emoji;
+    const addTodoEmoji = document.getElementById('addTodoHeaderEmoji');
+    if (addTodoEmoji) addTodoEmoji.textContent = emoji;
+    closeEmojiPicker(false);
+    mobileServices.hapticTap();
+  } else if (typeof currentEmojiTaskId === 'string' && currentEmojiTaskId.indexOf('todo-') === 0) {
+    taskStore.updateTodoTask(currentEmojiTaskId, { emoji: emoji });
+    if (typeof renderTodoList === 'function') renderTodoList();
+    closeEmojiPicker(false);
+    mobileServices.hapticTap();
+    showToastNotification(`Emoji updated to ${emoji}`);
   } else if (currentEmojiTaskId) {
     currentEditEmoji = emoji;
     taskStore.updateTask(currentEmojiTaskId, { emoji });
@@ -2419,6 +2433,12 @@ function openEmojiPicker(taskId) {
   let currentTaskEmoji = '📚';
   if (taskId === 'NEW_TASK') {
     currentTaskEmoji = currentAddTaskEmoji || '📚';
+  } else if (taskId === 'NEW_TODO') {
+    currentTaskEmoji = currentTodoEmoji || '📌';
+  } else if (typeof taskId === 'string' && taskId.indexOf('todo-') === 0) {
+    const todos = taskStore.getTodoTasks();
+    const t = todos.find(item => item.id === taskId);
+    currentTaskEmoji = (t && t.emoji) ? t.emoji : '📌';
   } else if (taskId) {
     const t = taskStore.getTasks().find(item => item.id === taskId);
     currentTaskEmoji = (t ? t.emoji : "") || currentEditEmoji || '📌';
@@ -2802,6 +2822,8 @@ function closeDrawer() {
 
 function openSettings() {
   closeDrawer();
+  closeCalendar();
+  closeTodo();
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
@@ -2820,12 +2842,15 @@ function closeSettings() {
 
 function openCalendar() {
   closeDrawer();
+  closeSettings();
+  closeTodo();
   renderCalendarModal();
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
   }
   if (navItemCalendar) navItemCalendar.classList.add('active');
   if (navItemTimer) navItemTimer.classList.remove('active');
+  if (navItemTodo) navItemTodo.classList.remove('active');
   mobileServices.hapticTap();
 }
 
@@ -2835,6 +2860,30 @@ function closeCalendar() {
   }
   if (navItemTimer) navItemTimer.classList.add('active');
   if (navItemCalendar) navItemCalendar.classList.remove('active');
+}
+
+function openTodo() {
+  closeDrawer();
+  closeSettings();
+  closeCalendar();
+  renderTodoList();
+  const todoModal = document.getElementById('todoModalBackdrop');
+  if (todoModal) {
+    todoModal.classList.remove('hidden');
+  }
+  if (navItemTodo) navItemTodo.classList.add('active');
+  if (navItemTimer) navItemTimer.classList.remove('active');
+  if (navItemCalendar) navItemCalendar.classList.remove('active');
+  mobileServices.hapticTap();
+}
+
+function closeTodo() {
+  const todoModal = document.getElementById('todoModalBackdrop');
+  if (todoModal) {
+    todoModal.classList.add('hidden');
+  }
+  if (navItemTimer) navItemTimer.classList.add('active');
+  if (navItemTodo) navItemTodo.classList.remove('active');
 }
 
 // Category Color Palette: Vibrant, colorful tones strictly distinct from task status colors (no light-blue, red, orange/yellow, or grey)
@@ -3201,6 +3250,373 @@ window.renderCalendarModal = renderCalendarModal;
 window.renderCalendarModel = renderCalendarModal;
 window.openCalendar = openCalendar;
 window.closeCalendar = closeCalendar;
+window.openTodo = openTodo;
+window.closeTodo = closeTodo;
+
+// ==========================================
+// To-Do List View & Task Management
+// ==========================================
+let pendingDeleteTodoId = null;
+let pendingDeleteTodoTitle = '';
+
+function openConfirmDeleteTodo(id, title) {
+  pendingDeleteTodoId = id;
+  pendingDeleteTodoTitle = title || 'Task';
+  const desc = document.getElementById('confirmDeleteTodoDesc');
+  if (desc) desc.textContent = `Are you sure you want to delete "${pendingDeleteTodoTitle}"?`;
+  const modal = document.getElementById('confirmDeleteTodoModalBackdrop');
+  if (modal) modal.classList.remove('hidden');
+  mobileServices.hapticTap();
+}
+
+function closeConfirmDeleteTodo() {
+  const modal = document.getElementById('confirmDeleteTodoModalBackdrop');
+  if (modal) modal.classList.add('hidden');
+  pendingDeleteTodoId = null;
+  pendingDeleteTodoTitle = '';
+}
+
+function renderTodoList() {
+  const container = document.getElementById('todoListContainer');
+  const emptyState = document.getElementById('todoEmptyState');
+  const countBadge = document.getElementById('todoCountBadge');
+  if (!container) return;
+
+  const todos = taskStore.getTodoTasks();
+  container.innerHTML = '';
+
+  if (countBadge) {
+    countBadge.textContent = todos.length === 1 ? '1 task' : `${todos.length} tasks`;
+  }
+
+  if (todos.length === 0) {
+    if (emptyState) emptyState.classList.remove('hidden');
+    return;
+  } else {
+    if (emptyState) emptyState.classList.add('hidden');
+  }
+
+  todos.forEach((todo, idx) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'todo-item-wrapper';
+    wrapper.setAttribute('data-id', todo.id);
+    wrapper.setAttribute('data-index', idx);
+
+    const deleteAction = document.createElement('div');
+    deleteAction.className = 'calendar-swipe-delete-action';
+    deleteAction.innerHTML = `<button type="button" class="btn-swipe-delete" data-action="swipe-delete-todo" data-id="${todo.id}" title="Delete task">✕</button>`;
+
+    const item = document.createElement('div');
+    item.className = `todo-block ${todo.completed ? 'completed' : ''}`;
+    item.setAttribute('data-id', todo.id);
+    item.setAttribute('data-index', idx);
+
+    item.innerHTML = `
+      <div class="todo-block-left">
+        <div class="drag-handle-compact" data-action="drag-handle" title="Hold & drag to reorder">
+          <svg width="10" height="15" viewBox="0 0 10 15" fill="currentColor">
+            <circle cx="2.5" cy="2.5" r="1.3"/>
+            <circle cx="7.5" cy="2.5" r="1.3"/>
+            <circle cx="2.5" cy="7.5" r="1.3"/>
+            <circle cx="7.5" cy="7.5" r="1.3"/>
+            <circle cx="2.5" cy="12.5" r="1.3"/>
+            <circle cx="7.5" cy="12.5" r="1.3"/>
+          </svg>
+        </div>
+        <button type="button" class="calendar-emoji-btn todo-emoji-btn" data-action="pick-todo-emoji" data-id="${todo.id}" title="Tap to change emoji">
+          ${todo.emoji || '📌'}
+        </button>
+        <span class="todo-title">${escapeHtml(todo.title)}</span>
+      </div>
+      <button type="button" class="todo-checkbox-btn ${todo.completed ? 'checked' : ''}" data-action="toggle-todo" data-id="${todo.id}" title="${todo.completed ? 'Mark uncompleted' : 'Mark done'}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </button>
+    `;
+
+    // Checkbox toggle
+    const checkBtn = item.querySelector('[data-action="toggle-todo"]');
+    if (checkBtn) {
+      checkBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        taskStore.updateTodoTask(todo.id, { completed: !todo.completed });
+        mobileServices.hapticTap();
+        renderTodoList();
+      });
+    }
+
+    // Emoji change
+    const emojiBtn = item.querySelector('[data-action="pick-todo-emoji"]');
+    if (emojiBtn) {
+      emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEmojiPicker(todo.id);
+      });
+    }
+
+    // Swipe & Hold gestures (identical to calendar delete mechanic)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isSwiping = false;
+    let holdTimer = null;
+    let startIsOpen = false;
+
+    item.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      isSwiping = false;
+      startIsOpen = item.classList.contains('swiped-open') || wrapper.classList.contains('has-swiped-open');
+
+      holdTimer = setTimeout(() => {
+        if (!isSwiping) {
+          wrapper.classList.add('has-swiped-open');
+          item.classList.add('swiped-open');
+          item.style.transform = 'translateX(-70px)';
+          mobileServices.hapticWarning();
+        }
+      }, 500);
+    }, { passive: true });
+
+    item.addEventListener('touchmove', (e) => {
+      const diffX = e.touches[0].clientX - touchStartX;
+      const diffY = e.touches[0].clientY - touchStartY;
+      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+      }
+      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
+        isSwiping = true;
+        if (!startIsOpen && diffX < 0) {
+          item.style.transform = `translateX(${Math.max(-70, diffX)}px)`;
+        } else if (startIsOpen && diffX > 0) {
+          item.style.transform = `translateX(${Math.min(0, -70 + diffX)}px)`;
+        }
+      }
+    }, { passive: true });
+
+    item.addEventListener('touchend', (e) => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      if (isSwiping) {
+        const diffX = e.changedTouches[0].clientX - touchStartX;
+        item.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        if (!startIsOpen) {
+          if (diffX < -35) {
+            wrapper.classList.add('has-swiped-open');
+            item.classList.add('swiped-open');
+            item.style.transform = 'translateX(-70px)';
+          } else {
+            wrapper.classList.remove('has-swiped-open');
+            item.classList.remove('swiped-open');
+            item.style.transform = '';
+          }
+        } else {
+          if (diffX > 25) {
+            wrapper.classList.remove('has-swiped-open');
+            item.classList.remove('swiped-open');
+            item.style.transform = '';
+          } else {
+            wrapper.classList.add('has-swiped-open');
+            item.classList.add('swiped-open');
+            item.style.transform = 'translateX(-70px)';
+          }
+        }
+        setTimeout(() => {
+          if (item) item.style.transition = '';
+        }, 220);
+      }
+    });
+
+    item.addEventListener('touchcancel', () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+    });
+
+    // Tap outside to close swipe
+    item.addEventListener('click', (e) => {
+      if (wrapper.classList.contains('has-swiped-open') || item.classList.contains('swiped-open')) {
+        wrapper.classList.remove('has-swiped-open');
+        item.classList.remove('swiped-open');
+        item.style.transform = '';
+        e.stopPropagation();
+      }
+    });
+
+    // Swiping right on deleteAction to slide X closed
+    deleteAction.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+    }, { passive: true });
+    deleteAction.addEventListener('touchmove', (e) => {
+      const diffX = e.touches[0].clientX - touchStartX;
+      if (diffX > 15) {
+        wrapper.classList.remove('has-swiped-open');
+        item.classList.remove('swiped-open');
+        item.style.transform = '';
+      }
+    }, { passive: true });
+
+    // Swipe delete button click
+    const swpBtn = deleteAction.querySelector('.btn-swipe-delete');
+    if (swpBtn) {
+      swpBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        openConfirmDeleteTodo(todo.id, todo.title);
+      });
+    }
+
+    wrapper.appendChild(deleteAction);
+    wrapper.appendChild(item);
+    container.appendChild(wrapper);
+  });
+}
+window.renderTodoList = renderTodoList;
+
+function setupInteractiveTodoDrag(container) {
+  if (!container || container._hasInteractiveDrag) return;
+  container._hasInteractiveDrag = true;
+
+  container.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const handle = e.target.closest('[data-action="drag-handle"]');
+    if (!handle) return;
+
+    const card = e.target.closest('.todo-item-wrapper');
+    if (!card) return;
+
+    const allCards = Array.from(container.children).filter(c => c.matches('.todo-item-wrapper'));
+    const fromIndex = allCards.indexOf(card);
+    if (fromIndex === -1) return;
+
+    const activePointerId = e.pointerId;
+    let holdTimer = null;
+    let isDragActive = false;
+    let currentSlotIndex = fromIndex;
+    let cardSlotPositions = [];
+    let initialCardTop = 0;
+    let slotSpacing = 54;
+
+    const draggedCard = card;
+
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      isDragActive = true;
+      try {
+        handle.setPointerCapture(activePointerId);
+      } catch (_) {}
+
+      const draggedRect = draggedCard.getBoundingClientRect();
+      initialCardTop = draggedRect.top;
+      slotSpacing = draggedRect.height + 8;
+
+      cardSlotPositions = allCards.map((c, idx) => {
+        const r = c.getBoundingClientRect();
+        return { index: idx, midY: r.top + r.height / 2, el: c };
+      });
+
+      allCards.forEach(c => {
+        if (c !== draggedCard) {
+          c.style.transition = 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)';
+        }
+      });
+
+      draggedCard.classList.add('is-live-dragging');
+      draggedCard.style.zIndex = '999';
+      mobileServices.hapticBuzz();
+    }, 180);
+
+    const onPointerMove = (moveEv) => {
+      if (moveEv.pointerId !== activePointerId) return;
+      if (!isDragActive) {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
+      if (moveEv.cancelable) moveEv.preventDefault();
+
+      const currentPointerY = moveEv.clientY;
+      const offsetY = currentPointerY - (initialCardTop + 24);
+      draggedCard.style.transform = `translate3d(0, ${offsetY}px, 0) scale(1.02)`;
+
+      let newSlot = fromIndex;
+      for (let i = 0; i < cardSlotPositions.length; i++) {
+        if (currentPointerY > cardSlotPositions[i].midY) {
+          newSlot = i;
+        }
+      }
+      newSlot = Math.max(0, Math.min(cardSlotPositions.length - 1, newSlot));
+
+      if (newSlot !== currentSlotIndex) {
+        currentSlotIndex = newSlot;
+        mobileServices.hapticTick();
+
+        allCards.forEach((siblingCard, sibIdx) => {
+          if (siblingCard === draggedCard) return;
+          if (fromIndex < currentSlotIndex) {
+            if (sibIdx > fromIndex && sibIdx <= currentSlotIndex) {
+              siblingCard.style.transform = `translate3d(0, ${-slotSpacing}px, 0)`;
+            } else {
+              siblingCard.style.transform = 'translate3d(0, 0, 0)';
+            }
+          } else if (fromIndex > currentSlotIndex) {
+            if (sibIdx >= currentSlotIndex && sibIdx < fromIndex) {
+              siblingCard.style.transform = `translate3d(0, ${slotSpacing}px, 0)`;
+            } else {
+              siblingCard.style.transform = 'translate3d(0, 0, 0)';
+            }
+          } else {
+            siblingCard.style.transform = 'translate3d(0, 0, 0)';
+          }
+        });
+      }
+    };
+
+    const onPointerUp = (upEv) => {
+      if (upEv.pointerId !== activePointerId) return;
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      if (!isDragActive) return;
+      isDragActive = false;
+
+      try {
+        handle.releasePointerCapture(activePointerId);
+      } catch (_) {}
+
+      allCards.forEach(c => {
+        c.classList.remove('is-live-dragging');
+        c.style.transform = '';
+        c.style.zIndex = '';
+        c.style.transition = '';
+      });
+
+      if (fromIndex !== currentSlotIndex) {
+        taskStore.reorderTodoTasks(fromIndex, currentSlotIndex);
+        renderTodoList();
+        mobileServices.hapticBuzz();
+        showToastNotification('✓ To-Do reordered');
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  });
+}
 
 // ==========================================
 // Navigation Drawer, Settings, Calendar & Modals Setup
@@ -3955,7 +4371,7 @@ function setupNavigationAndModals() {
     });
   }
 
-  // Swipe right on timer screen to smoothly open nav menu; swipe left to smoothly minimize
+  // Swipe right on screen to smoothly open nav menu; swipe left to smoothly close
   let navTouchStartX = 0;
   let navTouchStartY = 0;
   let isNavSwiping = false;
@@ -3965,10 +4381,18 @@ function setupNavigationAndModals() {
     if (!navDrawer || !navDrawerBackdrop) return;
     const target = e.target;
 
-    // Guard: Never open side menu if ANY modal is currently open, or if touch is inside modal or drawer
+    // Guard: Never open side menu if ANY modal is currently open
     const openModal = document.querySelector('.modal-backdrop:not(.hidden)');
     if (openModal) return;
-    if (target.closest('.modal-backdrop, .calendar-modal, .settings-modal, .task-edit-modal, .add-task-modal, .emoji-picker-modal, .task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop')) {
+
+    // Guard: If touch starts inside Today's Tasks drawer or its header pull pill, ignore for nav menu
+    if (target.closest('.task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop, .drawer-header, .drawer-pull-pill')) {
+      return;
+    }
+
+    const touch = e.touches[0];
+    // Guard: Bottom 60px of viewport is where collapsed Today's Tasks tab header sits
+    if (touch && touch.clientY > window.innerHeight - 60) {
       return;
     }
 
@@ -3977,21 +4401,9 @@ function setupNavigationAndModals() {
       return;
     }
 
-    // Inside timer wheel container: only exclude touches on the rotating dial / ticks / beads
-    if (target.closest('#dialHitRing, #rotaryDialGroup, #revolvingCircleGroup, #revolvingHitbox, #dialTicksGroup, #trackProgress, .progress-arc')) {
-      return;
-    }
-
     isDrawerOpenAtTouchStart = navDrawer.classList.contains('open');
-    const touch = e.touches[0];
     navTouchStartX = touch.clientX;
     navTouchStartY = touch.clientY;
-
-    // Never start nav menu swipe if touch starts in bottom drawer pull area (bottom 150px)
-    if (navTouchStartY > window.innerHeight - 150) {
-      return;
-    }
-
     isNavSwiping = false;
   }, { passive: true });
 
@@ -4011,42 +4423,33 @@ function setupNavigationAndModals() {
     const touch = e.touches[0];
     const diffX = touch.clientX - navTouchStartX;
     const diffY = touch.clientY - navTouchStartY;
+    const drawerW = navDrawer.offsetWidth || 280;
 
-    // If gesture has any upward movement (e.g. swiping up Today's Tasks at an angle), never swipe side menu!
-    if (diffY < -8) {
-      if (isNavSwiping) {
-        isNavSwiping = false;
-        closeDrawer();
-      }
-      return;
-    }
-
-    // Must be predominantly horizontal gesture (exclude diagonal swipes)
-    if (Math.abs(diffX) > Math.abs(diffY) * 2.0 && Math.abs(diffX) > 20) {
-      const drawerW = navDrawer.offsetWidth || 280;
-      if (!isDrawerOpenAtTouchStart && diffX > 0) {
-        // Swiping right from closed state: smoothly pull menu open from left
+    if (!isDrawerOpenAtTouchStart) {
+      // Swiping right from closed state:
+      // Accepts even sharp angles (diffX > Math.abs(diffY) * 0.4) and swiping from right portion of screen
+      if (diffX > 14 && diffX > Math.abs(diffY) * 0.4) {
         isNavSwiping = true;
         navDrawer.style.transition = 'none';
         navDrawer.style.visibility = 'visible';
         navDrawerBackdrop.classList.remove('hidden');
         navDrawerBackdrop.style.transition = 'none';
 
-        const currentX = Math.min(0, -drawerW + diffX);
+        const progress = Math.max(0, Math.min(1, diffX / 160));
+        const currentX = -drawerW * (1 - progress);
         navDrawer.style.transform = `translateX(${currentX}px)`;
-        const progress = Math.max(0, Math.min(1, (drawerW + currentX) / drawerW));
-        navDrawerBackdrop.style.opacity = progress.toString();
-      } else if (isDrawerOpenAtTouchStart && diffX < 0) {
-        // Swiping left from open state: smoothly slide menu back left
-        isNavSwiping = true;
-        navDrawer.style.transition = 'none';
-        navDrawerBackdrop.style.transition = 'none';
-
-        const currentX = Math.min(0, diffX);
-        navDrawer.style.transform = `translateX(${currentX}px)`;
-        const progress = Math.max(0, Math.min(1, 1 + currentX / drawerW));
         navDrawerBackdrop.style.opacity = progress.toString();
       }
+    } else if (isDrawerOpenAtTouchStart && diffX < -12) {
+      // Swiping left from open state: smoothly slide menu back left
+      isNavSwiping = true;
+      navDrawer.style.transition = 'none';
+      navDrawerBackdrop.style.transition = 'none';
+
+      const progress = Math.max(0, Math.min(1, 1 + diffX / 160));
+      const currentX = -drawerW * (1 - progress);
+      navDrawer.style.transform = `translateX(${currentX}px)`;
+      navDrawerBackdrop.style.opacity = progress.toString();
     }
   }, { passive: true });
 
@@ -4060,20 +4463,19 @@ function setupNavigationAndModals() {
     navDrawerBackdrop.style.transition = 'opacity 0.25s ease';
 
     if (!isDrawerOpenAtTouchStart) {
-      if (diffX > 55) {
+      if (diffX > 35) {
         openDrawer();
       } else {
         closeDrawer();
       }
     } else {
-      if (diffX < -45) {
+      if (diffX < -30) {
         closeDrawer();
       } else {
         openDrawer();
       }
     }
   });
-
 
   // Bind interactive live drag reordering to calendar timeline
   setupInteractiveTaskDrag(calendarTimelineList);
@@ -4089,8 +4491,10 @@ function setupNavigationAndModals() {
       closeDrawer();
       closeSettings();
       closeCalendar();
+      closeTodo();
       navItemTimer.classList.add('active');
       if (navItemCalendar) navItemCalendar.classList.remove('active');
+      if (navItemTodo) navItemTodo.classList.remove('active');
       mobileServices.hapticTap();
     });
   }
@@ -4098,6 +4502,13 @@ function setupNavigationAndModals() {
   if (navItemCalendar) {
     navItemCalendar.addEventListener('click', () => {
       openCalendar();
+    });
+  }
+
+  const navItemTodo = document.getElementById('navItemTodo');
+  if (navItemTodo) {
+    navItemTodo.addEventListener('click', () => {
+      openTodo();
     });
   }
 
@@ -4246,6 +4657,109 @@ function setupNavigationAndModals() {
     btnDrawerAddBreak.addEventListener('click', () => {
       openAddTaskModal('break');
     });
+  }
+
+  // To-Do Modal Events
+  const btnCloseTodo = document.getElementById('btnCloseTodo');
+  const btnClearCompletedTodo = document.getElementById('btnClearCompletedTodo');
+  const btnOpenAddTodoModal = document.getElementById('btnOpenAddTodoModal');
+  const todoModalBackdrop = document.getElementById('todoModalBackdrop');
+
+  const addTodoModalBackdrop = document.getElementById('addTodoModalBackdrop');
+  const btnCloseAddTodoModal = document.getElementById('btnCloseAddTodoModal');
+  const formAddTodoTask = document.getElementById('formAddTodoTask');
+  const btnAddTodoEmoji = document.getElementById('btnAddTodoEmoji');
+  const addTodoTitle = document.getElementById('addTodoTitle');
+
+  const confirmDeleteTodoModalBackdrop = document.getElementById('confirmDeleteTodoModalBackdrop');
+  const btnCancelDeleteTodo = document.getElementById('btnCancelDeleteTodo');
+  const btnConfirmDeleteTodo = document.getElementById('btnConfirmDeleteTodo');
+
+  if (btnCloseTodo) btnCloseTodo.addEventListener('click', closeTodo);
+  if (todoModalBackdrop) {
+    todoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === todoModalBackdrop) closeTodo();
+    });
+  }
+
+  if (btnClearCompletedTodo) {
+    btnClearCompletedTodo.addEventListener('click', () => {
+      taskStore.clearCompletedTodoTasks();
+      renderTodoList();
+      mobileServices.hapticTap();
+      showToastNotification('Cleared completed tasks');
+    });
+  }
+
+  if (btnOpenAddTodoModal) {
+    btnOpenAddTodoModal.addEventListener('click', () => {
+      currentTodoEmoji = '📌';
+      const emojiSpan = document.getElementById('addTodoHeaderEmoji');
+      if (emojiSpan) emojiSpan.textContent = '📌';
+      if (addTodoTitle) addTodoTitle.value = '';
+      if (addTodoModalBackdrop) addTodoModalBackdrop.classList.remove('hidden');
+      if (addTodoTitle) setTimeout(() => addTodoTitle.focus(), 80);
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (btnCloseAddTodoModal) {
+    btnCloseAddTodoModal.addEventListener('click', () => {
+      if (addTodoModalBackdrop) addTodoModalBackdrop.classList.add('hidden');
+    });
+  }
+  if (addTodoModalBackdrop) {
+    addTodoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === addTodoModalBackdrop) addTodoModalBackdrop.classList.add('hidden');
+    });
+  }
+
+  if (btnAddTodoEmoji) {
+    btnAddTodoEmoji.addEventListener('click', (e) => {
+      e.preventDefault();
+      openEmojiPicker('NEW_TODO');
+    });
+  }
+
+  if (formAddTodoTask) {
+    formAddTodoTask.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = addTodoTitle ? addTodoTitle.value.trim() : '';
+      if (!title) return;
+      taskStore.addTodoTask({
+        title: title,
+        emoji: currentTodoEmoji || '📌',
+        completed: false
+      });
+      if (addTodoModalBackdrop) addTodoModalBackdrop.classList.add('hidden');
+      if (addTodoTitle) addTodoTitle.value = '';
+      renderTodoList();
+      mobileServices.hapticTap();
+      showToastNotification('✓ To-Do added');
+    });
+  }
+
+  if (btnCancelDeleteTodo) btnCancelDeleteTodo.addEventListener('click', closeConfirmDeleteTodo);
+  if (confirmDeleteTodoModalBackdrop) {
+    confirmDeleteTodoModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmDeleteTodoModalBackdrop) closeConfirmDeleteTodo();
+    });
+  }
+  if (btnConfirmDeleteTodo) {
+    btnConfirmDeleteTodo.addEventListener('click', () => {
+      if (pendingDeleteTodoId) {
+        taskStore.deleteTodoTask(pendingDeleteTodoId);
+        renderTodoList();
+        closeConfirmDeleteTodo();
+        mobileServices.hapticTap();
+        showToastNotification('🗑️ Task deleted');
+      }
+    });
+  }
+
+  const todoListContainer = document.getElementById('todoListContainer');
+  if (todoListContainer) {
+    setupInteractiveTodoDrag(todoListContainer);
   }
 }
 

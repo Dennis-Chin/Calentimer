@@ -12,7 +12,8 @@ const STORAGE_KEYS = {
   TIME_BANK: 'calentimer_time_bank_v1',
   CATEGORIES: 'calentimer_categories_v1',
   ALERTS_ENABLED: 'calentimer_alerts_enabled_v1',
-  DURATION_PRESETS: 'calentimer_duration_presets_v1'
+  DURATION_PRESETS: 'calentimer_duration_presets_v1',
+  TODO_TASKS: 'calentimer_todo_tasks_v1'
 };
 
 const memoryStorage = {};
@@ -567,6 +568,121 @@ export class TaskStore {
     const n = parseInt(min, 10);
     const current = this.getDurationPresets().filter(m => m !== n);
     return this.saveDurationPresets(current);
+  }
+
+  /**
+   * Gets all saved To-Do items.
+   * @returns {Array<{id: string, title: string, emoji: string, completed: boolean, createdAt: number}>}
+   */
+  getTodoTasks() {
+    try {
+      const data = safeGetItem(STORAGE_KEYS.TODO_TASKS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /**
+   * Saves To-Do items.
+   * @param {Array} tasks
+   * @returns {Array}
+   */
+  saveTodoTasks(tasks) {
+    const list = Array.isArray(tasks) ? tasks : [];
+    try {
+      safeSetItem(STORAGE_KEYS.TODO_TASKS, JSON.stringify(list));
+      this._notify();
+    } catch (_) {}
+    return list;
+  }
+
+  /**
+   * Adds a new To-Do item.
+   * @param {{title: string, emoji?: string, completed?: boolean}} todo
+   * @returns {Object}
+   */
+  addTodoTask(todo) {
+    const title = todo && todo.title ? String(todo.title).trim() : 'Task';
+    const emoji = todo && todo.emoji ? String(todo.emoji) : '📌';
+    const completed = Boolean(todo && todo.completed);
+    const newTask = {
+      id: 'todo-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+      title: title,
+      emoji: emoji,
+      completed: completed,
+      createdAt: Date.now()
+    };
+    const current = this.getTodoTasks();
+    current.push(newTask);
+    this.saveTodoTasks(current);
+    return newTask;
+  }
+
+  /**
+   * Updates an existing To-Do item.
+   * @param {string} id
+   * @param {Object} updates
+   * @returns {Object|null}
+   */
+  updateTodoTask(id, updates) {
+    const current = this.getTodoTasks();
+    const index = current.findIndex(t => t.id === id);
+    if (index === -1) return null;
+    const item = current[index];
+    if (updates.title !== undefined) item.title = String(updates.title).trim();
+    if (updates.emoji !== undefined) item.emoji = String(updates.emoji);
+    if (updates.completed !== undefined) item.completed = Boolean(updates.completed);
+    current[index] = item;
+    this.saveTodoTasks(current);
+    return item;
+  }
+
+  /**
+   * Deletes a To-Do item.
+   * @param {string} id
+   * @returns {boolean}
+   */
+  deleteTodoTask(id) {
+    const current = this.getTodoTasks();
+    const filtered = current.filter(t => t.id !== id);
+    if (filtered.length !== current.length) {
+      this.saveTodoTasks(filtered);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Reorders To-Do items.
+   * @param {number} fromIndex
+   * @param {number} toIndex
+   * @returns {Array}
+   */
+  reorderTodoTasks(fromIndex, toIndex) {
+    const current = this.getTodoTasks();
+    if (fromIndex < 0 || fromIndex >= current.length || toIndex < 0 || toIndex >= current.length) {
+      return current;
+    }
+    const moved = current.splice(fromIndex, 1)[0];
+    current.splice(toIndex, 0, moved);
+    this.saveTodoTasks(current);
+    return current;
+  }
+
+  /**
+   * Clears all completed To-Do tasks.
+   * @returns {Array}
+   */
+  clearCompletedTodoTasks() {
+    const current = this.getTodoTasks();
+    const incomplete = current.filter(t => !t.completed);
+    this.saveTodoTasks(incomplete);
+    return incomplete;
   }
 }
 
