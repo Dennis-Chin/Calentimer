@@ -10,6 +10,7 @@ import { taskStore } from './taskStore.js';
 import { audioManager } from './audioManager.js';
 import { mobileServices } from './mobileServices.js';
 import { formatMinutesToTime, parseTimeToMinutes } from './schedulerEngine.js';
+import { analytics } from './analyticsDb.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -272,6 +273,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('hardStopReached', (data) => {
+    analytics.recordSessionEvent('complete_hard_stop', { hardStop: data && data.hardStop });
     audioManager.playChime();
     mobileServices.hapticBuzz();
     showToastNotification(`🛑 Hard Stop reached (${data.hardStop || 'target time'})! Time to stop working.`);
@@ -281,6 +283,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskOverrunStart', (data) => {
+    analytics.recordTaskBankEvent(0, data && data.secondsConsumed ? data.secondsConsumed : 0);
     audioManager.playTumblingCoinsSound();
     mobileServices.hapticCelebration();
     updateTimeBankDisplay();
@@ -295,6 +298,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('timeBankDeposit', (data) => {
+    analytics.recordTaskBankEvent(data && data.secondsDeposited ? data.secondsDeposited : 0, 0);
     updateTimeBankDisplay();
     const mins = Math.round(data.secondsDeposited / 60);
     if (mins > 0) {
@@ -314,6 +318,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskStart', (data) => {
+    analytics.startTaskMetric(data && data.activeTask ? data.activeTask : runtime.getActiveTask(), { index: runtime.activeTaskIndex });
     startContinuousWheelAnimation();
     updateActiveTaskDisplay();
     updateFinishEarlyButtonText(data.totalDurationSeconds);
@@ -321,6 +326,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskSkipped', (data) => {
+    analytics.finalizeTaskMetric('skipped', runtime.getElapsedSeconds ? runtime.getElapsedSeconds() : 0);
     updateActiveTaskDisplay();
     const activeTask = runtime.getActiveTask();
     const durSec = runtime.status === TimerStatus.IDLE
@@ -333,6 +339,9 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskComplete', (data) => {
+    const isEarly = data && Boolean(data.completedEarly);
+    const statusStr = isEarly ? 'completed_early' : (runtime.isOverrunning ? 'overrun' : 'completed');
+    analytics.finalizeTaskMetric(statusStr, runtime.getElapsedSeconds ? runtime.getElapsedSeconds() : 0);
     stopContinuousWheelAnimation();
     audioManager.playTaskCompleteChime();
     mobileServices.hapticCelebration();
@@ -359,6 +368,9 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskAdjusted', (data) => {
+    if (data && typeof data.deltaMinutes === 'number') {
+      analytics.recordTaskAdjustment(data.deltaMinutes);
+    }
     const durSec = data.newRemainingSeconds !== undefined
       ? data.newRemainingSeconds
       : (data.targetMinutes || 25) * 60;
@@ -372,6 +384,7 @@ function setupRuntimeEvents() {
 
   runtime.on('statusChange', (status) => {
     if (status === TimerStatus.RUNNING) {
+      analytics.recordTaskPause(false);
       startContinuousWheelAnimation();
       iconPlay.classList.add('hidden');
       iconPause.classList.remove('hidden');
@@ -385,6 +398,7 @@ function setupRuntimeEvents() {
         isPaused: false
       });
     } else if (status === TimerStatus.PAUSED) {
+      analytics.recordTaskPause(true);
       stopContinuousWheelAnimation();
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
@@ -890,6 +904,7 @@ function setupRotaryWheel() {
         audioManager.playRotaryTick();
         mobileServices.hapticTick();
         lastAudibleMinuteTick = pendingMinuteAdjustment;
+        analytics.trackInteraction('dial_rotate', 'timer_dial', { deltaMinutes: pendingMinuteAdjustment });
       }
 
       const sign = pendingMinuteAdjustment > 0 ? '+' : '';
@@ -1098,6 +1113,8 @@ function updateResetButtonUI() {
 }
 
 function resetWholeDay() {
+  analytics.recordSessionEvent('reset_day');
+  analytics.trackInteraction('btn_click', 'resetWholeDay');
   stopContinuousWheelAnimation();
   mobileServices.disableWakeLock();
   mobileServices.clearLiveNotification();
@@ -1194,6 +1211,7 @@ function setupControls() {
 
   btnPlayPause.addEventListener('click', () => {
     mobileServices.hapticTap();
+    analytics.trackInteraction('btn_click', 'btnPlayPause', { action: runtime.status === TimerStatus.RUNNING ? 'pause' : 'start' });
     if (runtime.status === TimerStatus.RUNNING) {
       runtime.pause();
     } else {
@@ -1206,6 +1224,7 @@ function setupControls() {
   // - While timer is not running -> Reset button: resets the whole day of events
   btnStopTime.addEventListener('click', () => {
     mobileServices.hapticTap();
+    analytics.trackInteraction('btn_click', 'btnStopTime', { isRunning: runtime.status === TimerStatus.RUNNING });
     if (runtime.status === TimerStatus.RUNNING) {
       stopContinuousWheelAnimation();
       runtime.resetCurrentTask();
@@ -1224,11 +1243,13 @@ function setupControls() {
 
   btnSkipTask.addEventListener('click', () => {
     mobileServices.hapticTap();
+    analytics.trackInteraction('btn_click', 'btnSkipTask');
     runtime.skipCurrentTask();
   });
 
   btnFinishEarly.addEventListener('click', () => {
     mobileServices.hapticTap();
+    analytics.trackInteraction('btn_click', 'btnFinishEarly');
     runtime.completeCurrentTaskEarly();
   });
 
@@ -4611,6 +4632,7 @@ function setupNavigationAndModals() {
   // Drawer items
   if (navItemTimer) {
     navItemTimer.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'timer');
       closeDrawer();
       closeSettings();
       closeCalendar();
@@ -4624,6 +4646,7 @@ function setupNavigationAndModals() {
 
   if (navItemCalendar) {
     navItemCalendar.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'today_schedule');
       openCalendar();
     });
   }
@@ -4631,12 +4654,14 @@ function setupNavigationAndModals() {
   const navItemTodo = document.getElementById('navItemTodo');
   if (navItemTodo) {
     navItemTodo.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'todo');
       openTodo();
     });
   }
 
   if (navItemSettings) {
     navItemSettings.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'settings');
       openSettings();
     });
   }
@@ -4998,6 +5023,18 @@ function setupNavigationAndModals() {
   if (todoListContainer) {
     setupInteractiveTodoDrag(todoListContainer);
   }
+}
+
+// Track visibility changes (app backgrounding during active session)
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (runtime && runtime.status === TimerStatus.RUNNING) {
+        analytics.recordSessionEvent('visibility_loss');
+        analytics.trackInteraction('app_lifecycle', 'visibility_hidden_while_running');
+      }
+    }
+  });
 }
 
 // Start application: immediately if DOM is already ready, or on DOMContentLoaded
