@@ -229,14 +229,28 @@ function renderDialTicks() {
 // ==========================================
 function setupRuntimeEvents() {
   runtime.on('tick', (data) => {
-    // Only update digital clock from tick if user is NOT currently scrubbing or dragging the dial
-    if (!isScrubbingGreenLine && !isDraggingOuterDial) {
-      renderClockTime(data.remainingSeconds);
-      updateActiveTaskTimeSpanDynamic(data.remainingSeconds);
+    // Only update digital clock from tick if user is NOT currently scrubbing
+    if (!isScrubbingGreenLine) {
+      if (isDraggingOuterDial || pendingMinuteAdjustment !== 0) {
+        const adjustedSeconds = Math.max(1, data.remainingSeconds + pendingMinuteAdjustment * 60);
+        renderClockTime(adjustedSeconds);
+        updateActiveTaskTimeSpanDynamic(adjustedSeconds);
+      } else {
+        renderClockTime(data.remainingSeconds);
+        updateActiveTaskTimeSpanDynamic(data.remainingSeconds);
+      }
       updateTimerQuickToggles(data.isOverrunning);
       // Continuous rAF drives smooth wheel during RUNNING; update here when paused, idle, or seeking
       if (runtime.status !== TimerStatus.RUNNING) {
-        updateWheelProgress(data.isOverrunning ? data.progress : data.progressRatio);
+        if (isDraggingOuterDial || pendingMinuteAdjustment !== 0) {
+          const adjustedSeconds = Math.max(1, data.remainingSeconds + pendingMinuteAdjustment * 60);
+          const elapsedSec = runtime.getElapsedSeconds();
+          const totalSec = elapsedSec + adjustedSeconds;
+          const previewProgress = totalSec > 0 ? Math.min(1, Math.max(0, elapsedSec / totalSec)) : 0;
+          updateWheelProgress(previewProgress);
+        } else {
+          updateWheelProgress(data.isOverrunning ? data.progress : data.progressRatio);
+        }
       }
     }
 
@@ -425,11 +439,18 @@ function startContinuousWheelAnimation() {
 
   function step() {
     if (runtime && runtime.status === TimerStatus.RUNNING) {
-      if (!isScrubbingGreenLine && !isDraggingOuterDial) {
+      if (!isScrubbingGreenLine) {
         if (runtime.isOverrunning) {
           const overrunElapsedSec = (Date.now() - runtime.overrunStartTime) / 1000;
           const totalBankSec = runtime.initialOverrunBankSeconds || 1;
           const progress = Math.min(1, Math.max(0, overrunElapsedSec / totalBankSec));
+          updateWheelProgress(progress);
+        } else if (isDraggingOuterDial || pendingMinuteAdjustment !== 0) {
+          const currentRemaining = runtime.getRemainingSeconds();
+          const adjustedSeconds = Math.max(1, currentRemaining + pendingMinuteAdjustment * 60);
+          const elapsedSec = runtime.getElapsedSeconds();
+          const totalSec = elapsedSec + adjustedSeconds;
+          const progress = totalSec > 0 ? Math.min(1, Math.max(0, elapsedSec / totalSec)) : 0;
           updateWheelProgress(progress);
         } else {
           const progress = runtime.getProgress();
@@ -875,7 +896,10 @@ function setupRotaryWheel() {
       rotaryPreviewBadge.textContent = `${sign}${pendingMinuteAdjustment}m`;
 
       // LIVE TIMER ADJUSTMENT: User sees what the next time would be if applied!
-      const previewSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
+      const currentRemaining = runtime.status === TimerStatus.IDLE
+        ? baseDialSeconds
+        : runtime.getRemainingSeconds();
+      const previewSeconds = Math.max(1, currentRemaining + pendingMinuteAdjustment * 60);
       renderClockTime(previewSeconds);
       updateActiveTaskTimeSpanDynamic(previewSeconds);
 
@@ -897,8 +921,11 @@ function setupRotaryWheel() {
     if (pendingMinuteAdjustment !== 0) {
       mobileServices.hapticTap();
 
-      // Compute exact preview target seconds
-      const targetSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
+      // Compute exact preview target seconds based on live remaining seconds
+      const currentRemaining = runtime.status === TimerStatus.IDLE
+        ? baseDialSeconds
+        : runtime.getRemainingSeconds();
+      const targetSeconds = Math.max(60, currentRemaining + pendingMinuteAdjustment * 60);
 
       // Lock task to this exact target seconds so it preserves seconds and doesn't round to a whole minute!
       runtime.setActiveTaskTargetSeconds(targetSeconds, pendingMinuteAdjustment);
@@ -942,7 +969,10 @@ function setupRotaryWheel() {
       const needsConfirmation = taskStore.getConfirmAdjustments();
 
       if (needsConfirmation) {
-        const previewSeconds = Math.max(60, baseDialSeconds + pendingMinuteAdjustment * 60);
+        const currentRemaining = runtime.status === TimerStatus.IDLE
+          ? baseDialSeconds
+          : runtime.getRemainingSeconds();
+        const previewSeconds = Math.max(60, currentRemaining + pendingMinuteAdjustment * 60);
         const sign = pendingMinuteAdjustment > 0 ? '+' : '';
         const previewMins = Math.floor(previewSeconds / 60);
         const previewSecs = previewSeconds % 60;
@@ -960,7 +990,11 @@ function setupRotaryWheel() {
       if (rotaryDialGroup) {
         rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
       }
-      renderClockTime(baseDialSeconds);
+      const currentRemaining = runtime.status === TimerStatus.IDLE
+        ? baseDialSeconds
+        : runtime.getRemainingSeconds();
+      renderClockTime(currentRemaining);
+      updateActiveTaskTimeSpanDynamic(currentRemaining);
       if (runtime.status === TimerStatus.RUNNING) {
         startContinuousWheelAnimation();
       }
@@ -1014,9 +1048,12 @@ function setupRotaryWheel() {
     if (rotaryDialGroup) {
       rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
     }
-    // Revert clock display back to original time!
-    renderClockTime(baseDialSeconds);
-    updateActiveTaskTimeSpanDynamic(baseDialSeconds);
+    // Revert clock display back to live remaining time!
+    const currentRemaining = runtime.status === TimerStatus.IDLE
+      ? baseDialSeconds
+      : runtime.getRemainingSeconds();
+    renderClockTime(currentRemaining);
+    updateActiveTaskTimeSpanDynamic(currentRemaining);
     updateWheelProgress(runtime.getProgress());
     if (runtime.status === TimerStatus.RUNNING) {
       startContinuousWheelAnimation();
