@@ -467,13 +467,16 @@
   <!-- Full Calendar View Modal (Day / Week / Month) -->
   <div class="modal-backdrop hidden" id="fullCalendarModalBackdrop">
     <div class="calendar-modal full-calendar-modal" id="fullCalendarModal">
-      <!-- Consolidated Single Header Row (No wasted vertical lines) -->
-      <div class="modal-header full-calendar-header">
+      <!-- Consolidated Header with Centered Date, View Dropdown & Right Close Button -->
+      <div class="modal-header full-calendar-header" id="fullCalendarHeader">
         <div class="cal-header-left">
           <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
           <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
           <button type="button" class="cal-nav-btn" id="btnCalNext" title="Next">▶</button>
-          <span class="cal-current-label" id="calCurrentRangeLabel">Sat, Oct 24</span>
+        </div>
+
+        <div class="cal-header-center">
+          <span class="cal-current-label" id="calCurrentRangeLabel">Saturday, Oct 24</span>
         </div>
 
         <div class="cal-header-right">
@@ -489,11 +492,13 @@
             </select>
           </div>
 
-          <!-- View Switcher Pills: Day, Week, Month -->
-          <div class="calendar-view-switcher" id="calendarViewSwitcher">
-            <button type="button" class="cal-view-btn active" data-view="day" id="btnCalViewDay">Day</button>
-            <button type="button" class="cal-view-btn" data-view="week" id="btnCalViewWeek">Week</button>
-            <button type="button" class="cal-view-btn" data-view="month" id="btnCalViewMonth">Month</button>
+          <!-- View Switcher Dropdown (Day / Week / Month) -->
+          <div class="cal-view-dropdown-wrapper" id="calViewDropdownWrapper">
+            <select id="calViewSelect" class="cal-view-select" title="Select Calendar View">
+              <option value="day" selected>Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
           </div>
 
           <!-- Close Button Top Right -->
