@@ -484,7 +484,7 @@
         </div>
       </div>
 
-      <!-- Controls Row 2: View Switcher, Nav Buttons and Interval (Below Date & Above Calendar) -->
+      <!-- Controls Row 2: View Switcher (Left), Nav Buttons (Center) and Interval (Right) -->
       <div class="cal-sub-toolbar" id="calSubToolbar">
         <div class="cal-sub-left">
           <!-- View Switcher Dropdown (Day / Week / Month) -->
@@ -496,8 +496,10 @@
               <option value="month">Month</option>
             </select>
           </div>
+        </div>
 
-          <!-- Today & Arrow Nav Buttons placed immediately to the right of Day/Week/Month dropdown -->
+        <div class="cal-sub-center">
+          <!-- Today & Arrow Nav Buttons strictly central on the line -->
           <div class="cal-nav-buttons-group" id="calNavButtonsGroup">
             <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
             <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
@@ -506,7 +508,7 @@
         </div>
 
         <div class="cal-sub-right">
-          <!-- Time Interval Resolution Selector (Day view) with Clock Emoji and Interval: label -->
+          <!-- Time Interval Resolution Selector with Clock Emoji and tight Interval: label -->
           <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
             <span class="cal-res-icon">🕒</span>
             <span class="cal-res-label">Interval:</span>
