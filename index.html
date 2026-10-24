@@ -172,11 +172,11 @@
 
     <!-- Bottom Today's Tasks Sliding Drawer -->
     <section class="task-drawer collapsed" id="taskDrawer">
-      <div class="drawer-header" id="drawerHeader" title="Pull open Today's Tasks">
+      <div class="drawer-header" id="drawerHeader" title="Pull open Today's Schedule">
         <div class="drawer-pull-pill"></div>
         <div class="drawer-header-content">
           <div class="drawer-header-left">
-            <span class="drawer-title">Today's Tasks</span>
+            <span class="drawer-title">Today's Schedule</span>
             <span class="task-count-badge" id="taskCountBadge">3 tasks</span>
           </div>
           <div class="drawer-header-actions" style="display: flex; align-items: center; gap: 6px;">
@@ -260,16 +260,6 @@
         <span class="nav-item-label">Timer</span>
       </button>
 
-      <button class="nav-item" id="navItemCalendar" title="Today's Schedule">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-          <line x1="16" y1="2" x2="16" y2="6"/>
-          <line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
-        <span class="nav-item-label">Today's Schedule</span>
-      </button>
-
       <button class="nav-item" id="navItemFullCalendar" title="Calendar">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -283,6 +273,16 @@
           <circle cx="12" cy="18" r="1.1" fill="currentColor"/>
         </svg>
         <span class="nav-item-label">Calendar</span>
+      </button>
+
+      <button class="nav-item" id="navItemCalendar" title="Today's Schedule">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span class="nav-item-label">Today's Schedule</span>
       </button>
 
       <button class="nav-item" id="navItemTodo">
@@ -464,60 +464,51 @@
     </div>
   </div>
 
-  <!-- Full Calendar View Modal (Month / Week / Day) -->
+  <!-- Full Calendar View Modal (Day / Week / Month) -->
   <div class="modal-backdrop hidden" id="fullCalendarModalBackdrop">
     <div class="calendar-modal full-calendar-modal" id="fullCalendarModal">
+      <!-- Consolidated Single Header Row (No wasted vertical lines) -->
       <div class="modal-header full-calendar-header">
-        <div class="modal-title-wrap">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-            <circle cx="8" cy="14" r="1.1" fill="currentColor"/>
-            <circle cx="12" cy="14" r="1.1" fill="currentColor"/>
-            <circle cx="16" cy="14" r="1.1" fill="currentColor"/>
-            <circle cx="8" cy="18" r="1.1" fill="currentColor"/>
-            <circle cx="12" cy="18" r="1.1" fill="currentColor"/>
-          </svg>
-          <span class="modal-title">Calendar</span>
+        <div class="cal-header-left">
+          <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
+          <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
+          <button type="button" class="cal-nav-btn" id="btnCalNext" title="Next">▶</button>
+          <span class="cal-current-label" id="calCurrentRangeLabel">Sat, Oct 24</span>
         </div>
 
-        <!-- View Switcher Pills -->
-        <div class="calendar-view-switcher" id="calendarViewSwitcher">
-          <button type="button" class="cal-view-btn active" data-view="month" id="btnCalViewMonth">Month</button>
-          <button type="button" class="cal-view-btn" data-view="week" id="btnCalViewWeek">Week</button>
-          <button type="button" class="cal-view-btn" data-view="day" id="btnCalViewDay">Day</button>
-        </div>
+        <div class="cal-header-right">
+          <!-- Time Interval Resolution Selector (Day view) -->
+          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Snap interval resolution">
+            <span class="cal-res-icon">⏱️</span>
+            <select id="calResolutionSelect" class="cal-res-select" title="Time Interval Resolution">
+              <option value="5">5m</option>
+              <option value="10">10m</option>
+              <option value="15" selected>15m</option>
+              <option value="30">30m</option>
+              <option value="60">60m</option>
+            </select>
+          </div>
 
-        <div class="calendar-header-actions">
-          <button type="button" class="btn-clear-schedule" id="btnFullCalAddEvent" title="Add new event to calendar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
+          <!-- View Switcher Pills: Day, Week, Month -->
+          <div class="calendar-view-switcher" id="calendarViewSwitcher">
+            <button type="button" class="cal-view-btn active" data-view="day" id="btnCalViewDay">Day</button>
+            <button type="button" class="cal-view-btn" data-view="week" id="btnCalViewWeek">Week</button>
+            <button type="button" class="cal-view-btn" data-view="month" id="btnCalViewMonth">Month</button>
+          </div>
+
+          <!-- Close Button Top Right -->
           <button type="button" class="btn-close-modal" id="btnCloseFullCalendar" title="Close calendar">✕</button>
         </div>
       </div>
 
-      <!-- Date Navigation Toolbar -->
-      <div class="calendar-nav-toolbar">
-        <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
-        <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
-        <button type="button" class="cal-nav-btn" id="btnCalNext" title="Next">▶</button>
-        <span class="cal-current-label" id="calCurrentRangeLabel">October 2026</span>
-      </div>
-
       <!-- Calendar Views Container -->
-      <div class="modal-body full-calendar-body">
-        <!-- 1. Month View -->
-        <div class="calendar-view-container" id="calendarMonthView">
-          <div class="month-weekday-header">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
-          <div class="month-grid-cells" id="monthGridCells">
-            <!-- Cells generated dynamically -->
+      <div class="modal-body full-calendar-body" style="position: relative;">
+        <!-- 1. Day View (Default View) -->
+        <div class="calendar-view-container" id="calendarDayView">
+          <div class="day-timeline-scroll" id="dayTimelineScroll">
+            <div class="day-timeline-body" id="dayTimelineBody">
+              <!-- Dynamically populated with hour slots, 15m interval lines, current time bar & events -->
+            </div>
           </div>
         </div>
 
@@ -528,27 +519,33 @@
           </div>
           <div class="week-grid-scroll" id="weekGridScroll">
             <div class="week-grid-body" id="weekGridBody">
-              <!-- Hour rows & event blocks -->
+              <!-- Hour rows & solid category event blocks -->
             </div>
           </div>
         </div>
 
-        <!-- 3. Day View -->
-        <div class="calendar-view-container hidden" id="calendarDayView">
-          <div class="day-view-header" id="dayViewHeader">
-            <span class="day-view-title" id="dayViewHeaderTitle">Saturday, Oct 24</span>
+        <!-- 3. Month View -->
+        <div class="calendar-view-container hidden" id="calendarMonthView">
+          <div class="month-weekday-header">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
           </div>
-          <div class="day-timeline-scroll" id="dayTimelineScroll">
-            <div class="day-timeline-body" id="dayTimelineBody">
-              <!-- 24-hour slots and event cards -->
-            </div>
+          <div class="month-grid-cells" id="monthGridCells">
+            <!-- Cells generated dynamically with solid category event pills -->
           </div>
         </div>
+
+        <!-- Floating Green Add Event Button (Bottom Right) -->
+        <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Event Inspector & Edit Modal -->
+  <!-- Event Inspector & Edit Modal (Identical in features to Task Editor) -->
   <div class="modal-backdrop hidden" id="calendarEventModalBackdrop">
     <div class="settings-modal edit-task-modal calendar-event-modal" id="calendarEventModal">
       <div class="modal-header">
@@ -565,50 +562,113 @@
       <form class="modal-body" id="formCalEvent">
         <input type="hidden" id="calEventId" value="">
 
+        <!-- Event Name -->
         <div class="edit-task-form-group">
           <label class="edit-task-label">Event Name</label>
           <input type="text" id="calEventTitle" class="edit-task-input" required placeholder="e.g. Project Standup" autocomplete="off">
         </div>
 
+        <!-- Date -->
         <div class="edit-task-form-group">
           <label class="edit-task-label">Date</label>
           <input type="date" id="calEventDate" class="edit-task-input" required>
         </div>
 
+        <!-- Duration with Interactive Dial Picker -->
         <div class="edit-task-row">
           <div class="edit-task-form-group" style="flex: 1;">
+            <label class="edit-task-label">Duration (min)</label>
+            <div class="duration-input-wrapper">
+              <input type="number" inputmode="numeric" id="calEventDuration" class="edit-task-input duration-interactive-input" value="60" min="1" max="720" placeholder="60">
+              <button type="button" class="duration-clock-addon-btn" id="btnCalEventOpenDial" title="Open interactive dial picker">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Duration Chips & Presets -->
+        <div class="quick-duration-chips" id="calEventDurationChips">
+          <!-- Dynamically populated with preset chips + button -->
+        </div>
+
+        <!-- Start Time & End Time -->
+        <div class="edit-task-row time-span-row">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">Start Time</label>
-            <input type="time" id="calEventStartTime" class="edit-task-input" value="10:00" required>
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="calEventStartTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" value="10:00" required>
+              <button type="button" class="time-clock-addon-btn" id="btnCalEventStartTimeClock" title="Pick start time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="calEventStartTimeNative" tabindex="-1">
+            </div>
           </div>
-          <div class="edit-task-form-group" style="flex: 1;">
+          <div class="edit-task-form-group">
             <label class="edit-task-label">End Time</label>
-            <input type="time" id="calEventEndTime" class="edit-task-input" value="11:00" required>
+            <div class="time-input-wrapper">
+              <input type="text" inputmode="numeric" id="calEventEndTime" class="edit-task-input time-num-input" placeholder="HH:MM" maxlength="5" value="11:00" required>
+              <button type="button" class="time-clock-addon-btn" id="btnCalEventEndTimeClock" title="Pick end time">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </button>
+              <input type="time" class="time-picker-native-hidden" id="calEventEndTimeNative" tabindex="-1">
+            </div>
           </div>
         </div>
 
-        <div class="cal-event-duration-badge" id="calEventDurationDisplay">
-          ⏱️ Calculated Duration: <strong>60 minutes</strong>
-        </div>
-
+        <!-- Category Input + Add Custom Category Button + Remembered Chips -->
         <div class="edit-task-form-group">
           <label class="edit-task-label">Category</label>
-          <div class="cal-category-chips" id="calCategoryChips">
-            <button type="button" class="cal-cat-chip active" data-category="Work">💼 Work</button>
-            <button type="button" class="cal-cat-chip" data-category="Study">📚 Study</button>
-            <button type="button" class="cal-cat-chip" data-category="Break">☕ Break</button>
-            <button type="button" class="cal-cat-chip" data-category="Personal">🎯 Personal</button>
-            <button type="button" class="cal-cat-chip" data-category="General">📌 General</button>
+          <div class="category-input-group">
+            <input type="text" id="calEventCategory" class="edit-task-input" placeholder="Select or type new category..." autocomplete="off">
+            <button type="button" class="btn-add-category hidden" id="btnAddCalCategory" title="Add this category to remembered list">+ Add</button>
           </div>
+          <div class="category-chips-list" id="calEventCategoryChips">
+            <!-- Rendered dynamically with × delete button -->
+          </div>
+        </div>
+
+        <!-- Time Bank Protection Toggle -->
+        <div class="setting-row" style="margin-top: 6px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="modal-toggle-icon piggy-toggle-icon active" id="calEventPiggyIcon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 12c.7-1.3 1-2.8 1-4.2C20 4.6 17.4 2 14.2 2c-1.3 0-2.5.4-3.5 1.1L8.5 2H6v3.2L4.7 6.4C3.6 7.6 3 9.2 3 11c0 4.4 3.6 8 8 8h1v2h2v-2h2v2h2v-2.2c2.4-1.2 4-3.7 4-6.8z"/>
+                  <circle cx="8" cy="9" r="1" fill="currentColor"/>
+                </svg>
+              </span>
+              <span class="setting-label">Time Bank Protection</span>
+            </div>
+            <span class="setting-desc">Borrow from Time Bank if this event overruns</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="calEventTimeBank" checked>
+            <span class="toggle-slider"></span>
+          </label>
         </div>
 
         <!-- Padlock Toggle: Fixed Meeting vs Flexible -->
-        <div class="setting-row" style="margin-top: 10px; padding: 12px 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+        <div class="setting-row" style="margin-top: 6px;">
           <div class="setting-info">
-            <div class="setting-title" style="display: flex; align-items: center; gap: 6px;">
-              <span id="calPadlockIcon" style="font-size: 1.1rem;">🔒</span>
-              <span>Fixed Schedule (Locked)</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="modal-toggle-icon lock-toggle-icon" id="calEventLockIcon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+              </span>
+              <span class="setting-label">Fixed Schedule (Locked)</span>
             </div>
-            <div class="setting-desc">Keep locked to exact start/end time. Unlocked events can flex around meetings.</div>
+            <span class="setting-desc">Keep locked to exact start/end time. Unlocked events can flex around meetings.</span>
           </div>
           <label class="toggle-switch">
             <input type="checkbox" id="calEventToggleLock" checked>
@@ -616,7 +676,8 @@
           </label>
         </div>
 
-        <div class="edit-modal-footer" style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+        <!-- Footer Actions -->
+        <div class="edit-modal-footer" style="margin-top: 18px; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; gap: 8px;">
             <button type="button" class="btn-modal-cancel" id="btnCancelCalEvent" style="flex: 1;">Cancel</button>
             <button type="submit" class="btn-modal-save" id="btnSaveCalEvent" style="flex: 2;">Save Event</button>

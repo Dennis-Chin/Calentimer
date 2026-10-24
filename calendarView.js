@@ -12,12 +12,15 @@ import { analytics } from './analyticsDb.js';
 
 export class CalendarView {
   constructor() {
-    this.activeView = 'month'; // 'month' | 'week' | 'day'
+    this.activeView = 'day'; // 'day' | 'week' | 'month' (default is 'day')
     this.currentDate = new Date();
     this.selectedDate = new Date();
     this.selectedEvent = null;
     this.currentEmoji = '💼';
     this.currentCategory = 'Work';
+    this.currentResolution = 15; // default 15 minutes
+    this.currentTimeTimer = null;
+    this.refreshCategoryChips = null;
 
     // DOM Elements (bound on init)
     this.elements = {};
@@ -31,9 +34,11 @@ export class CalendarView {
       btnClose: document.getElementById('btnCloseFullCalendar'),
       btnAddEvent: document.getElementById('btnFullCalAddEvent'),
       viewSwitcher: document.getElementById('calendarViewSwitcher'),
-      btnViewMonth: document.getElementById('btnCalViewMonth'),
-      btnViewWeek: document.getElementById('btnCalViewWeek'),
       btnViewDay: document.getElementById('btnCalViewDay'),
+      btnViewWeek: document.getElementById('btnCalViewWeek'),
+      btnViewMonth: document.getElementById('btnCalViewMonth'),
+      resolutionSelect: document.getElementById('calResolutionSelect'),
+      resolutionWrapper: document.getElementById('calResolutionWrapper'),
       btnPrev: document.getElementById('btnCalPrev'),
       btnNext: document.getElementById('btnCalNext'),
       btnToday: document.getElementById('btnCalToday'),
@@ -43,8 +48,9 @@ export class CalendarView {
       weekView: document.getElementById('calendarWeekView'),
       weekHeader: document.getElementById('weekHeaderRow'),
       weekGridBody: document.getElementById('weekGridBody'),
+      weekGridScroll: document.getElementById('weekGridScroll'),
       dayView: document.getElementById('calendarDayView'),
-      dayHeaderTitle: document.getElementById('dayViewHeaderTitle'),
+      dayTimelineScroll: document.getElementById('dayTimelineScroll'),
       dayTimelineBody: document.getElementById('dayTimelineBody'),
 
       // Event Inspector Modal
@@ -56,14 +62,24 @@ export class CalendarView {
       eventIdInput: document.getElementById('calEventId'),
       eventTitleInput: document.getElementById('calEventTitle'),
       eventDateInput: document.getElementById('calEventDate'),
+      eventDurationInput: document.getElementById('calEventDuration'),
+      btnOpenDial: document.getElementById('btnCalEventOpenDial'),
+      eventDurationChips: document.getElementById('calEventDurationChips'),
       eventStartTimeInput: document.getElementById('calEventStartTime'),
       eventEndTimeInput: document.getElementById('calEventEndTime'),
-      eventDurationDisplay: document.getElementById('calEventDurationDisplay'),
+      btnStartTimeClock: document.getElementById('btnCalEventStartTimeClock'),
+      btnEndTimeClock: document.getElementById('btnCalEventEndTimeClock'),
+      eventStartTimeNative: document.getElementById('calEventStartTimeNative'),
+      eventEndTimeNative: document.getElementById('calEventEndTimeNative'),
       eventHeaderEmoji: document.getElementById('calEventHeaderEmoji'),
       btnEventEmoji: document.getElementById('btnCalEventEmoji'),
+      eventCategoryInput: document.getElementById('calEventCategory'),
+      btnAddCategory: document.getElementById('btnAddCalCategory'),
+      eventCategoryChips: document.getElementById('calEventCategoryChips'),
+      eventTimeBankToggle: document.getElementById('calEventTimeBank'),
+      piggyIcon: document.getElementById('calEventPiggyIcon'),
       eventToggleLock: document.getElementById('calEventToggleLock'),
-      padlockIcon: document.getElementById('calPadlockIcon'),
-      categoryChipsContainer: document.getElementById('calCategoryChips'),
+      lockIcon: document.getElementById('calEventLockIcon'),
       btnSendToToday: document.getElementById('btnSendCalEventToToday'),
       btnDeleteEvent: document.getElementById('btnDeleteCalEvent')
     };
@@ -85,12 +101,24 @@ export class CalendarView {
     }
 
     // View Switcher Buttons
-    const viewBtns = [el.btnViewMonth, el.btnViewWeek, el.btnViewDay].filter(Boolean);
+    const viewBtns = [el.btnViewDay, el.btnViewWeek, el.btnViewMonth].filter(Boolean);
     for (let i = 0; i < viewBtns.length; i++) {
       const btn = viewBtns[i];
       btn.addEventListener('click', () => {
         const view = btn.getAttribute('data-view');
         this.switchView(view);
+      });
+    }
+
+    // Time Interval Resolution Selector (Day View)
+    if (el.resolutionSelect) {
+      el.resolutionSelect.value = String(this.currentResolution);
+      el.resolutionSelect.addEventListener('change', (e) => {
+        this.currentResolution = parseInt(e.target.value, 10) || 15;
+        mobileServices.hapticTick();
+        if (this.activeView === 'day') {
+          this._renderDayView();
+        }
       });
     }
 
@@ -133,31 +161,77 @@ export class CalendarView {
       });
     }
 
-    // Auto-update duration calculation on start/end time change
-    if (el.eventStartTimeInput && el.eventEndTimeInput) {
-      const updateDur = () => this._updateDurationCalculation();
-      el.eventStartTimeInput.addEventListener('change', updateDur);
-      el.eventEndTimeInput.addEventListener('change', updateDur);
-      el.eventStartTimeInput.addEventListener('input', updateDur);
-      el.eventEndTimeInput.addEventListener('input', updateDur);
-    }
-
-    // Padlock toggle icon update
-    if (el.eventToggleLock && el.padlockIcon) {
-      el.eventToggleLock.addEventListener('change', () => {
-        el.padlockIcon.textContent = el.eventToggleLock.checked ? '🔒' : '🔓';
+    // Duration Dial Trigger
+    if (el.btnOpenDial && el.eventDurationInput) {
+      el.btnOpenDial.addEventListener('click', () => {
+        if (typeof window !== 'undefined' && typeof window.openDurationDialPicker === 'function') {
+          window.openDurationDialPicker(el.eventDurationInput, 'cal_event');
+        }
       });
     }
 
-    // Category chips
-    if (el.categoryChipsContainer) {
-      el.categoryChipsContainer.addEventListener('click', (e) => {
-        const chip = e.target.closest('.cal-cat-chip');
-        if (!chip) return;
-        const allChips = el.categoryChipsContainer.querySelectorAll('.cal-cat-chip');
-        for (let i = 0; i < allChips.length; i++) allChips[i].classList.remove('active');
-        chip.classList.add('active');
-        this.currentCategory = chip.getAttribute('data-category') || 'General';
+    // Duration input change listener -> update end time
+    if (el.eventDurationInput) {
+      el.eventDurationInput.addEventListener('input', () => {
+        this.updateEndTimeFromDuration();
+        this._highlightActiveDurationChip();
+      });
+      el.eventDurationInput.addEventListener('change', () => {
+        this.updateEndTimeFromDuration();
+        this._highlightActiveDurationChip();
+      });
+    }
+
+    // Auto-update duration calculation when Start or End time changes
+    if (el.eventStartTimeInput) {
+      el.eventStartTimeInput.addEventListener('input', () => {
+        if (el.eventStartTimeInput.value.length === 5) {
+          if (el.eventEndTimeInput && el.eventEndTimeInput.value.length === 5) {
+            this._updateDurationFromTimeSpan();
+          } else {
+            this.updateEndTimeFromDuration();
+          }
+        }
+      });
+      el.eventStartTimeInput.addEventListener('change', () => {
+        if (el.eventEndTimeInput && el.eventEndTimeInput.value.length === 5) {
+          this._updateDurationFromTimeSpan();
+        } else {
+          this.updateEndTimeFromDuration();
+        }
+      });
+    }
+
+    if (el.eventEndTimeInput) {
+      el.eventEndTimeInput.addEventListener('input', () => {
+        if (el.eventEndTimeInput.value.length === 5) {
+          this._updateDurationFromTimeSpan();
+        }
+      });
+      el.eventEndTimeInput.addEventListener('change', () => {
+        this._updateDurationFromTimeSpan();
+      });
+    }
+
+    // Time Clock Pickers
+    this._bindClockPicker(el.btnStartTimeClock, el.eventStartTimeNative, el.eventStartTimeInput, () => {
+      this.onStartTimeSelected();
+    });
+    this._bindClockPicker(el.btnEndTimeClock, el.eventEndTimeNative, el.eventEndTimeInput, () => {
+      this.onEndTimeSelected();
+    });
+
+    // Time Bank toggle icon update
+    if (el.eventTimeBankToggle && el.piggyIcon) {
+      el.eventTimeBankToggle.addEventListener('change', () => {
+        el.piggyIcon.classList.toggle('active', Boolean(el.eventTimeBankToggle.checked));
+      });
+    }
+
+    // Padlock toggle icon update
+    if (el.eventToggleLock && el.lockIcon) {
+      el.eventToggleLock.addEventListener('change', () => {
+        el.lockIcon.classList.toggle('active', Boolean(el.eventToggleLock.checked));
       });
     }
 
@@ -201,12 +275,21 @@ export class CalendarView {
     analytics.trackInteraction('tab_switch', 'full_calendar');
     mobileServices.hapticTap();
     this.render();
+
+    // Start dynamic current time ticker
+    this._startTimeTicker();
+
+    // If day view and viewing today, auto-scroll to current hour
+    if (this.activeView === 'day' && this._isViewingToday()) {
+      setTimeout(() => this._scrollToCurrentTime(), 60);
+    }
   }
 
   close() {
     if (this.elements.backdrop) {
       this.elements.backdrop.classList.add('hidden');
     }
+    this._stopTimeTicker();
   }
 
   switchView(viewName) {
@@ -214,7 +297,7 @@ export class CalendarView {
     this.activeView = viewName;
 
     const el = this.elements;
-    const viewBtns = [el.btnViewMonth, el.btnViewWeek, el.btnViewDay].filter(Boolean);
+    const viewBtns = [el.btnViewDay, el.btnViewWeek, el.btnViewMonth].filter(Boolean);
     for (let i = 0; i < viewBtns.length; i++) {
       const btn = viewBtns[i];
       if (btn.getAttribute('data-view') === viewName) {
@@ -224,13 +307,22 @@ export class CalendarView {
       }
     }
 
-    if (el.monthView) el.monthView.classList.toggle('hidden', viewName !== 'month');
-    if (el.weekView) el.weekView.classList.toggle('hidden', viewName !== 'week');
     if (el.dayView) el.dayView.classList.toggle('hidden', viewName !== 'day');
+    if (el.weekView) el.weekView.classList.toggle('hidden', viewName !== 'week');
+    if (el.monthView) el.monthView.classList.toggle('hidden', viewName !== 'month');
+
+    // Show resolution selector toggle only in Day view
+    if (el.resolutionWrapper) {
+      el.resolutionWrapper.style.display = viewName === 'day' ? 'flex' : 'none';
+    }
 
     analytics.trackInteraction('cal_view_switch', viewName);
     mobileServices.hapticTap();
     this.render();
+
+    if (viewName === 'day' && this._isViewingToday()) {
+      setTimeout(() => this._scrollToCurrentTime(), 60);
+    }
   }
 
   navigate(direction) {
@@ -249,6 +341,10 @@ export class CalendarView {
     this.currentDate = d;
     mobileServices.hapticTap();
     this.render();
+
+    if (this.activeView === 'day' && this._isViewingToday()) {
+      setTimeout(() => this._scrollToCurrentTime(), 60);
+    }
   }
 
   goToToday() {
@@ -256,17 +352,21 @@ export class CalendarView {
     this.selectedDate = new Date();
     mobileServices.hapticTap();
     this.render();
+
+    if (this.activeView === 'day') {
+      setTimeout(() => this._scrollToCurrentTime(), 60);
+    }
   }
 
   render() {
     this._renderRangeLabel();
 
-    if (this.activeView === 'month') {
-      this._renderMonthView();
+    if (this.activeView === 'day') {
+      this._renderDayView();
     } else if (this.activeView === 'week') {
       this._renderWeekView();
-    } else if (this.activeView === 'day') {
-      this._renderDayView();
+    } else if (this.activeView === 'month') {
+      this._renderMonthView();
     }
   }
 
@@ -301,124 +401,144 @@ export class CalendarView {
     }
   }
 
-  _renderMonthView() {
-    const container = this.elements.monthGrid;
-    if (!container) return;
-    container.innerHTML = '';
+  // 1. Day View (00:00 to 23:00, 24 hours with subdivision lines & dynamic current time bar)
+  _renderDayView() {
+    const body = this.elements.dayTimelineBody;
+    if (!body) return;
 
-    const year = this.currentDate.getFullYear();
-    const month = this.currentDate.getMonth();
-    const todayStr = this._formatDateISO(new Date());
+    body.innerHTML = '';
 
-    // First day of month & days count
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const totalDays = lastDay.getDate();
-
-    // Day of week for 1st of month (0=Sun, 1=Mon... adjust to 0=Mon)
-    let startDayOfWeek = firstDay.getDay() - 1;
-    if (startDayOfWeek === -1) startDayOfWeek = 6;
-
-    // Previous month filler days
-    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    const sel = this.selectedDate || this.currentDate;
+    const selStr = this._formatDateISO(sel);
+    const isToday = this._isViewingToday();
 
     const allEvents = taskStore.getCalendarEvents();
+    const eventsForDay = allEvents.filter(e => e.date === selStr);
 
-    // Render cells (up to 42 cells = 6 weeks)
-    const totalCells = (startDayOfWeek + totalDays > 35) ? 42 : 35;
+    const resolution = this.currentResolution || 15;
+    const hourHeight = 60; // 60px per hour => 1 minute = 1px
 
-    for (let i = 0; i < totalCells; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'month-day-cell';
+    // Render 24 hour slots (00:00 to 23:00)
+    for (let h = 0; h < 24; h++) {
+      const slot = document.createElement('div');
+      slot.className = 'day-timeline-hour-slot';
+      slot.setAttribute('data-hour', String(h));
 
-      let cellDate = null;
-      let dayNumber = 0;
-      let isCurrentMonth = true;
+      const timeLabel = document.createElement('div');
+      timeLabel.className = 'day-time-label';
+      timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
+      slot.appendChild(timeLabel);
 
-      if (i < startDayOfWeek) {
-        // Prev month day
-        isCurrentMonth = false;
-        dayNumber = prevMonthLastDay - (startDayOfWeek - i - 1);
-        cellDate = new Date(year, month - 1, dayNumber);
-        cell.classList.add('other-month');
-      } else if (i >= startDayOfWeek + totalDays) {
-        // Next month day
-        isCurrentMonth = false;
-        dayNumber = i - (startDayOfWeek + totalDays) + 1;
-        cellDate = new Date(year, month + 1, dayNumber);
-        cell.classList.add('other-month');
-      } else {
-        // Current month day
-        dayNumber = i - startDayOfWeek + 1;
-        cellDate = new Date(year, month, dayNumber);
+      const slotContent = document.createElement('div');
+      slotContent.className = 'day-slot-content';
+
+      // Render subtle dashed sub-interval lines based on current resolution
+      if (resolution < 60) {
+        const stepCount = 60 / resolution;
+        for (let s = 1; s < stepCount; s++) {
+          const subLine = document.createElement('div');
+          subLine.className = 'day-sub-interval-line';
+          const subMin = s * resolution;
+          subLine.style.top = `${subMin}px`;
+          slot.appendChild(subLine);
+        }
       }
 
-      const dateStr = this._formatDateISO(cellDate);
-      if (dateStr === todayStr) {
-        cell.classList.add('today');
-      }
+      // Clicking empty slot creates a new event starting at that hour
+      slotContent.addEventListener('click', (e) => {
+        if (e.target.closest('.day-event-card')) return;
+        const rect = slotContent.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        const rawMin = Math.max(0, Math.min(59, (clickY / hourHeight) * 60));
+        const snappedMin = Math.floor(rawMin / resolution) * resolution;
 
-      // Header with day number
-      const header = document.createElement('div');
-      header.className = 'cell-header';
-      const numSpan = document.createElement('span');
-      numSpan.className = 'cell-day-num';
-      numSpan.textContent = dayNumber;
-      header.appendChild(numSpan);
-      cell.appendChild(header);
+        const startTimeStr = `${String(h).padStart(2, '0')}:${String(snappedMin).padStart(2, '0')}`;
+        const endTotalMin = (h * 60) + snappedMin + 60;
+        const endH = Math.min(23, Math.floor(endTotalMin / 60));
+        const endM = endTotalMin % 60;
+        const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
-      // Event pills for this date
-      const eventsForDate = allEvents.filter(e => e.date === dateStr);
-      const eventsList = document.createElement('div');
-      eventsList.className = 'cell-events-list';
-
-      const maxPills = 3;
-      const displayCount = Math.min(eventsForDate.length, maxPills);
-
-      for (let j = 0; j < displayCount; j++) {
-        const ev = eventsForDate[j];
-        const pill = document.createElement('div');
-        pill.className = `month-event-pill ${ev.isLocked ? 'is-locked' : ''}`;
-        pill.title = `${ev.title} (${ev.startTime} - ${ev.endTime})`;
-
-        const emoji = document.createElement('span');
-        emoji.textContent = ev.emoji || '📅';
-
-        const title = document.createElement('span');
-        title.className = 'event-title';
-        title.textContent = ev.title;
-
-        pill.appendChild(emoji);
-        pill.appendChild(title);
-
-        pill.addEventListener('click', (event) => {
-          event.stopPropagation();
-          this.openEventInspector(ev);
-        });
-
-        eventsList.appendChild(pill);
-      }
-
-      if (eventsForDate.length > maxPills) {
-        const more = document.createElement('div');
-        more.className = 'month-more-pill';
-        more.textContent = `+${eventsForDate.length - maxPills} more`;
-        eventsList.appendChild(more);
-      }
-
-      cell.appendChild(eventsList);
-
-      // Cell click: select date and switch to Day view
-      cell.addEventListener('click', () => {
-        this.selectedDate = cellDate;
-        this.currentDate = cellDate;
-        this.switchView('day');
+        this.openEventInspector(null, selStr, startTimeStr, endTimeStr);
       });
 
-      container.appendChild(cell);
+      slot.appendChild(slotContent);
+      body.appendChild(slot);
+    }
+
+    // Render Dynamic Light-Blue Current Time Line
+    if (isToday) {
+      this._renderCurrentTimeLine();
+    }
+
+    // Render Event Cards Absolutely Positioned on the Day Timeline
+    for (let j = 0; j < eventsForDay.length; j++) {
+      const ev = eventsForDay[j];
+      const startMin = this._parseTimeToMinutes(ev.startTime);
+      const endMin = this._parseTimeToMinutes(ev.endTime);
+      let dur = ev.plannedDuration;
+      if (!dur || dur <= 0) {
+        dur = endMin - startMin;
+        if (dur <= 0) dur = 60;
+      }
+
+      const topPx = startMin; // 1 min = 1 px
+      const heightPx = Math.max(26, dur);
+
+      const card = document.createElement('div');
+      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+      card.style.top = `${topPx}px`;
+      card.style.height = `${heightPx}px`;
+      card.style.borderLeftColor = this._getCategoryColor(ev.category);
+      card.setAttribute('data-event-id', ev.id);
+
+      const isCompact = heightPx < 45;
+
+      card.innerHTML = `
+        <span style="font-size: ${isCompact ? '1rem' : '1.2rem'}; flex-shrink: 0;">${ev.emoji || '📅'}</span>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: ${isCompact ? 'row' : 'column'}; align-items: ${isCompact ? 'center' : 'flex-start'}; gap: ${isCompact ? '8px' : '2px'};">
+          <div style="font-size: 0.84rem; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${this._escapeHtml(ev.title)}
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
+            <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
+            <span>• ${dur}m</span>
+            <span style="padding: 1px 5px; border-radius: 3px; background: rgba(255,255,255,0.08); font-size: 0.68rem;">${ev.category || 'Work'}</span>
+          </div>
+        </div>
+        <button type="button" class="cal-event-lock-btn ${ev.isLocked ? 'is-locked' : ''}" data-action="toggle-lock" title="${ev.isLocked ? 'Fixed Schedule (Locked) - tap to unlock' : 'Flexible Schedule - tap to lock'}">
+          ${ev.isLocked ? `
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+          ` : `
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5-2.28 0-4.27 1.54-4.84 3.75-.14.54.18 1.08.72 1.22.53.14 1.08-.18 1.22-.72C9.46 3.86 10.63 3 12 3c1.66 0 3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+            </svg>
+          `}
+        </button>
+      `;
+
+      // Padlock button toggle listener
+      const lockBtn = card.querySelector('[data-action="toggle-lock"]');
+      if (lockBtn) {
+        lockBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const newLocked = !ev.isLocked;
+          taskStore.updateCalendarEvent(ev.id, { isLocked: newLocked });
+          mobileServices.hapticTap();
+          this.render();
+          this._showToast(newLocked ? '🔒 Event locked to fixed schedule' : '🔓 Event unlocked (flexible)');
+        });
+      }
+
+      // Hold-to-drag and tap-to-inspect setup
+      this._setupDayEventDrag(card, ev);
+
+      body.appendChild(card);
     }
   }
 
+  // 2. Week View (7 days Mon-Sun, solid category background, no emoji)
   _renderWeekView() {
     const headerRow = this.elements.weekHeader;
     const body = this.elements.weekGridBody;
@@ -470,7 +590,7 @@ export class CalendarView {
     // 16 Hours (07:00 to 22:00)
     const startHour = 7;
     const endHour = 22;
-    const hourHeight = 50; // px per hour
+    const hourHeight = 52; // px per hour
 
     // Time labels column
     const timeCol = document.createElement('div');
@@ -489,6 +609,7 @@ export class CalendarView {
       const dStr = this._formatDateISO(d);
       const dayCol = document.createElement('div');
       dayCol.className = 'week-day-col';
+      dayCol.setAttribute('data-date', dStr);
       dayCol.style.height = `${(endHour - startHour + 1) * hourHeight}px`;
 
       const eventsForDate = allEvents.filter(e => e.date === dStr);
@@ -503,28 +624,27 @@ export class CalendarView {
 
         if (cardEndHour > startHour && cardStartHour < endHour + 1) {
           const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
-          const durationHrs = Math.max(0.5, (endMin - startMin) / 60);
+          const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
           const height = durationHrs * hourHeight;
 
           const card = document.createElement('div');
           card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
           card.style.top = `${top}px`;
           card.style.height = `${height}px`;
+          card.style.backgroundColor = this._getCategoryColor(ev.category);
+          card.setAttribute('data-event-id', ev.id);
 
+          // Solid background, NO emoji, task title & time
           card.innerHTML = `
-            <div style="font-weight: 800; font-size: 0.68rem; display: flex; align-items: center; gap: 3px;">
-              <span>${ev.emoji || '📅'}</span>
-              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${ev.title}</span>
+            <div style="font-weight: 800; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffffff;">
+              ${this._escapeHtml(ev.title)}
             </div>
-            <div style="font-size: 0.62rem; color: var(--text-dim); margin-top: 1px;">
+            <div style="font-size: 0.62rem; color: rgba(255, 255, 255, 0.85); margin-top: 1px;">
               ${ev.startTime} ${ev.isLocked ? '🔒' : ''}
             </div>
           `;
 
-          card.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.openEventInspector(ev);
-          });
+          this._setupWeekEventDrag(card, ev);
 
           dayCol.appendChild(card);
         }
@@ -532,6 +652,7 @@ export class CalendarView {
 
       // Quick add on clicking empty space in week view
       dayCol.addEventListener('click', (e) => {
+        if (e.target.closest('.week-event-card')) return;
         const rect = dayCol.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
         const clickedHour = Math.floor(startHour + (clickY / hourHeight));
@@ -545,82 +666,449 @@ export class CalendarView {
     }
   }
 
-  _renderDayView() {
-    const headerTitle = this.elements.dayHeaderTitle;
-    const body = this.elements.dayTimelineBody;
-    if (!headerTitle || !body) return;
+  // 3. Month View (solid category background pills, no emoji, no left stripe)
+  _renderMonthView() {
+    const container = this.elements.monthGrid;
+    if (!container) return;
+    container.innerHTML = '';
 
-    body.innerHTML = '';
+    const year = this.currentDate.getFullYear();
+    const month = this.currentDate.getMonth();
+    const todayStr = this._formatDateISO(new Date());
 
-    const sel = this.selectedDate || this.currentDate;
-    const selStr = this._formatDateISO(sel);
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    headerTitle.textContent = `${dayNames[sel.getDay()]}, ${monthNames[sel.getMonth()]} ${sel.getDate()}, ${sel.getFullYear()}`;
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const totalDays = lastDay.getDate();
 
+    let startDayOfWeek = firstDay.getDay() - 1;
+    if (startDayOfWeek === -1) startDayOfWeek = 6;
+
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
     const allEvents = taskStore.getCalendarEvents();
-    const eventsForDay = allEvents.filter(e => e.date === selStr);
 
-    // Sort chronologically
-    eventsForDay.sort((a, b) => this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime));
+    const totalCells = (startDayOfWeek + totalDays > 35) ? 42 : 35;
 
-    // Render 24 hour slots (06:00 to 23:00)
-    for (let h = 6; h <= 23; h++) {
-      const slot = document.createElement('div');
-      slot.className = 'day-timeline-hour-slot';
+    for (let i = 0; i < totalCells; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'month-day-cell';
 
-      const timeLabel = document.createElement('div');
-      timeLabel.className = 'day-time-label';
-      timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
-      slot.appendChild(timeLabel);
+      let cellDate = null;
+      let dayNumber = 0;
 
-      const slotContent = document.createElement('div');
-      slotContent.className = 'day-slot-content';
-
-      // Find events starting in this hour
-      const matchingEvents = eventsForDay.filter(e => {
-        const startH = parseInt(e.startTime.split(':')[0], 10);
-        return startH === h;
-      });
-
-      for (let j = 0; j < matchingEvents.length; j++) {
-        const ev = matchingEvents[j];
-        const card = document.createElement('div');
-        card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''}`;
-
-        card.innerHTML = `
-          <span style="font-size: 1.25rem;">${ev.emoji || '📅'}</span>
-          <div style="flex: 1; min-width: 0;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="event-title">${ev.title}</span>
-              ${ev.isLocked ? '<span class="event-padlock">🔒 Fixed</span>' : '<span style="font-size: 0.72rem; color: var(--text-dim);">🔓 Flexible</span>'}
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
-              <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
-              <span>• ${ev.plannedDuration}m</span>
-              <span style="margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); font-size: 0.7rem;">${ev.category || 'Work'}</span>
-            </div>
-          </div>
-        `;
-
-        card.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.openEventInspector(ev);
-        });
-
-        slotContent.appendChild(card);
+      if (i < startDayOfWeek) {
+        dayNumber = prevMonthLastDay - (startDayOfWeek - i - 1);
+        cellDate = new Date(year, month - 1, dayNumber);
+        cell.classList.add('other-month');
+      } else if (i >= startDayOfWeek + totalDays) {
+        dayNumber = i - (startDayOfWeek + totalDays) + 1;
+        cellDate = new Date(year, month + 1, dayNumber);
+        cell.classList.add('other-month');
+      } else {
+        dayNumber = i - startDayOfWeek + 1;
+        cellDate = new Date(year, month, dayNumber);
       }
 
-      // Clicking an empty slot creates a new event at this hour
-      slot.addEventListener('click', () => {
-        const startTimeStr = `${String(h).padStart(2, '0')}:00`;
-        const endTimeStr = `${String(Math.min(23, h + 1)).padStart(2, '0')}:00`;
-        this.openEventInspector(null, selStr, startTimeStr, endTimeStr);
+      const dateStr = this._formatDateISO(cellDate);
+      cell.setAttribute('data-date', dateStr);
+
+      if (dateStr === todayStr) {
+        cell.classList.add('today');
+      }
+
+      const header = document.createElement('div');
+      header.className = 'cell-header';
+      const numSpan = document.createElement('span');
+      numSpan.className = 'cell-day-num';
+      numSpan.textContent = dayNumber;
+      header.appendChild(numSpan);
+      cell.appendChild(header);
+
+      const eventsForDate = allEvents.filter(e => e.date === dateStr);
+      const eventsList = document.createElement('div');
+      eventsList.className = 'cell-events-list';
+
+      const maxPills = 3;
+      const displayCount = Math.min(eventsForDate.length, maxPills);
+
+      for (let j = 0; j < displayCount; j++) {
+        const ev = eventsForDate[j];
+        const pill = document.createElement('div');
+        pill.className = `month-event-pill ${ev.isLocked ? 'is-locked' : ''}`;
+        pill.title = `${ev.title} (${ev.startTime} - ${ev.endTime})`;
+        pill.style.backgroundColor = this._getCategoryColor(ev.category);
+        pill.setAttribute('data-event-id', ev.id);
+
+        // Solid background, NO emoji, task title only
+        const title = document.createElement('span');
+        title.className = 'event-title';
+        title.textContent = ev.title;
+        pill.appendChild(title);
+
+        this._setupMonthEventDrag(pill, ev);
+
+        eventsList.appendChild(pill);
+      }
+
+      if (eventsForDate.length > maxPills) {
+        const more = document.createElement('div');
+        more.className = 'month-more-pill';
+        more.textContent = `+${eventsForDate.length - maxPills} more`;
+        eventsList.appendChild(more);
+      }
+
+      cell.appendChild(eventsList);
+
+      // Cell click: select date and switch to Day view
+      cell.addEventListener('click', (e) => {
+        if (e.target.closest('.month-event-pill')) return;
+        this.selectedDate = cellDate;
+        this.currentDate = cellDate;
+        this.switchView('day');
       });
 
-      slot.appendChild(slotContent);
-      body.appendChild(slot);
+      container.appendChild(cell);
     }
+  }
+
+  // ==========================================
+  // Dynamic Current Time Line & Auto-Scroll
+  // ==========================================
+
+  _renderCurrentTimeLine() {
+    const body = this.elements.dayTimelineBody;
+    if (!body) return;
+
+    let line = body.querySelector('.day-current-time-line');
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'day-current-time-line';
+      body.appendChild(line);
+    }
+
+    const now = new Date();
+    const minFromMidnight = (now.getHours() * 60) + now.getMinutes();
+    line.style.top = `${minFromMidnight}px`;
+
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+
+    let badge = line.querySelector('.day-current-time-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'day-current-time-badge';
+      line.appendChild(badge);
+    }
+    badge.textContent = `${hh}:${mm}`;
+  }
+
+  _startTimeTicker() {
+    this._stopTimeTicker();
+    this.currentTimeTimer = setInterval(() => {
+      if (this.activeView === 'day' && this._isViewingToday()) {
+        this._renderCurrentTimeLine();
+      }
+    }, 30000);
+  }
+
+  _stopTimeTicker() {
+    if (this.currentTimeTimer) {
+      clearInterval(this.currentTimeTimer);
+      this.currentTimeTimer = null;
+    }
+  }
+
+  _scrollToCurrentTime() {
+    const scrollEl = this.elements.dayTimelineScroll;
+    if (!scrollEl) return;
+    const now = new Date();
+    const minFromMidnight = (now.getHours() * 60) + now.getMinutes();
+    scrollEl.scrollTop = Math.max(0, minFromMidnight - 120);
+  }
+
+  _isViewingToday() {
+    const sel = this.selectedDate || this.currentDate;
+    return this._formatDateISO(sel) === this._formatDateISO(new Date());
+  }
+
+  // ==========================================
+  // Hold-to-Drag & Tap-to-Inspect Handlers
+  // ==========================================
+
+  // Day View: hold 200ms to drag up/down, snaps to currentResolution intervals
+  _setupDayEventDrag(card, ev) {
+    let holdTimer = null;
+    let isDragging = false;
+    let startY = 0;
+    let initialTop = 0;
+    const resolution = this.currentResolution || 15;
+    const durMin = ev.plannedDuration || 60;
+    const timelineBody = this.elements.dayTimelineBody;
+    const scrollContainer = this.elements.dayTimelineScroll;
+
+    const onPointerDown = (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      if (e.target.closest('[data-action="toggle-lock"]')) return;
+
+      startY = e.clientY;
+      initialTop = parseInt(card.style.top, 10) || 0;
+      isDragging = false;
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        isDragging = true;
+        card.classList.add('is-dragging-cal-event');
+        mobileServices.hapticBuzz();
+        try {
+          card.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }, 200);
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) {
+        const delta = Math.hypot(e.clientY - startY);
+        if (delta > 8 && holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
+
+      if (e.cancelable) e.preventDefault();
+      const deltaY = e.clientY - startY;
+      const rawTop = initialTop + deltaY;
+
+      // Snap to active resolution (1px = 1 min)
+      const snappedTop = Math.max(0, Math.min(1440 - durMin, Math.round(rawTop / resolution) * resolution));
+      card.style.top = `${snappedTop}px`;
+
+      // Live time range badge preview
+      const previewStartH = Math.floor(snappedTop / 60);
+      const previewStartM = snappedTop % 60;
+      const previewEndTotal = snappedTop + durMin;
+      const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
+      const previewEndM = previewEndTotal % 60;
+
+      const timeRangeEl = card.querySelector('.event-time-range');
+      if (timeRangeEl) {
+        timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        // Released before hold threshold -> Tap to open inspector
+        this.openEventInspector(ev);
+        return;
+      }
+
+      if (isDragging) {
+        isDragging = false;
+        card.classList.remove('is-dragging-cal-event');
+
+        const currentTop = parseInt(card.style.top, 10) || 0;
+        const newStartMin = Math.max(0, Math.min(1440 - durMin, Math.round(currentTop / resolution) * resolution));
+        const newStartH = Math.floor(newStartMin / 60);
+        const newStartM = newStartMin % 60;
+        const newEndTotal = newStartMin + durMin;
+        const newEndH = Math.min(23, Math.floor(newEndTotal / 60));
+        const newEndM = newEndTotal % 60;
+
+        const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
+        const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
+
+        taskStore.updateCalendarEvent(ev.id, {
+          startTime: newStartTime,
+          endTime: newEndTime,
+          plannedDuration: durMin
+        });
+
+        mobileServices.hapticTap();
+        this._showToast(`✓ Rescheduled to ${newStartTime} - ${newEndTime}`);
+        this.render();
+      }
+    };
+
+    card.addEventListener('pointerdown', onPointerDown);
+    card.addEventListener('pointermove', onPointerMove);
+    card.addEventListener('pointerup', onPointerUp);
+    card.addEventListener('pointercancel', onPointerUp);
+  }
+
+  // Week View: hold 200ms to drag between days and hours
+  _setupWeekEventDrag(card, ev) {
+    let holdTimer = null;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+
+    const onPointerDown = (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      isDragging = false;
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        isDragging = true;
+        card.classList.add('is-dragging-cal-event');
+        mobileServices.hapticBuzz();
+        try {
+          card.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }, 200);
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) {
+        const delta = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (delta > 8 && holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      card.style.transform = `translate3d(${e.clientX - startX}px, ${e.clientY - startY}px, 0)`;
+    };
+
+    const onPointerUp = (e) => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        this.openEventInspector(ev);
+        return;
+      }
+
+      if (isDragging) {
+        isDragging = false;
+        card.classList.remove('is-dragging-cal-event');
+        card.style.removeProperty('transform');
+
+        card.style.display = 'none';
+        const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+        card.style.display = '';
+
+        const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
+        if (targetCol) {
+          const targetDateStr = targetCol.getAttribute('data-date');
+          const colRect = targetCol.getBoundingClientRect();
+          const clickY = e.clientY - colRect.top;
+          const hourHeight = 52;
+          const clickedHour = Math.max(7, Math.min(22, Math.floor(7 + (clickY / hourHeight))));
+          const newStartTime = `${String(clickedHour).padStart(2, '0')}:00`;
+          const dur = ev.plannedDuration || 60;
+          const newEndTotal = (clickedHour * 60) + dur;
+          const endH = Math.min(23, Math.floor(newEndTotal / 60));
+          const endM = newEndTotal % 60;
+          const newEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+          taskStore.updateCalendarEvent(ev.id, {
+            date: targetDateStr || ev.date,
+            startTime: newStartTime,
+            endTime: newEndTime
+          });
+
+          mobileServices.hapticTap();
+          this._showToast(`✓ Moved to ${targetDateStr} at ${newStartTime}`);
+          this.render();
+        } else {
+          this.render();
+        }
+      }
+    };
+
+    card.addEventListener('pointerdown', onPointerDown);
+    card.addEventListener('pointermove', onPointerMove);
+    card.addEventListener('pointerup', onPointerUp);
+    card.addEventListener('pointercancel', onPointerUp);
+  }
+
+  // Month View: hold 200ms to drag between day cells
+  _setupMonthEventDrag(pill, ev) {
+    let holdTimer = null;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let currentOverCell = null;
+
+    const onPointerDown = (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      isDragging = false;
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        isDragging = true;
+        pill.classList.add('is-dragging-cal-event');
+        mobileServices.hapticBuzz();
+        try {
+          pill.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }, 200);
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) {
+        const delta = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (delta > 8 && holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
+      pill.style.transform = `translate3d(${e.clientX - startX}px, ${e.clientY - startY}px, 0)`;
+
+      pill.style.display = 'none';
+      const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+      pill.style.display = '';
+
+      const targetCell = targetEl ? targetEl.closest('.month-day-cell') : null;
+      if (targetCell !== currentOverCell) {
+        if (currentOverCell) currentOverCell.classList.remove('drag-target-over');
+        currentOverCell = targetCell;
+        if (currentOverCell) currentOverCell.classList.add('drag-target-over');
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        this.openEventInspector(ev);
+        return;
+      }
+
+      if (isDragging) {
+        isDragging = false;
+        pill.classList.remove('is-dragging-cal-event');
+        pill.style.removeProperty('transform');
+
+        if (currentOverCell) {
+          currentOverCell.classList.remove('drag-target-over');
+          const targetDateStr = currentOverCell.getAttribute('data-date');
+          currentOverCell = null;
+
+          if (targetDateStr && targetDateStr !== ev.date) {
+            taskStore.updateCalendarEvent(ev.id, { date: targetDateStr });
+            mobileServices.hapticTap();
+            this._showToast(`✓ Moved to ${targetDateStr}`);
+            this.render();
+            return;
+          }
+        }
+        this.render();
+      }
+    };
+
+    pill.addEventListener('pointerdown', onPointerDown);
+    pill.addEventListener('pointermove', onPointerMove);
+    pill.addEventListener('pointerup', onPointerUp);
+    pill.addEventListener('pointercancel', onPointerUp);
   }
 
   // ==========================================
@@ -632,7 +1120,10 @@ export class CalendarView {
     const el = this.elements;
 
     const isNew = !eventObj;
-    document.getElementById('calEventModalTitle').textContent = isNew ? 'New Calendar Event' : 'Event Details';
+    const titleModal = document.getElementById('calEventModalTitle');
+    if (titleModal) {
+      titleModal.textContent = isNew ? 'New Calendar Event' : 'Event Details';
+    }
 
     if (el.eventIdInput) el.eventIdInput.value = eventObj ? eventObj.id : '';
     if (el.eventTitleInput) el.eventTitleInput.value = eventObj ? eventObj.title : '';
@@ -646,30 +1137,37 @@ export class CalendarView {
       el.eventEndTimeInput.value = eventObj ? eventObj.endTime : (defaultEndTime || '11:00');
     }
 
+    const dur = eventObj && eventObj.plannedDuration ? eventObj.plannedDuration : 60;
+    if (el.eventDurationInput) el.eventDurationInput.value = String(dur);
+
     this.currentEmoji = eventObj ? (eventObj.emoji || '💼') : '💼';
     if (el.eventHeaderEmoji) el.eventHeaderEmoji.textContent = this.currentEmoji;
 
     this.currentCategory = eventObj ? (eventObj.category || 'Work') : 'Work';
-    if (el.categoryChipsContainer) {
-      const chips = el.categoryChipsContainer.querySelectorAll('.cal-cat-chip');
-      for (let i = 0; i < chips.length; i++) {
-        if (chips[i].getAttribute('data-category') === this.currentCategory) {
-          chips[i].classList.add('active');
-        } else {
-          chips[i].classList.remove('active');
-        }
-      }
+    if (el.eventCategoryInput) el.eventCategoryInput.value = this.currentCategory;
+
+    // Refresh Category Chips
+    if (this.refreshCategoryChips) {
+      this.refreshCategoryChips();
     }
+
+    // Refresh Duration Presets
+    if (typeof window !== 'undefined' && typeof window.renderAllDurationPresetChips === 'function') {
+      window.renderAllDurationPresetChips();
+    }
+    this._highlightActiveDurationChip();
 
     const isLocked = eventObj ? Boolean(eventObj.isLocked) : true;
     if (el.eventToggleLock) el.eventToggleLock.checked = isLocked;
-    if (el.padlockIcon) el.padlockIcon.textContent = isLocked ? '🔒' : '🔓';
+    if (el.lockIcon) el.lockIcon.classList.toggle('active', isLocked);
+
+    const useTimeBank = eventObj && eventObj.useTimeBank !== undefined ? Boolean(eventObj.useTimeBank) : true;
+    if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = useTimeBank;
+    if (el.piggyIcon) el.piggyIcon.classList.toggle('active', useTimeBank);
 
     if (el.btnDeleteEvent) {
       el.btnDeleteEvent.style.display = isNew ? 'none' : 'block';
     }
-
-    this._updateDurationCalculation();
 
     if (el.eventModalBackdrop) {
       el.eventModalBackdrop.classList.remove('hidden');
@@ -690,17 +1188,97 @@ export class CalendarView {
     }
   }
 
-  _updateDurationCalculation() {
+  onDurationPresetSelected(min) {
+    if (this.elements.eventDurationInput) {
+      this.elements.eventDurationInput.value = String(min);
+    }
+    this.updateEndTimeFromDuration();
+    this._highlightActiveDurationChip();
+  }
+
+  updateEndTimeFromDuration() {
     const el = this.elements;
-    if (!el.eventStartTimeInput || !el.eventEndTimeInput || !el.eventDurationDisplay) return;
+    if (!el.eventStartTimeInput || !el.eventDurationInput || !el.eventEndTimeInput) return;
+    const startStr = el.eventStartTimeInput.value.trim();
+    if (startStr.length !== 5) return;
 
-    const startMin = this._parseTimeToMinutes(el.eventStartTimeInput.value || '10:00');
-    const endMin = this._parseTimeToMinutes(el.eventEndTimeInput.value || '11:00');
+    const startMin = this._parseTimeToMinutes(startStr);
+    const dur = parseInt(el.eventDurationInput.value, 10) || 60;
+    const endTotalMin = (startMin + dur) % 1440;
+    const endH = Math.floor(endTotalMin / 60);
+    const endM = endTotalMin % 60;
+    el.eventEndTimeInput.value = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  }
 
-    let durationMin = endMin - startMin;
-    if (durationMin <= 0) durationMin += 1440; // handle overnight crossover
+  onStartTimeSelected() {
+    if (this.elements.eventEndTimeInput && this.elements.eventEndTimeInput.value.length === 5) {
+      this._updateDurationFromTimeSpan();
+    } else {
+      this.updateEndTimeFromDuration();
+    }
+  }
 
-    el.eventDurationDisplay.innerHTML = `⏱️ Duration: <strong>${durationMin} min</strong> (${(durationMin / 60).toFixed(1)} hrs)`;
+  onEndTimeSelected() {
+    this._updateDurationFromTimeSpan();
+  }
+
+  _updateDurationFromTimeSpan() {
+    const el = this.elements;
+    if (!el.eventStartTimeInput || !el.eventEndTimeInput || !el.eventDurationInput) return;
+    const startStr = el.eventStartTimeInput.value.trim();
+    const endStr = el.eventEndTimeInput.value.trim();
+    if (startStr.length !== 5 || endStr.length !== 5) return;
+
+    const startMin = this._parseTimeToMinutes(startStr);
+    const endMin = this._parseTimeToMinutes(endStr);
+    let diff = endMin - startMin;
+    if (diff <= 0) diff += 1440; // handle overnight wrap
+
+    el.eventDurationInput.value = String(diff);
+    this._highlightActiveDurationChip();
+  }
+
+  _highlightActiveDurationChip() {
+    const el = this.elements;
+    if (!el.eventDurationChips || !el.eventDurationInput) return;
+    const durVal = el.eventDurationInput.value;
+    const chips = el.eventDurationChips.querySelectorAll('.duration-chip');
+    for (let i = 0; i < chips.length; i++) {
+      chips[i].classList.toggle('active', chips[i].getAttribute('data-min') === durVal);
+    }
+  }
+
+  _bindClockPicker(btn, nativeInput, textInput, onTimeSelected) {
+    if (btn && nativeInput) {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        mobileServices.hapticTap();
+        if (textInput && textInput.value && textInput.value.length === 5) {
+          nativeInput.value = textInput.value;
+        }
+        if (typeof nativeInput.showPicker === 'function') {
+          try {
+            nativeInput.showPicker();
+          } catch (_) {
+            nativeInput.focus();
+            nativeInput.click();
+          }
+        } else {
+          nativeInput.focus();
+          nativeInput.click();
+        }
+      });
+
+      nativeInput.addEventListener('change', () => {
+        if (nativeInput.value && textInput) {
+          textInput.value = nativeInput.value;
+          textInput.dispatchEvent(new Event('input', { bubbles: true }));
+          textInput.dispatchEvent(new Event('change', { bubbles: true }));
+          if (onTimeSelected) onTimeSelected();
+        }
+      });
+    }
   }
 
   _saveEventFromForm() {
@@ -711,14 +1289,15 @@ export class CalendarView {
     const date = el.eventDateInput ? el.eventDateInput.value : this._formatDateISO(new Date());
     const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value : '10:00';
     const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value : '11:00';
-
-    const startMin = this._parseTimeToMinutes(startTime);
-    const endMin = this._parseTimeToMinutes(endTime);
-    let durationMin = endMin - startMin;
-    if (durationMin <= 0) durationMin += 1440;
-
+    const durationMin = el.eventDurationInput ? (parseInt(el.eventDurationInput.value, 10) || 60) : 60;
+    const category = el.eventCategoryInput ? (el.eventCategoryInput.value.trim() || 'Work') : 'Work';
     const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : true;
+    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : true;
     const eventId = el.eventIdInput ? el.eventIdInput.value : '';
+
+    if (category) {
+      taskStore.addCategory(category);
+    }
 
     if (eventId) {
       // Update existing
@@ -729,8 +1308,9 @@ export class CalendarView {
         endTime,
         plannedDuration: durationMin,
         isLocked,
+        useTimeBank,
         emoji: this.currentEmoji,
-        category: this.currentCategory
+        category
       });
       this._showToast('✓ Event updated');
     } else {
@@ -742,8 +1322,9 @@ export class CalendarView {
         endTime,
         plannedDuration: durationMin,
         isLocked,
+        useTimeBank,
         emoji: this.currentEmoji,
-        category: this.currentCategory
+        category
       });
       this._showToast('✓ Event created');
     }
@@ -760,20 +1341,20 @@ export class CalendarView {
 
     const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value : '10:00';
     const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value : '11:00';
-    const startMin = this._parseTimeToMinutes(startTime);
-    const endMin = this._parseTimeToMinutes(endTime);
-    let durationMin = endMin - startMin;
-    if (durationMin <= 0) durationMin += 1440;
-
+    const durationMin = el.eventDurationInput ? (parseInt(el.eventDurationInput.value, 10) || 60) : 60;
+    const category = el.eventCategoryInput ? (el.eventCategoryInput.value.trim() || 'Work') : 'Work';
     const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : true;
+    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : true;
 
     // Add task directly to Today's TaskStore
     taskStore.addTask({
       title,
       plannedDuration: durationMin,
       isLocked,
+      useTimeBank,
       emoji: this.currentEmoji || '📅',
-      category: this.currentCategory || 'Work',
+      category: category,
+      fixedStartTime: isLocked ? startTime : null,
       startTime,
       endTime
     });
@@ -787,6 +1368,30 @@ export class CalendarView {
   // Helper Utilities
   // ==========================================
 
+  _getCategoryColor(category) {
+    const cat = (category || 'general').trim().toLowerCase();
+    switch (cat) {
+      case 'work': return '#2563eb'; // Royal Blue
+      case 'study': return '#7c3aed'; // Vibrant Purple
+      case 'break': return '#d97706'; // Amber
+      case 'personal': return '#059669'; // Emerald Green
+      case 'exercise':
+      case 'fitness': return '#dc2626'; // Red
+      case 'reading': return '#0891b2'; // Cyan
+      case 'coding':
+      case 'dev': return '#4f46e5'; // Indigo
+      default: {
+        const colors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#4f46e5', '#db2777', '#0284c7'];
+        let hash = 0;
+        for (let i = 0; i < cat.length; i++) {
+          hash = cat.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const idx = Math.abs(hash) % colors.length;
+        return colors[idx];
+      }
+    }
+  }
+
   _formatDateISO(d) {
     const dateObj = d || new Date();
     const y = dateObj.getFullYear();
@@ -798,7 +1403,7 @@ export class CalendarView {
   _getMondayOfWeek(d) {
     const dateObj = new Date(d);
     const day = dateObj.getDay();
-    const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+    const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(dateObj.setDate(diff));
   }
 
@@ -810,6 +1415,11 @@ export class CalendarView {
     return (h * 60) + m;
   }
 
+  _escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   _showToast(msg) {
     if (typeof window !== 'undefined' && typeof window.showToastNotification === 'function') {
       window.showToastNotification(msg);
@@ -818,3 +1428,4 @@ export class CalendarView {
 }
 
 export const calendarView = new CalendarView();
+export default calendarView;

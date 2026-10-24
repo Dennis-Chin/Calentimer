@@ -2696,6 +2696,18 @@ function syncModalToggleIcons() {
   if (editLockIcon && editLock) {
     editLockIcon.classList.toggle('active', Boolean(editLock.checked));
   }
+
+  const calBank = document.getElementById('calEventTimeBank');
+  const calPiggy = document.getElementById('calEventPiggyIcon');
+  if (calPiggy && calBank) {
+    calPiggy.classList.toggle('active', Boolean(calBank.checked));
+  }
+
+  const calLock = document.getElementById('calEventToggleLock');
+  const calLockIcon = document.getElementById('calEventLockIcon');
+  if (calLockIcon && calLock) {
+    calLockIcon.classList.toggle('active', Boolean(calLock.checked));
+  }
 }
 
 // ==========================================
@@ -3766,9 +3778,13 @@ function setupNavigationAndModals() {
     });
   }
 
-  // Setup category chip selectors for both Add Task and Edit Task
+  // Setup category chip selectors for Add Task, Edit Task, and Calendar Event
   refreshAddCategoryChips = setupCategorySelector('addModalCategoryChips', 'addModalCategory', 'btnAddCategory');
   refreshEditCategoryChips = setupCategorySelector('editModalCategoryChips', 'editTaskCategory', 'btnEditAddCategory');
+  const refreshCalCategoryChips = setupCategorySelector('calEventCategoryChips', 'calEventCategory', 'btnAddCalCategory', (cat) => {
+    if (calendarView) calendarView.currentCategory = cat;
+  });
+  if (calendarView) calendarView.refreshCategoryChips = refreshCalCategoryChips;
 
   // Add Task Modal Elements
   const btnCloseAddTaskModal = document.getElementById('btnCloseAddTaskModal');
@@ -3893,6 +3909,13 @@ function setupNavigationAndModals() {
       updateEditModalEndTimeFromDuration();
     });
 
+    const calInput = document.getElementById('calEventDuration');
+    populateContainer('calEventDurationChips', calInput, () => {
+      if (calendarView && typeof calendarView.updateEndTimeFromDuration === 'function') {
+        calendarView.updateEndTimeFromDuration();
+      }
+    });
+
     populateContainer('pickerQuickChips', null, (min) => {
       pickerMinutes = min;
       updatePickerVisuals();
@@ -3953,9 +3976,14 @@ function setupNavigationAndModals() {
 
   function updatePickerSubtitle() {
     if (!durationDialTimeSpan) return;
-    const startInput = currentPickerCallingModal === 'add'
-      ? document.getElementById('addModalStartTime')
-      : document.getElementById('editTaskStartTime');
+    let startInput = null;
+    if (currentPickerCallingModal === 'add') {
+      startInput = document.getElementById('addModalStartTime');
+    } else if (currentPickerCallingModal === 'cal_event') {
+      startInput = document.getElementById('calEventStartTime');
+    } else {
+      startInput = document.getElementById('editTaskStartTime');
+    }
     const startVal = (startInput ? startInput.value : "").trim();
 
     if (startVal && startVal.length === 5) {
@@ -3981,10 +4009,16 @@ function setupNavigationAndModals() {
     currentPickerTarget = targetInput;
     currentPickerCallingModal = callingModal || 'add';
 
-    const titleInput = currentPickerCallingModal === 'add'
-      ? document.getElementById('addModalTitle')
-      : document.getElementById('editTaskTitle');
-    const taskTitle = (titleInput ? titleInput.value : "").trim() || (currentPickerCallingModal === 'add' ? 'New Task' : 'Edit Task');
+    let titleInput = null;
+    if (currentPickerCallingModal === 'add') {
+      titleInput = document.getElementById('addModalTitle');
+    } else if (currentPickerCallingModal === 'cal_event') {
+      titleInput = document.getElementById('calEventTitle');
+    } else {
+      titleInput = document.getElementById('editTaskTitle');
+    }
+    const defaultTitle = currentPickerCallingModal === 'cal_event' ? 'Calendar Event' : (currentPickerCallingModal === 'add' ? 'New Task' : 'Edit Task');
+    const taskTitle = (titleInput ? titleInput.value : "").trim() || defaultTitle;
 
     if (durationDialTaskTitle) durationDialTaskTitle.textContent = taskTitle;
 
@@ -4000,6 +4034,10 @@ function setupNavigationAndModals() {
       const catInput = document.getElementById('addModalCategory');
       const titleInput = document.getElementById('addModalTitle');
       isBreak = (currentAddTaskType === 'break') || ((catInput ? catInput.value : "").toLowerCase() === 'break') || ((titleInput ? titleInput.value : "").toLowerCase() === 'break');
+    } else if (currentPickerCallingModal === 'cal_event') {
+      const catInput = document.getElementById('calEventCategory');
+      const titleInput = document.getElementById('calEventTitle');
+      isBreak = ((catInput ? catInput.value : "").toLowerCase() === 'break') || ((titleInput ? titleInput.value : "").toLowerCase() === 'break');
     } else {
       const task = taskStore.getTasks().find(t => t.id === currentEditTaskId);
       const catInput = document.getElementById('editTaskCategory');
@@ -4013,6 +4051,7 @@ function setupNavigationAndModals() {
     if (durationDialModalBackdrop) durationDialModalBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
   }
+  window.openDurationDialPicker = openDurationDialPicker;
 
   function closeDurationDialPicker() {
     if (durationDialModalBackdrop) durationDialModalBackdrop.classList.add('hidden');
@@ -4151,6 +4190,11 @@ function setupNavigationAndModals() {
   }
   if (btnEditModalOpenDial) {
     btnEditModalOpenDial.addEventListener('click', () => openDurationDialPicker(editTaskDurationInput, 'edit'));
+  }
+  const btnCalEventOpenDial = document.getElementById('btnCalEventOpenDial');
+  const calEventDurationInput = document.getElementById('calEventDuration');
+  if (btnCalEventOpenDial) {
+    btnCalEventOpenDial.addEventListener('click', () => openDurationDialPicker(calEventDurationInput, 'cal_event'));
   }
 
   // Auto-colon formatter for time-num-input fields (fills HH:MM from left to right)
