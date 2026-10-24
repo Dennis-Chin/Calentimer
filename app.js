@@ -949,9 +949,12 @@ function setupRotaryWheel() {
 
       const activeTask = runtime.getActiveTask();
       if (activeTask) {
+        const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+        const preserveLock = initTask ? Boolean(initTask.isLocked) : Boolean(activeTask.isLocked);
+        activeTask.isLocked = preserveLock;
         taskStore.updateTask(activeTask.id, {
           plannedDuration: activeTask.plannedDuration,
-          isLocked: Boolean(activeTask.isLocked)
+          isLocked: preserveLock
         });
       }
 
@@ -2953,6 +2956,13 @@ function openSettings() {
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
+  const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
+  const settingsModalCard = document.getElementById('settingsModal');
+  const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
+  const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
+  if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
+  if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
+  if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
   applyTheme(taskStore.getTheme());
   if (settingsModalBackdrop) {
     settingsModalBackdrop.classList.remove('hidden');
@@ -2964,6 +2974,13 @@ function closeSettings() {
   if (settingsModalBackdrop) {
     settingsModalBackdrop.classList.add('hidden');
   }
+  const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
+  const settingsModalCard = document.getElementById('settingsModal');
+  const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
+  const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
+  if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
+  if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
+  if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
 }
 
 function openCalendar() {
@@ -4823,6 +4840,90 @@ function setupNavigationAndModals() {
       audioManager.playRotaryTick();
     });
   }
+
+  // Calendar Settings Sub-Panel setup
+  const settingRowCalendar = document.getElementById('settingRowCalendar');
+  const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
+  const btnBackCalendarSettings = document.getElementById('btnBackCalendarSettings');
+  const settingsModalCard = document.getElementById('settingsModal');
+  const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
+  const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
+
+  const toggleCalRangeEnabled = document.getElementById('toggleCalRangeEnabled');
+  const calStartTimeInput = document.getElementById('calStartTimeInput');
+  const calEndTimeInput = document.getElementById('calEndTimeInput');
+
+  function syncCalendarSettingsUI() {
+    if (toggleCalRangeEnabled) {
+      toggleCalRangeEnabled.checked = taskStore.getCalendarCustomRangeEnabled();
+    }
+    if (calStartTimeInput) {
+      calStartTimeInput.value = taskStore.getCalendarStartTime();
+    }
+    if (calEndTimeInput) {
+      calEndTimeInput.value = taskStore.getCalendarEndTime();
+    }
+  }
+
+  if (settingRowCalendar && calendarSettingsSubPanel) {
+    settingRowCalendar.addEventListener('click', () => {
+      syncCalendarSettingsUI();
+      if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
+      if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
+      calendarSettingsSubPanel.classList.remove('hidden');
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (btnBackCalendarSettings && calendarSettingsSubPanel) {
+    btnBackCalendarSettings.addEventListener('click', () => {
+      calendarSettingsSubPanel.classList.add('hidden');
+      if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
+      if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (toggleCalRangeEnabled) {
+    toggleCalRangeEnabled.addEventListener('change', () => {
+      taskStore.setCalendarCustomRangeEnabled(toggleCalRangeEnabled.checked);
+      mobileServices.hapticTap();
+      showToastNotification(toggleCalRangeEnabled.checked ? 'Custom visible hours enabled' : 'Full 24-hour calendar view restored');
+      if (calendarView) calendarView.render();
+    });
+  }
+
+  if (calStartTimeInput) {
+    calStartTimeInput.addEventListener('change', () => {
+      if (calStartTimeInput.value && calStartTimeInput.value.length === 5) {
+        taskStore.setCalendarStartTime(calStartTimeInput.value);
+        if (calendarView) calendarView.render();
+      }
+    });
+  }
+
+  if (calEndTimeInput) {
+    calEndTimeInput.addEventListener('change', () => {
+      if (calEndTimeInput.value && calEndTimeInput.value.length === 5) {
+        taskStore.setCalendarEndTime(calEndTimeInput.value);
+        if (calendarView) calendarView.render();
+      }
+    });
+  }
+
+  bindClockPicker('btnCalStartTimeClock', 'calStartTimeNative', 'calStartTimeInput', () => {
+    if (calStartTimeInput.value) {
+      taskStore.setCalendarStartTime(calStartTimeInput.value);
+      if (calendarView) calendarView.render();
+    }
+  });
+
+  bindClockPicker('btnCalEndTimeClock', 'calEndTimeNative', 'calEndTimeInput', () => {
+    if (calEndTimeInput.value) {
+      taskStore.setCalendarEndTime(calEndTimeInput.value);
+      if (calendarView) calendarView.render();
+    }
+  });
 
   // Active Task Card tap to Add Task when idle
   if (activeTaskTitle) {

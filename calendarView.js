@@ -88,7 +88,7 @@ export class CalendarView {
     };
 
     this._bindEvents();
-    this._setupHeaderSwipeDown();
+    this._setupPullToDismiss();
     this._setupHorizontalSwipeNavigation();
     this._setupPinchZoom(this.elements.dayTimelineScroll, true);
     this._setupPinchZoom(this.elements.weekGridScroll, false);
@@ -110,6 +110,8 @@ export class CalendarView {
     // View Dropdown Selection (Day, Week, Month)
     if (el.viewSelect) {
       el.viewSelect.value = this.activeView;
+      const viewValEl = document.getElementById('calViewVal');
+      if (viewValEl) viewValEl.textContent = this.activeView.charAt(0).toUpperCase() + this.activeView.slice(1);
       el.viewSelect.addEventListener('change', (e) => {
         this.switchView(e.target.value);
       });
@@ -118,6 +120,8 @@ export class CalendarView {
     // Time Interval Resolution Selector (Day & Week Views)
     if (el.resolutionSelect) {
       el.resolutionSelect.value = String(this.currentResolution);
+      const resValEl = document.getElementById('calResolutionVal');
+      if (resValEl) resValEl.textContent = `${this.currentResolution}m`;
       el.resolutionSelect.addEventListener('change', (e) => {
         const val = parseInt(e.target.value, 10) || 15;
         if (this.activeView === 'week') {
@@ -125,6 +129,8 @@ export class CalendarView {
         } else {
           this.currentResolution = val;
         }
+        const activeResEl = document.getElementById('calResolutionVal');
+        if (activeResEl) activeResEl.textContent = `${val}m`;
         mobileServices.hapticTick();
         if (this.activeView === 'day') {
           this._renderDayView();
@@ -275,61 +281,113 @@ export class CalendarView {
   }
 
   // ==========================================
-  // Header Swipe Down to Close Calendar
+  // Pull Down with Resistance to Minimise Calendar Tab to Timer
+  // Matches exact resistance drag physics used in Today's Schedule bottom drawer
   // ==========================================
 
-  _setupHeaderSwipeDown() {
-    const header = this.elements.header;
+  _setupPullToDismiss() {
     const modal = this.elements.modal;
-    if (!header || !modal) return;
+    const backdrop = this.elements.backdrop;
+    if (!modal || !backdrop) return;
 
     let touchStartY = 0;
+    let touchStartX = 0;
     let touchStartTime = 0;
-    let isSwipingDown = false;
+    let isPullingDown = false;
 
-    header.addEventListener('touchstart', (e) => {
-      if (e.target.closest('button, select, input')) return;
-      touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
-      touchStartTime = Date.now();
-      isSwipingDown = false;
-    }, { passive: true });
+    const onTouchStart = (e) => {
+      if (e.target.closest('button, select, input, .day-event-card, .week-event-card, .month-event-pill')) return;
+      if (!e.touches || e.touches.length !== 1) return;
 
-    header.addEventListener('touchmove', (e) => {
-      if (e.target.closest('button, select, input')) return;
-      const currentY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
-      const deltaY = currentY - touchStartY;
-      if (deltaY > 0) {
-        isSwipingDown = true;
-        const rubberbandY = Math.min(deltaY * 0.45, 120);
-        modal.style.transition = 'none';
-        modal.style.transform = `translateY(${rubberbandY}px)`;
+      const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
+        ? this.elements.dayTimelineScroll
+        : ((this.activeView === 'week' && this.elements.weekGridScroll) ? this.elements.weekGridScroll : null);
+
+      const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+      const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar'));
+
+      if (isAtTop || isHeaderTouch) {
+        touchStartY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+        touchStartTime = Date.now();
+        isPullingDown = false;
       }
-    }, { passive: true });
+    };
+
+    const onTouchMove = (e) => {
+      if (!touchStartY || !e.touches || e.touches.length !== 1) return;
+      const currentY = e.touches[0].clientY;
+      const currentX = e.touches[0].clientX;
+      const deltaY = currentY - touchStartY;
+      const deltaX = currentX - touchStartX;
+
+      if (deltaY > 8 && deltaY > Math.abs(deltaX) * 1.2) {
+        const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
+          ? this.elements.dayTimelineScroll
+          : ((this.activeView === 'week' && this.elements.weekGridScroll) ? this.elements.weekGridScroll : null);
+
+        const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+        const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar'));
+
+        if (isAtTop || isHeaderTouch) {
+          isPullingDown = true;
+          // Apply 0.45 resistance damping
+          const rubberbandY = Math.min(deltaY * 0.45, 140);
+          modal.style.transition = 'none';
+          modal.style.transform = `translate3d(0, ${rubberbandY}px, 0)`;
+          backdrop.style.transition = 'none';
+          const progress = Math.max(0, 1 - (deltaY / 260));
+          backdrop.style.opacity = String(progress);
+        }
+      }
+    };
 
     const onTouchEnd = (e) => {
-      if (!isSwipingDown) return;
-      isSwipingDown = false;
+      if (!isPullingDown) {
+        touchStartY = 0;
+        touchStartX = 0;
+        return;
+      }
+      isPullingDown = false;
       const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
       const deltaY = currentY - touchStartY;
       const elapsed = Math.max(1, Date.now() - touchStartTime);
       const velocity = deltaY / elapsed;
 
-      modal.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-      if (deltaY > 60 || (deltaY > 28 && velocity > 0.35)) {
-        modal.style.transform = 'translateY(100vh)';
+      touchStartY = 0;
+      touchStartX = 0;
+
+      if (deltaY > 65 || (deltaY > 30 && velocity > 0.35)) {
+        modal.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
+        modal.style.transform = 'translate3d(0, 100vh, 0)';
+        backdrop.style.transition = 'opacity 0.22s ease';
+        backdrop.style.opacity = '0';
         mobileServices.hapticBuzz();
         setTimeout(() => {
           modal.style.removeProperty('transform');
           modal.style.removeProperty('transition');
+          backdrop.style.removeProperty('opacity');
+          backdrop.style.removeProperty('transition');
           this.close();
-        }, 220);
+        }, 230);
       } else {
-        modal.style.removeProperty('transform');
+        modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        modal.style.transform = 'translate3d(0, 0, 0)';
+        backdrop.style.transition = 'opacity 0.2s ease';
+        backdrop.style.opacity = '1';
+        setTimeout(() => {
+          modal.style.removeProperty('transform');
+          modal.style.removeProperty('transition');
+          backdrop.style.removeProperty('opacity');
+          backdrop.style.removeProperty('transition');
+        }, 240);
       }
     };
 
-    header.addEventListener('touchend', onTouchEnd, { passive: true });
-    header.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    modal.addEventListener('touchstart', onTouchStart, { passive: true });
+    modal.addEventListener('touchmove', onTouchMove, { passive: true });
+    modal.addEventListener('touchend', onTouchEnd, { passive: true });
+    modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
   }
 
   // ==========================================
@@ -409,28 +467,26 @@ export class CalendarView {
           }
           currentSlideDirection = targetDirection;
 
-          adjacentSlide = document.createElement('div');
-          adjacentSlide.className = 'cal-adjacent-preview-slide';
-          adjacentSlide.style.position = 'absolute';
-          adjacentSlide.style.top = '0';
-          adjacentSlide.style.left = '0';
-          adjacentSlide.style.width = '100%';
-          adjacentSlide.style.height = '100%';
-          adjacentSlide.style.pointerEvents = 'none';
-          adjacentSlide.style.zIndex = '12';
-          adjacentSlide.style.background = 'var(--bg-surface)';
+          const targetDate = new Date(this.currentDate);
+          if (this.activeView === 'day') {
+            targetDate.setDate(targetDate.getDate() + (targetDirection > 0 ? 1 : -1));
+          } else if (this.activeView === 'week') {
+            targetDate.setDate(targetDate.getDate() + ((targetDirection > 0 ? 1 : -1) * 7));
+          } else if (this.activeView === 'month') {
+            targetDate.setMonth(targetDate.getMonth() + (targetDirection > 0 ? 1 : -1));
+          }
 
-          // Clone active container structure for visual preview of next/prev date
-          const clone = activeContainer.cloneNode(true);
-          clone.classList.remove('hidden');
           const currentScrollEl = activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll');
           const currentScrollTop = currentScrollEl ? currentScrollEl.scrollTop : 0;
-          const cloneScroll = clone.querySelector('.day-timeline-scroll, .week-grid-scroll');
-          if (cloneScroll) {
-            cloneScroll.scrollTop = currentScrollTop;
-          }
-          adjacentSlide.appendChild(clone);
+
+          adjacentSlide = this._buildAdjacentPreviewSlide(targetDate, targetDirection, currentScrollTop);
           modalBody.appendChild(adjacentSlide);
+
+          // Crucial: apply scrollTop AFTER appending to document so it never jumps to 00:00!
+          const adjScroll = adjacentSlide.querySelector('.day-timeline-scroll, .week-grid-scroll');
+          if (adjScroll) {
+            adjScroll.scrollTop = currentScrollTop;
+          }
         }
 
         activeContainer.style.transition = 'none';
@@ -511,6 +567,100 @@ export class CalendarView {
 
     modalBody.addEventListener('touchend', onTouchEnd, { passive: true });
     modalBody.addEventListener('touchcancel', onTouchEnd, { passive: true });
+  }
+
+  _buildAdjacentPreviewSlide(targetDate, targetDirection, currentScrollTop) {
+    const slide = document.createElement('div');
+    slide.className = 'cal-adjacent-preview-slide';
+    slide.style.position = 'absolute';
+    slide.style.top = '0';
+    slide.style.left = '0';
+    slide.style.width = '100%';
+    slide.style.height = '100%';
+    slide.style.pointerEvents = 'none';
+    slide.style.zIndex = '12';
+    slide.style.background = 'var(--bg-surface)';
+
+    if (this.activeView === 'day') {
+      const dayContainer = document.createElement('div');
+      dayContainer.className = 'calendar-view-container';
+      const scrollEl = document.createElement('div');
+      scrollEl.className = 'day-timeline-scroll';
+      const body = document.createElement('div');
+      body.className = 'day-timeline-body';
+      scrollEl.appendChild(body);
+      dayContainer.appendChild(scrollEl);
+      slide.appendChild(dayContainer);
+
+      const targetStr = this._formatDateISO(targetDate);
+      const allEvents = taskStore.getCalendarEvents();
+      const eventsForDay = allEvents.filter(e => e.date === targetStr);
+
+      const isCustom = taskStore.getCalendarCustomRangeEnabled();
+      let startHour = 0;
+      let endHour = 24;
+      if (isCustom) {
+        const startStr = taskStore.getCalendarStartTime() || '08:00';
+        const endStr = taskStore.getCalendarEndTime() || '22:00';
+        startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+        endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+      }
+      const hourHeight = this.dayHourHeight || 56;
+      scrollEl.style.setProperty('--cal-day-hour-height', `${hourHeight}px`);
+
+      for (let h = startHour; h < endHour; h++) {
+        const slot = document.createElement('div');
+        slot.className = 'day-timeline-hour-slot';
+        const timeLabel = document.createElement('div');
+        timeLabel.className = 'day-time-label';
+        timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
+        slot.appendChild(timeLabel);
+        const slotContent = document.createElement('div');
+        slotContent.className = 'day-slot-content';
+        slot.appendChild(slotContent);
+        body.appendChild(slot);
+      }
+
+      for (let j = 0; j < eventsForDay.length; j++) {
+        const ev = eventsForDay[j];
+        const startMin = this._parseTimeToMinutes(ev.startTime);
+        const endMin = this._parseTimeToMinutes(ev.endTime);
+        let dur = ev.plannedDuration;
+        if (!dur || dur <= 0) {
+          dur = endMin - startMin;
+          if (dur <= 0) dur = 60;
+        }
+        const topPx = 14 + (Math.max(0, startMin - (startHour * 60)) / 60) * hourHeight;
+        const heightPx = Math.max(26, (dur / 60) * hourHeight);
+        const card = document.createElement('div');
+        card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+        card.style.top = `${topPx}px`;
+        card.style.borderLeftColor = this._getCategoryColor(ev.category);
+        this._applyEventCardLayout(card, heightPx);
+        card.innerHTML = `
+          <span class="day-event-emoji">${ev.emoji || '📅'}</span>
+          <div class="day-event-content">
+            <div class="day-event-title-line">
+              <span class="day-event-title">${this._escapeHtml(ev.title)}</span>
+            </div>
+            <div class="day-event-meta-line">
+              <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
+              <span class="event-duration-pill">(${dur}m)</span>
+            </div>
+          </div>
+        `;
+        body.appendChild(card);
+      }
+    } else {
+      const orig = this.elements[this.activeView === 'week' ? 'weekView' : 'monthView'];
+      if (orig) {
+        const clone = orig.cloneNode(true);
+        clone.classList.remove('hidden');
+        slide.appendChild(clone);
+      }
+    }
+
+    return slide;
   }
 
   // ==========================================
@@ -617,14 +767,35 @@ export class CalendarView {
 
   _applyEventCardLayout(card, heightPx) {
     card.style.height = `${heightPx}px`;
-    card.classList.toggle('is-single-row', heightPx < 36);
-    card.classList.toggle('is-compact-two-line', heightPx >= 36 && heightPx < 50);
+    const titleEl = card.querySelector('.day-event-title');
+    const titleText = titleEl ? (titleEl.textContent || '') : '';
+    const approxTitleWidth = titleText.length * 7.5;
+    const isOverlapping = card.classList.contains('is-overlapping-earlier') || card.classList.contains('is-overlapping-later');
+    const cardWidth = card.clientWidth || (isOverlapping ? 130 : 270);
+
+    // If single line can fit emoji (24px) + full title + timespan (~75px) + duration (~35px) + padding (30px) = ~164px
+    const canFitSingleLine = (cardWidth - 164) >= approxTitleWidth;
+
+    if (heightPx < 36 && canFitSingleLine && !isOverlapping) {
+      card.classList.add('is-single-row');
+      card.classList.remove('is-compact-two-line');
+    } else {
+      card.classList.remove('is-single-row');
+      card.classList.toggle('is-compact-two-line', heightPx < 52);
+    }
   }
 
   // Smoothly reposition day event cards and current time line when hour height changes
   _updateDayViewPositions() {
     const body = this.elements.dayTimelineBody;
     if (!body) return;
+
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+    }
 
     const hourHeight = this.dayHourHeight || 56;
     const cards = body.querySelectorAll('.day-event-card');
@@ -642,7 +813,7 @@ export class CalendarView {
           dur = endMin - startMin;
           if (dur <= 0) dur = 60;
         }
-        const topPx = (startMin / 60) * hourHeight;
+        const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
         const heightPx = Math.max(24, (dur / 60) * hourHeight);
         card.style.top = `${topPx}px`;
         this._applyEventCardLayout(card, heightPx);
@@ -661,8 +832,15 @@ export class CalendarView {
     if (!container || !body) return;
 
     const hourHeight = this.weekHourHeight || 50;
-    const startHour = 7;
-    const endHour = 22;
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 7;
+    let endHour = 22;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
 
     container.style.setProperty('--cal-week-hour-height', `${hourHeight}px`);
 
@@ -887,7 +1065,7 @@ export class CalendarView {
     }
   }
 
-  // 1. Day View (00:00 to 23:00, 24 hours with subdivision lines & dynamic current time bar)
+  // 1. Day View (With custom visible range support, subdivision lines & dynamic current time bar)
   _renderDayView() {
     const body = this.elements.dayTimelineBody;
     if (!body) return;
@@ -901,6 +1079,16 @@ export class CalendarView {
     const allEvents = taskStore.getCalendarEvents();
     const eventsForDay = allEvents.filter(e => e.date === selStr);
 
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    let endHour = 24;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
+
     const resolution = this.currentResolution || 15;
     const hourHeight = this.dayHourHeight || 56; // px per hour
 
@@ -909,8 +1097,8 @@ export class CalendarView {
       this.elements.dayTimelineScroll.style.setProperty('--cal-day-hour-height', `${hourHeight}px`);
     }
 
-    // Render 24 hour slots (00:00 to 23:00)
-    for (let h = 0; h < 24; h++) {
+    // Render hour slots from startHour to endHour (including 00:00)
+    for (let h = startHour; h < endHour; h++) {
       const slot = document.createElement('div');
       slot.className = 'day-timeline-hour-slot';
       slot.setAttribute('data-hour', String(h));
@@ -961,9 +1149,18 @@ export class CalendarView {
       this._renderCurrentTimeLine();
     }
 
-    // Render Event Cards Absolutely Positioned on the Day Timeline
-    for (let j = 0; j < eventsForDay.length; j++) {
-      const ev = eventsForDay[j];
+    // Filter and sort events by start time ascending for overlap detection & indenting
+    const visibleEvents = eventsForDay.filter(e => {
+      const s = this._parseTimeToMinutes(e.startTime);
+      const en = this._parseTimeToMinutes(e.endTime);
+      return !(s >= endHour * 60 || en <= startHour * 60);
+    }).sort((a, b) => {
+      return this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+    });
+
+    // Render Event Cards Absolutely Positioned with Overlap Indentation
+    for (let j = 0; j < visibleEvents.length; j++) {
+      const ev = visibleEvents[j];
       const startMin = this._parseTimeToMinutes(ev.startTime);
       const endMin = this._parseTimeToMinutes(ev.endTime);
       let dur = ev.plannedDuration;
@@ -972,11 +1169,28 @@ export class CalendarView {
         if (dur <= 0) dur = 60;
       }
 
-      const topPx = (startMin / 60) * hourHeight;
+      const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
       const heightPx = Math.max(26, (dur / 60) * hourHeight);
 
+      // Check if overlapping with any earlier-starting event
+      let isLaterOverlap = false;
+      for (let k = 0; k < j; k++) {
+        const other = visibleEvents[k];
+        const otherStart = this._parseTimeToMinutes(other.startTime);
+        const otherEnd = this._parseTimeToMinutes(other.endTime);
+        if (startMin < otherEnd && endMin > otherStart) {
+          isLaterOverlap = true;
+          const earlierCard = body.querySelector(`[data-event-id="${other.id}"]`);
+          if (earlierCard) {
+            earlierCard.classList.add('is-overlapping-earlier');
+            this._applyEventCardLayout(earlierCard, parseInt(earlierCard.style.height, 10) || 40);
+          }
+          break;
+        }
+      }
+
       const card = document.createElement('div');
-      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''}`;
       card.style.top = `${topPx}px`;
       card.style.borderLeftColor = this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
@@ -1077,9 +1291,15 @@ export class CalendarView {
 
     const allEvents = taskStore.getCalendarEvents();
 
-    // 16 Hours (07:00 to 22:00)
-    const startHour = 7;
-    const endHour = 22;
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 7;
+    let endHour = 22;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
     const hourHeight = this.weekHourHeight || 50; // dynamic px per hour
 
     if (this.elements.weekGridScroll) {
@@ -1089,7 +1309,7 @@ export class CalendarView {
     // Time labels column
     const timeCol = document.createElement('div');
     timeCol.className = 'week-time-col';
-    for (let h = startHour; h <= endHour; h++) {
+    for (let h = startHour; h < endHour; h++) {
       const lbl = document.createElement('div');
       lbl.className = 'week-hour-label';
       lbl.textContent = `${String(h).padStart(2, '0')}:00`;
@@ -1107,10 +1327,10 @@ export class CalendarView {
       const dayCol = document.createElement('div');
       dayCol.className = 'week-day-col';
       dayCol.setAttribute('data-date', dStr);
-      dayCol.style.height = `${(endHour - startHour + 1) * hourHeight}px`;
+      dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
 
       // Render horizontal lines at the hours in each day column
-      for (let h = startHour; h <= endHour; h++) {
+      for (let h = startHour; h < endHour; h++) {
         const line = document.createElement('div');
         line.className = 'week-hour-line';
         line.style.top = `${(h - startHour) * hourHeight}px`;
@@ -1127,7 +1347,7 @@ export class CalendarView {
         const cardStartHour = startMin / 60;
         const cardEndHour = endMin / 60;
 
-        if (cardEndHour > startHour && cardStartHour < endHour + 1) {
+        if (cardEndHour > startHour && cardStartHour < endHour) {
           const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
           const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
           const height = durationHrs * hourHeight;
@@ -1159,8 +1379,9 @@ export class CalendarView {
         const rect = dayCol.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
         const clickedHour = Math.floor(startHour + (clickY / hourHeight));
-        const startTimeStr = `${String(Math.min(23, Math.max(0, clickedHour))).padStart(2, '0')}:00`;
-        const endTimeStr = `${String(Math.min(23, Math.max(1, clickedHour + 1))).padStart(2, '0')}:00`;
+        const safeStartHour = Math.min(endHour - 1, Math.max(startHour, clickedHour));
+        const startTimeStr = `${String(safeStartHour).padStart(2, '0')}:00`;
+        const endTimeStr = `${String(Math.min(endHour, safeStartHour + 1)).padStart(2, '0')}:00`;
 
         this.openEventInspector(null, dStr, startTimeStr, endTimeStr);
       });
@@ -1298,8 +1519,25 @@ export class CalendarView {
 
     const now = new Date();
     const minFromMidnight = (now.getHours() * 60) + now.getMinutes();
+
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    let endHour = 24;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
+
+    if (minFromMidnight < startHour * 60 || minFromMidnight > endHour * 60) {
+      line.style.display = 'none';
+      return;
+    }
+    line.style.display = '';
+
     const hourHeight = this.dayHourHeight || 56;
-    const topPx = (minFromMidnight / 60) * hourHeight;
+    const topPx = 14 + (((minFromMidnight - (startHour * 60)) / 60) * hourHeight);
     line.style.top = `${topPx}px`;
 
     const hh = String(now.getHours()).padStart(2, '0');
@@ -1348,8 +1586,16 @@ export class CalendarView {
     if (!scrollEl) return;
     const now = new Date();
     const minFromMidnight = (now.getHours() * 60) + now.getMinutes();
+
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+    }
+
     const hourHeight = this.dayHourHeight || 56;
-    const topPx = (minFromMidnight / 60) * hourHeight;
+    const topPx = 14 + (((Math.max(startHour * 60, minFromMidnight) - (startHour * 60)) / 60) * hourHeight);
     scrollEl.scrollTop = Math.max(0, topPx - 100);
   }
 
@@ -1374,13 +1620,23 @@ export class CalendarView {
     const durMin = ev.plannedDuration || 60;
     const container = this.elements.dayTimelineScroll;
 
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    let endHour = 24;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
+
     const applySnappedPosition = (clientY) => {
       const hourHeight = this.dayHourHeight || 56;
       const deltaY = clientY - startY;
-      const rawTop = initialTop + deltaY;
-      const rawMinutes = (rawTop / hourHeight) * 60;
-      const snappedMinutes = Math.max(0, Math.min(1440 - durMin, Math.round(rawMinutes / resolution) * resolution));
-      const snappedTopPx = (snappedMinutes / 60) * hourHeight;
+      const rawTop = Math.max(0, (initialTop - 14) + deltaY);
+      const rawMinutes = (startHour * 60) + ((rawTop / hourHeight) * 60);
+      const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+      const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
       card.style.top = `${snappedTopPx}px`;
 
       const previewStartH = Math.floor(snappedMinutes / 60);
@@ -1431,7 +1687,7 @@ export class CalendarView {
 
       startY = e.clientY;
       lastClientY = e.clientY;
-      initialTop = parseInt(card.style.top, 10) || 0;
+      initialTop = parseInt(card.style.top, 10) || 14;
       isDragging = false;
 
       holdTimer = setTimeout(() => {
@@ -1497,10 +1753,10 @@ export class CalendarView {
         }
         card.classList.remove('is-dragging-cal-event');
 
-        const currentTop = parseInt(card.style.top, 10) || 0;
+        const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
         const hourHeight = this.dayHourHeight || 56;
-        const rawMinutes = (currentTop / hourHeight) * 60;
-        const newStartMin = Math.max(0, Math.min(1440 - durMin, Math.round(rawMinutes / resolution) * resolution));
+        const rawMinutes = (startHour * 60) + ((currentTop / hourHeight) * 60);
+        const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
 
         const newStartH = Math.floor(newStartMin / 60);
         const newStartM = newStartMin % 60;
@@ -1535,11 +1791,54 @@ export class CalendarView {
     let isDragging = false;
     let startX = 0;
     let startY = 0;
+    let lastClientY = 0;
+    let autoScrollRaf = null;
+    const container = this.elements.weekGridScroll;
+
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 7;
+    let endHour = 22;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
+
+    const startAutoScrollLoop = () => {
+      const step = () => {
+        if (!isDragging || !container) return;
+        const rect = container.getBoundingClientRect();
+        const edgeThreshold = 55;
+        let scrollDelta = 0;
+
+        if (lastClientY < rect.top + edgeThreshold) {
+          const intensity = Math.min(1, Math.max(0, (rect.top + edgeThreshold - lastClientY) / edgeThreshold));
+          scrollDelta = -Math.round(3 + (intensity * 14));
+        } else if (lastClientY > rect.bottom - edgeThreshold) {
+          const intensity = Math.min(1, Math.max(0, (lastClientY - (rect.bottom - edgeThreshold)) / edgeThreshold));
+          scrollDelta = Math.round(3 + (intensity * 14));
+        }
+
+        if (scrollDelta !== 0) {
+          const oldScroll = container.scrollTop;
+          container.scrollTop = Math.max(0, container.scrollTop + scrollDelta);
+          const actualScrolled = container.scrollTop - oldScroll;
+          if (actualScrolled !== 0) {
+            startY -= actualScrolled;
+          }
+        }
+
+        autoScrollRaf = requestAnimationFrame(step);
+      };
+      autoScrollRaf = requestAnimationFrame(step);
+    };
 
     const onPointerDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       startX = e.clientX;
       startY = e.clientY;
+      lastClientY = e.clientY;
       isDragging = false;
 
       holdTimer = setTimeout(() => {
@@ -1559,9 +1858,13 @@ export class CalendarView {
         isDragging = true;
         card.classList.add('is-dragging-cal-event');
         mobileServices.hapticBuzz();
+        if (container) {
+          container.style.overflowY = 'hidden'; // Lock native timeline scrolling while dragging
+        }
         try {
           card.setPointerCapture(e.pointerId);
         } catch (_) {}
+        startAutoScrollLoop();
       }, 200);
     };
 
@@ -1575,6 +1878,7 @@ export class CalendarView {
         return;
       }
       if (e.cancelable) e.preventDefault();
+      lastClientY = e.clientY;
       card.style.transform = `translate3d(${e.clientX - startX}px, ${e.clientY - startY}px, 0)`;
     };
 
@@ -1588,6 +1892,13 @@ export class CalendarView {
 
       if (isDragging) {
         isDragging = false;
+        if (autoScrollRaf) {
+          cancelAnimationFrame(autoScrollRaf);
+          autoScrollRaf = null;
+        }
+        if (container) {
+          container.style.removeProperty('overflow-y'); // Restore scrolling
+        }
         card.classList.remove('is-dragging-cal-event');
         card.style.removeProperty('transform');
 
@@ -1602,9 +1913,9 @@ export class CalendarView {
           const clickY = e.clientY - colRect.top;
           const hourHeight = this.weekHourHeight || 50;
           const resolution = this.weekResolution || 15;
-          const rawMinutes = (7 * 60) + ((clickY / hourHeight) * 60);
+          const rawMinutes = (startHour * 60) + ((clickY / hourHeight) * 60);
           const dur = ev.plannedDuration || 60;
-          const snappedStartMin = Math.max(7 * 60, Math.min((23 * 60) - dur, Math.round(rawMinutes / resolution) * resolution));
+          const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - dur, Math.round(rawMinutes / resolution) * resolution));
           const newStartH = Math.floor(snappedStartMin / 60);
           const newStartM = snappedStartMin % 60;
           const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;

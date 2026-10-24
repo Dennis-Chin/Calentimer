@@ -387,6 +387,81 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
+
+          <div class="setting-row setting-row-clickable" id="settingRowCalendar" title="Configure calendar display options">
+            <div class="setting-info">
+              <span class="setting-label">📅 Calendar Settings</span>
+              <span class="setting-desc">Define start and end times to hide redundant sleeping hours.</span>
+            </div>
+            <svg class="setting-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calendar Settings Sub-Panel -->
+      <div class="settings-sub-panel hidden" id="calendarSettingsSubPanel">
+        <div class="modal-header">
+          <button type="button" class="btn-sub-back" id="btnBackCalendarSettings" title="Back to Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>Settings</span>
+          </button>
+          <span class="modal-title">Calendar</span>
+          <div style="width: 32px;"></div>
+        </div>
+        <div class="modal-body">
+          <div class="settings-group">
+            <!-- Master Toggle: Define Custom Visible Window -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Custom Visible Hours</span>
+                <span class="setting-desc">Hides redundant sleeping/inactive hours on Day and Week views.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleCalRangeEnabled">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Start Time -->
+            <div class="setting-row cal-time-setting-row" id="calStartTimeRow">
+              <div class="setting-info">
+                <span class="setting-label">Calendar Start Time</span>
+                <span class="setting-desc">Timeline starts at this time (e.g. 08:00 or 09:00).</span>
+              </div>
+              <div class="time-input-wrapper" style="width: 110px;">
+                <input type="text" inputmode="numeric" id="calStartTimeInput" class="edit-task-input time-num-input" placeholder="08:00" maxlength="5" value="08:00">
+                <button type="button" class="time-clock-addon-btn" id="btnCalStartTimeClock" title="Pick start time">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                </button>
+                <input type="time" class="time-picker-native-hidden" id="calStartTimeNative" tabindex="-1">
+              </div>
+            </div>
+
+            <!-- End Time -->
+            <div class="setting-row cal-time-setting-row" id="calEndTimeRow">
+              <div class="setting-info">
+                <span class="setting-label">Calendar End Time</span>
+                <span class="setting-desc">Timeline ends at this time (e.g. 22:00 or 23:00).</span>
+              </div>
+              <div class="time-input-wrapper" style="width: 110px;">
+                <input type="text" inputmode="numeric" id="calEndTimeInput" class="edit-task-input time-num-input" placeholder="22:00" maxlength="5" value="22:00">
+                <button type="button" class="time-clock-addon-btn" id="btnCalEndTimeClock" title="Pick end time">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                </button>
+                <input type="time" class="time-picker-native-hidden" id="calEndTimeNative" tabindex="-1">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -487,10 +562,12 @@
       <!-- Controls Row 2: View Switcher (Left), Nav Buttons (Center) and Interval (Right) -->
       <div class="cal-sub-toolbar" id="calSubToolbar">
         <div class="cal-sub-left">
-          <!-- View Switcher Dropdown (Day / Week / Month) -->
-          <div class="cal-view-dropdown-wrapper" id="calViewDropdownWrapper">
+          <!-- View Switcher Dropdown (Day / Week / Month) with Tap Anywhere overlay -->
+          <div class="cal-view-dropdown-wrapper" id="calViewDropdownWrapper" title="Select Calendar View">
             <span class="cal-toolbar-icon">📅</span>
-            <select id="calViewSelect" class="cal-view-select" title="Select Calendar View">
+            <span class="cal-view-val" id="calViewVal">Day</span>
+            <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
+            <select id="calViewSelect" class="cal-dropdown-select-overlay" title="Select Calendar View">
               <option value="day" selected>Day</option>
               <option value="week">Week</option>
               <option value="month">Month</option>
@@ -512,7 +589,9 @@
           <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
             <span class="cal-res-icon">🕒</span>
             <span class="cal-res-label">Interval:</span>
-            <select id="calResolutionSelect" class="cal-res-select" title="Time Interval Resolution">
+            <span class="cal-res-val" id="calResolutionVal">15m</span>
+            <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
+            <select id="calResolutionSelect" class="cal-dropdown-select-overlay" title="Time Interval Resolution">
               <option value="5">5m</option>
               <option value="10">10m</option>
               <option value="15" selected>15m</option>

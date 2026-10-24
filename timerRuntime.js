@@ -150,7 +150,7 @@ export class TimerRuntime {
           remainingTasks.push({
             ...origTask,
             plannedDuration: remainingMin,
-            isLocked: this.status === TimerStatus.RUNNING ? true : Boolean(origTask.isLocked || origTask.fixedStartTime)
+            isLocked: Boolean(origTask.isLocked || origTask.fixedStartTime)
           });
         } else {
           // Task has not started ticking yet: use its full planned duration!

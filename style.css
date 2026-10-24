@@ -1969,6 +1969,46 @@ body {
   border-radius: var(--radius-md);
 }
 
+.setting-row.setting-row-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.setting-row.setting-row-clickable:hover,
+.setting-row.setting-row-clickable:active {
+  background: var(--bg-surface-elevated);
+  border-color: var(--primary);
+}
+
+.setting-chevron {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.settings-sub-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-sub-back {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.btn-sub-back:active {
+  transform: translateX(-3px);
+}
+
 .setting-info {
   display: flex;
   flex-direction: column;
@@ -2908,9 +2948,15 @@ body {
 }
 
 .modal-toggle-icon.lock-toggle-icon.active {
-  color: #38bdf8;
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+  color: #f59e0b;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6));
   opacity: 1;
+}
+
+#calEventToggleLock:checked + .toggle-slider,
+#addModalIsLocked:checked + .toggle-slider,
+#editTaskIsLocked:checked + .toggle-slider {
+  background-color: #f59e0b !important;
 }
 
 /* Volume Slider in Settings */
@@ -4036,35 +4082,39 @@ body {
   flex-shrink: 0;
 }
 
-/* Controls Row 2: Sits Below Date and Above Calendar View (3-Column Grid with strictly centered Nav) */
+/* Controls Row 2: Sits Below Date and Above Calendar View (Strictly centered Today/Arrows nav) */
 .cal-sub-toolbar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  position: relative;
   padding: 6px 12px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  gap: 6px;
+  min-height: 40px;
 }
 
 .cal-sub-left {
   display: flex;
   align-items: center;
-  justify-self: start;
+  z-index: 1;
 }
 
 .cal-sub-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  justify-self: center;
+  z-index: 1;
 }
 
 .cal-sub-right {
   display: flex;
   align-items: center;
-  justify-self: end;
+  z-index: 1;
 }
 
 .cal-nav-buttons-group {
@@ -4121,19 +4171,23 @@ body {
   font-size: 0.72rem;
   color: var(--text-muted);
   font-weight: 700;
-  margin-right: 1px;
+  margin: 0;
+  padding: 0;
 }
 
-/* Resolution Dropdown Selector with No Empty Space Between Label and Value */
+/* Resolution Dropdown Selector with No Empty Space and Full Click Area */
 .cal-res-wrapper {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  padding: 2px 7px;
   height: 28px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .cal-res-icon {
@@ -4141,37 +4195,81 @@ body {
   line-height: 1;
 }
 
-.cal-res-select {
-  background: transparent;
-  border: none;
+.cal-res-val {
   color: var(--accent-cyan);
   font-size: 0.76rem;
   font-weight: 800;
-  cursor: pointer;
-  outline: none;
-  padding: 0;
+  line-height: 1;
 }
 
-.cal-res-select option {
+.cal-view-val {
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cal-dropdown-arrow {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-left: 1px;
+}
+
+/* Native select overlay covering whole wrapper to capture clicks anywhere */
+.cal-dropdown-select-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+  border: none;
+  background: transparent;
+  -webkit-appearance: menulist-button;
+}
+
+.cal-dropdown-select-overlay option {
   background: #141822;
   color: var(--text-main);
 }
 
-/* View Switcher Dropdown (Day / Week / Month) */
+/* View Switcher Dropdown (Day / Week / Month) with Full Click Area */
 .cal-view-dropdown-wrapper {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  padding: 2px 7px;
   height: 28px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .cal-view-select {
   background: transparent;
   border: none;
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  outline: none;
+  padding: 0 2px;
+}
+
+.cal-view-select option {
+  background: #141822;
+  color: var(--text-main);
+}
+
+[data-theme="light"] .cal-view-select option,
+[data-theme="light"] .cal-dropdown-select-overlay option {
+  background: #ffffff;
+  color: #0f172a;
+}
   color: var(--primary);
   font-size: 0.76rem;
   font-weight: 800;
@@ -4276,6 +4374,7 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  padding-top: 14px; /* Move first line down so 00:00 label is completely visible */
   padding-bottom: 72px; /* Extended to use all grey space without truncation */
 }
 
@@ -4377,7 +4476,7 @@ body {
   z-index: 20;
 }
 
-/* Day Event Card: Starts immediately at content edge */
+/* Day Event Card: Starts immediately at content edge, permits smooth scrolling on touch */
 .day-event-card {
   position: absolute;
   left: 44px;
@@ -4396,7 +4495,28 @@ body {
   z-index: 5;
   box-sizing: border-box;
   overflow: hidden;
-  touch-action: none; /* Prevents native vertical scroll when holding and dragging event */
+  touch-action: pan-y; /* Allows smooth scrolling when finger starts on event card */
+}
+
+/* Overlapping Event Card Positioning */
+.day-event-card.is-overlapping-earlier {
+  left: 44px;
+  right: 48%;
+  z-index: 5;
+}
+
+.day-event-card.is-overlapping-later {
+  left: calc(44px + 45%);
+  right: 6px;
+  z-index: 7;
+  box-shadow: -3px 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.day-event-card.is-dragging-cal-event,
+.week-event-card.is-dragging-cal-event {
+  z-index: 9999 !important;
+  opacity: 0.92 !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 2px var(--accent-cyan) !important;
 }
 
 .day-event-card:hover {
@@ -4737,6 +4857,7 @@ body {
   overflow: hidden;
   cursor: grab;
   user-select: none;
+  touch-action: pan-y; /* Permits smooth scrolling when touching week card */
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   z-index: 5;

@@ -14,7 +14,10 @@ const STORAGE_KEYS = {
   ALERTS_ENABLED: 'calentimer_alerts_enabled_v1',
   DURATION_PRESETS: 'calentimer_duration_presets_v1',
   TODO_TASKS: 'calentimer_todo_tasks_v1',
-  CALENDAR_EVENTS: 'calentimer_calendar_events_v1'
+  CALENDAR_EVENTS: 'calentimer_calendar_events_v1',
+  CAL_RANGE_ENABLED: 'calentimer_cal_range_enabled_v1',
+  CAL_START_TIME: 'calentimer_cal_start_time_v1',
+  CAL_END_TIME: 'calentimer_cal_end_time_v1'
 };
 
 const memoryStorage = {};
@@ -816,6 +819,53 @@ export class TaskStore {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Calendar Custom Display Time Window Settings
+   */
+  getCalendarCustomRangeEnabled() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.CAL_RANGE_ENABLED);
+      return v === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setCalendarCustomRangeEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.CAL_RANGE_ENABLED, Boolean(enabled) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getCalendarStartTime() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.CAL_START_TIME);
+      if (v && /^\d{1,2}:\d{2}$/.test(v)) return v;
+    } catch (_) {}
+    return '08:00';
+  }
+
+  setCalendarStartTime(timeStr) {
+    if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
+      safeSetItem(STORAGE_KEYS.CAL_START_TIME, timeStr);
+      this._notify();
+    }
+  }
+
+  getCalendarEndTime() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.CAL_END_TIME);
+      if (v && /^\d{1,2}:\d{2}$/.test(v)) return v;
+    } catch (_) {}
+    return '22:00';
+  }
+
+  setCalendarEndTime(timeStr) {
+    if (timeStr && /^\d{1,2}:\d{2}$/.test(timeStr)) {
+      safeSetItem(STORAGE_KEYS.CAL_END_TIME, timeStr);
+      this._notify();
+    }
   }
 }
 
