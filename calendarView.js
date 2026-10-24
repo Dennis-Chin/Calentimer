@@ -327,7 +327,7 @@ export class CalendarView {
   }
 
   // ==========================================
-  // Progressive Smooth Horizontal Swipe Navigation
+  // Progressive Smooth Horizontal Swipe Navigation (Continuous Page-to-Page Transition)
   // ==========================================
 
   _setupHorizontalSwipeNavigation() {
@@ -339,6 +339,8 @@ export class CalendarView {
     let swipeStartTime = 0;
     let isSwipingHorizontal = false;
     let activeContainer = null;
+    let adjacentSlide = null;
+    let currentSlideDirection = 0; // -1 for prev, 1 for next
 
     const getActiveContainer = () => {
       if (this.activeView === 'day') return this.elements.dayView;
@@ -348,11 +350,20 @@ export class CalendarView {
 
     modalBody.addEventListener('touchstart', (e) => {
       if (e.touches && e.touches.length === 1) {
+        // Ignore touches on dragging cards or buttons
+        if (e.target.closest('.day-event-card, .week-event-card, .month-event-pill, button, select, input')) {
+          return;
+        }
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         swipeStartTime = Date.now();
         isSwipingHorizontal = false;
         activeContainer = getActiveContainer();
+        currentSlideDirection = 0;
+        if (adjacentSlide && adjacentSlide.parentNode) {
+          adjacentSlide.parentNode.removeChild(adjacentSlide);
+          adjacentSlide = null;
+        }
       }
     }, { passive: true });
 
@@ -362,7 +373,10 @@ export class CalendarView {
         if (isSwipingHorizontal) {
           isSwipingHorizontal = false;
           activeContainer.style.removeProperty('transform');
-          activeContainer.style.removeProperty('opacity');
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+            adjacentSlide = null;
+          }
         }
         return;
       }
@@ -373,16 +387,48 @@ export class CalendarView {
       const diffY = currentY - touchStartY;
 
       if (!isSwipingHorizontal) {
-        if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+        if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY) * 1.4) {
           isSwipingHorizontal = true;
         }
       }
 
       if (isSwipingHorizontal) {
+        const bodyWidth = modalBody.clientWidth || 360;
+        const targetDirection = diffX < 0 ? 1 : -1; // 1 = next, -1 = prev
+
+        // Prepare adjacent preview slide if direction changed or not yet created
+        if (!adjacentSlide || currentSlideDirection !== targetDirection) {
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+          }
+          currentSlideDirection = targetDirection;
+
+          adjacentSlide = document.createElement('div');
+          adjacentSlide.className = 'cal-adjacent-preview-slide';
+          adjacentSlide.style.position = 'absolute';
+          adjacentSlide.style.top = '0';
+          adjacentSlide.style.left = '0';
+          adjacentSlide.style.width = '100%';
+          adjacentSlide.style.height = '100%';
+          adjacentSlide.style.pointerEvents = 'none';
+          adjacentSlide.style.zIndex = '12';
+          adjacentSlide.style.background = 'var(--bg-surface)';
+
+          // Clone active container structure for visual preview of next/prev date
+          const clone = activeContainer.cloneNode(true);
+          clone.classList.remove('hidden');
+          adjacentSlide.appendChild(clone);
+          modalBody.appendChild(adjacentSlide);
+        }
+
         activeContainer.style.transition = 'none';
-        activeContainer.style.transform = `translateX(${diffX}px)`;
-        const progress = Math.max(0.4, 1 - (Math.abs(diffX) / 500));
-        activeContainer.style.opacity = progress.toString();
+        activeContainer.style.transform = `translate3d(${diffX}px, 0, 0)`;
+
+        if (adjacentSlide) {
+          adjacentSlide.style.transition = 'none';
+          const adjacentX = targetDirection > 0 ? (bodyWidth + diffX) : (-bodyWidth + diffX);
+          adjacentSlide.style.transform = `translate3d(${adjacentX}px, 0, 0)`;
+        }
       }
     }, { passive: true });
 
@@ -390,6 +436,10 @@ export class CalendarView {
       if (!isSwipingHorizontal || !activeContainer) {
         touchStartX = 0;
         touchStartY = 0;
+        if (adjacentSlide && adjacentSlide.parentNode) {
+          adjacentSlide.parentNode.removeChild(adjacentSlide);
+          adjacentSlide = null;
+        }
         return;
       }
       isSwipingHorizontal = false;
@@ -399,38 +449,49 @@ export class CalendarView {
       const diffX = currentX - touchStartX;
       const elapsed = Math.max(1, Date.now() - swipeStartTime);
       const velocity = Math.abs(diffX) / elapsed;
+      const bodyWidth = modalBody.clientWidth || 360;
 
       touchStartX = 0;
       touchStartY = 0;
 
-      if (Math.abs(diffX) > 55 || (Math.abs(diffX) > 25 && velocity > 0.35)) {
+      if (Math.abs(diffX) > 50 || (Math.abs(diffX) > 20 && velocity > 0.3)) {
         const isNext = diffX < 0;
-        const exitX = isNext ? '-100%' : '100%';
-        const enterX = isNext ? '100%' : '-100%';
+        const exitX = isNext ? -bodyWidth : bodyWidth;
 
-        activeContainer.style.transition = 'transform 0.16s ease-out, opacity 0.16s ease-out';
-        activeContainer.style.transform = `translateX(${exitX})`;
-        activeContainer.style.opacity = '0';
+        activeContainer.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
+
+        if (adjacentSlide) {
+          adjacentSlide.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+          adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
+        }
 
         setTimeout(() => {
           this.navigate(isNext ? 1 : -1);
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+            adjacentSlide = null;
+          }
           activeContainer = getActiveContainer();
           if (activeContainer) {
-            activeContainer.style.transition = 'none';
-            activeContainer.style.transform = `translateX(${enterX})`;
-            activeContainer.style.opacity = '0';
-
-            requestAnimationFrame(() => {
-              activeContainer.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease-out';
-              activeContainer.style.transform = 'translateX(0)';
-              activeContainer.style.opacity = '1';
-            });
+            activeContainer.style.removeProperty('transform');
+            activeContainer.style.removeProperty('transition');
           }
-        }, 160);
+        }, 220);
       } else {
-        activeContainer.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out';
-        activeContainer.style.transform = 'translateX(0)';
-        activeContainer.style.opacity = '1';
+        activeContainer.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transform = 'translate3d(0, 0, 0)';
+        if (adjacentSlide) {
+          adjacentSlide.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+          const returnX = currentSlideDirection > 0 ? bodyWidth : -bodyWidth;
+          adjacentSlide.style.transform = `translate3d(${returnX}px, 0, 0)`;
+          setTimeout(() => {
+            if (adjacentSlide && adjacentSlide.parentNode) {
+              adjacentSlide.parentNode.removeChild(adjacentSlide);
+              adjacentSlide = null;
+            }
+          }, 200);
+        }
       }
     };
 
@@ -602,6 +663,12 @@ export class CalendarView {
       this.elements.backdrop.classList.add('hidden');
     }
     this._stopTimeTicker();
+
+    // Default to timer tab in the menu bar when closed
+    const navItemTimer = document.getElementById('navItemTimer');
+    const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+    if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+    if (navItemTimer) navItemTimer.classList.add('active');
   }
 
   switchView(viewName) {
@@ -680,6 +747,15 @@ export class CalendarView {
   // Render View Implementations
   // ==========================================
 
+  _getOrdinalSuffix(day) {
+    const j = day % 10;
+    const k = day % 100;
+    if (j === 1 && k !== 11) return day + 'st';
+    if (j === 2 && k !== 12) return day + 'nd';
+    if (j === 3 && k !== 13) return day + 'rd';
+    return day + 'th';
+  }
+
   _renderRangeLabel() {
     const el = this.elements.rangeLabel;
     if (!el) return;
@@ -694,19 +770,22 @@ export class CalendarView {
       const mon = this._getMondayOfWeek(cur);
       const sun = new Date(mon);
       sun.setDate(mon.getDate() + 6);
-      const m1 = monthNames[mon.getMonth()].substring(0, 3);
-      const m2 = monthNames[sun.getMonth()].substring(0, 3);
+      const d1Suffix = this._getOrdinalSuffix(mon.getDate());
+      const d2Suffix = this._getOrdinalSuffix(sun.getDate());
       if (mon.getMonth() === sun.getMonth()) {
-        el.textContent = `${m1} ${mon.getDate()} - ${sun.getDate()}, ${cur.getFullYear()}`;
+        el.textContent = `${d1Suffix} - ${d2Suffix} ${monthNames[mon.getMonth()]}`;
       } else {
-        el.textContent = `${m1} ${mon.getDate()} - ${m2} ${sun.getDate()}, ${cur.getFullYear()}`;
+        el.textContent = `${d1Suffix} ${monthNames[mon.getMonth()].substring(0, 3)} - ${d2Suffix} ${monthNames[sun.getMonth()].substring(0, 3)}`;
       }
       el.title = el.textContent;
     } else if (this.activeView === 'day') {
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const sel = this.selectedDate || cur;
-      el.textContent = `${dayNames[sel.getDay()].substring(0, 3)}, ${monthNames[sel.getMonth()].substring(0, 3)} ${sel.getDate()}`;
-      el.title = `${dayNames[sel.getDay()]}, ${monthNames[sel.getMonth()]} ${sel.getDate()}, ${sel.getFullYear()}`;
+      const dayName = dayNames[sel.getDay()];
+      const daySuffix = this._getOrdinalSuffix(sel.getDate());
+      const monthName = monthNames[sel.getMonth()];
+      el.textContent = `${dayName} ${daySuffix} ${monthName}`;
+      el.title = `${dayName} ${daySuffix} ${monthName} ${sel.getFullYear()}`;
     }
   }
 
@@ -804,9 +883,6 @@ export class CalendarView {
       card.style.height = `${heightPx}px`;
       card.style.borderLeftColor = this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
-
-      const isCompact = heightPx < 44;
-      if (isCompact) card.classList.add('is-compact');
 
       // Top line purely for task title, line below for time span and duration
       card.innerHTML = `
@@ -919,6 +995,7 @@ export class CalendarView {
       const lbl = document.createElement('div');
       lbl.className = 'week-hour-label';
       lbl.textContent = `${String(h).padStart(2, '0')}:00`;
+      lbl.style.top = `${(h - startHour) * hourHeight}px`;
       timeCol.appendChild(lbl);
     }
     body.appendChild(timeCol);
@@ -1073,7 +1150,8 @@ export class CalendarView {
         title.textContent = ev.title;
         pill.appendChild(title);
 
-        if (ev.isLocked) {
+        // Only show padlock if title is short (<= 5 chars) so maximum task name fits on mobile
+        if (ev.isLocked && ev.title && ev.title.length <= 5) {
           const lockSpan = document.createElement('span');
           lockSpan.innerHTML = padlockSvg;
           pill.appendChild(lockSpan);
@@ -1186,20 +1264,75 @@ export class CalendarView {
   // Hold-to-Drag & Tap-to-Inspect Handlers
   // ==========================================
 
-  // Day View: hold 200ms to drag up/down, snaps to currentResolution intervals
+  // Day View: hold 200ms to drag up/down, snaps to currentResolution intervals, locks scroll and auto-scrolls at borders
   _setupDayEventDrag(card, ev) {
     let holdTimer = null;
     let isDragging = false;
     let startY = 0;
     let initialTop = 0;
+    let lastClientY = 0;
+    let autoScrollRaf = null;
     const resolution = this.currentResolution || 15;
     const durMin = ev.plannedDuration || 60;
+    const container = this.elements.dayTimelineScroll;
+
+    const applySnappedPosition = (clientY) => {
+      const hourHeight = this.dayHourHeight || 56;
+      const deltaY = clientY - startY;
+      const rawTop = initialTop + deltaY;
+      const rawMinutes = (rawTop / hourHeight) * 60;
+      const snappedMinutes = Math.max(0, Math.min(1440 - durMin, Math.round(rawMinutes / resolution) * resolution));
+      const snappedTopPx = (snappedMinutes / 60) * hourHeight;
+      card.style.top = `${snappedTopPx}px`;
+
+      const previewStartH = Math.floor(snappedMinutes / 60);
+      const previewStartM = snappedMinutes % 60;
+      const previewEndTotal = snappedMinutes + durMin;
+      const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
+      const previewEndM = previewEndTotal % 60;
+
+      const timeRangeEl = card.querySelector('.event-time-range');
+      if (timeRangeEl) {
+        timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
+      }
+    };
+
+    const startAutoScrollLoop = () => {
+      const step = () => {
+        if (!isDragging || !container) return;
+        const rect = container.getBoundingClientRect();
+        const edgeThreshold = 55; // 55px from visible top or bottom
+        let scrollDelta = 0;
+
+        if (lastClientY < rect.top + edgeThreshold) {
+          const intensity = Math.min(1, Math.max(0, (rect.top + edgeThreshold - lastClientY) / edgeThreshold));
+          scrollDelta = -Math.round(3 + (intensity * 14));
+        } else if (lastClientY > rect.bottom - edgeThreshold) {
+          const intensity = Math.min(1, Math.max(0, (lastClientY - (rect.bottom - edgeThreshold)) / edgeThreshold));
+          scrollDelta = Math.round(3 + (intensity * 14));
+        }
+
+        if (scrollDelta !== 0) {
+          const oldScroll = container.scrollTop;
+          container.scrollTop = Math.max(0, container.scrollTop + scrollDelta);
+          const actualScrolled = container.scrollTop - oldScroll;
+          if (actualScrolled !== 0) {
+            startY -= actualScrolled;
+            applySnappedPosition(lastClientY);
+          }
+        }
+
+        autoScrollRaf = requestAnimationFrame(step);
+      };
+      autoScrollRaf = requestAnimationFrame(step);
+    };
 
     const onPointerDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       if (e.target.closest('[data-action="toggle-lock"]')) return;
 
       startY = e.clientY;
+      lastClientY = e.clientY;
       initialTop = parseInt(card.style.top, 10) || 0;
       isDragging = false;
 
@@ -1208,9 +1341,13 @@ export class CalendarView {
         isDragging = true;
         card.classList.add('is-dragging-cal-event');
         mobileServices.hapticBuzz();
+        if (container) {
+          container.style.overflowY = 'hidden'; // Lock native timeline scrolling while dragging!
+        }
         try {
           card.setPointerCapture(e.pointerId);
         } catch (_) {}
+        startAutoScrollLoop();
       }, 200);
     };
 
@@ -1225,40 +1362,27 @@ export class CalendarView {
       }
 
       if (e.cancelable) e.preventDefault();
-      const deltaY = e.clientY - startY;
-      const rawTop = initialTop + deltaY;
-      const hourHeight = this.dayHourHeight || 56;
-
-      // Snap to active resolution based on current hourHeight
-      const rawMinutes = (rawTop / hourHeight) * 60;
-      const snappedMinutes = Math.max(0, Math.min(1440 - durMin, Math.round(rawMinutes / resolution) * resolution));
-      const snappedTopPx = (snappedMinutes / 60) * hourHeight;
-      card.style.top = `${snappedTopPx}px`;
-
-      // Live time range badge preview
-      const previewStartH = Math.floor(snappedMinutes / 60);
-      const previewStartM = snappedMinutes % 60;
-      const previewEndTotal = snappedMinutes + durMin;
-      const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
-      const previewEndM = previewEndTotal % 60;
-
-      const timeRangeEl = card.querySelector('.event-time-range');
-      if (timeRangeEl) {
-        timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
-      }
+      lastClientY = e.clientY;
+      applySnappedPosition(e.clientY);
     };
 
     const onPointerUp = (e) => {
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
-        // Released before hold threshold -> Tap to open inspector
         this.openEventInspector(ev);
         return;
       }
 
       if (isDragging) {
         isDragging = false;
+        if (autoScrollRaf) {
+          cancelAnimationFrame(autoScrollRaf);
+          autoScrollRaf = null;
+        }
+        if (container) {
+          container.style.removeProperty('overflow-y'); // Restore scrollable state
+        }
         card.classList.remove('is-dragging-cal-event');
 
         const currentTop = parseInt(card.style.top, 10) || 0;
@@ -1478,7 +1602,7 @@ export class CalendarView {
     const isNew = !eventObj;
     const titleModal = document.getElementById('calEventModalTitle');
     if (titleModal) {
-      titleModal.textContent = isNew ? 'New Calendar Event' : 'Event Details';
+      titleModal.textContent = isNew ? 'Add Event' : 'Event Details';
     }
 
     if (el.eventIdInput) el.eventIdInput.value = eventObj ? eventObj.id : '';

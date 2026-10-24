@@ -3973,9 +3973,24 @@ body {
   will-change: transform;
 }
 
-/* Header Row 1: Nav buttons, Centered Date, Top Right Close Button */
+/* Short Drag Handle Bar (Indicates swipe down to minimise) */
+.cal-drag-handle-bar {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  margin: 6px auto 2px auto;
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .cal-drag-handle-bar {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+/* Header Row 1: Centered Date, Top Right Close Button */
 .full-calendar-header {
-  padding: 10px 14px;
+  padding: 4px 14px 8px 14px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -3984,12 +3999,12 @@ body {
   flex-shrink: 0;
   touch-action: pan-y;
   user-select: none;
+  background: var(--bg-surface);
 }
 
 .cal-header-left {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -4004,10 +4019,11 @@ body {
 }
 
 .cal-current-label {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--text-main);
-  letter-spacing: 0.1px;
+  letter-spacing: -0.2px;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
@@ -4016,23 +4032,48 @@ body {
 .cal-header-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* Controls Row 2: Sits Below Date and Above Calendar View */
+.cal-sub-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.cal-sub-left {
+  display: flex;
+  align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+.cal-nav-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .cal-nav-btn {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
-  width: 30px;
-  height: 30px;
   border-radius: var(--radius-sm);
-  display: flex;
+  padding: 3px 7px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  font-size: 0.78rem;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .cal-nav-btn:hover, .cal-nav-btn:active {
@@ -4042,40 +4083,29 @@ body {
 }
 
 .cal-nav-today-btn {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  padding: 0 10px;
-  height: 30px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: var(--accent-cyan);
+  padding: 3px 8px;
   border-radius: var(--radius-sm);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
 }
 
 .cal-nav-today-btn:hover, .cal-nav-today-btn:active {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--primary);
-  color: var(--primary);
+  background: rgba(0, 240, 255, 0.25);
+  border-color: var(--accent-cyan);
 }
 
-/* Controls Row 2: Sits Below Date and Above Calendar View */
-.cal-sub-toolbar {
+.cal-sub-right {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 14px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  gap: 8px;
-}
-
-.cal-sub-left, .cal-sub-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .cal-toolbar-icon {
@@ -4084,7 +4114,7 @@ body {
 
 .cal-res-label {
   font-size: 0.72rem;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-weight: 700;
 }
 
@@ -4096,23 +4126,24 @@ body {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 2px 8px;
+  padding: 2px 7px;
   height: 28px;
 }
 
 .cal-res-icon {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
+  line-height: 1;
 }
 
 .cal-res-select {
   background: transparent;
   border: none;
   color: var(--accent-cyan);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 800;
   cursor: pointer;
   outline: none;
-  padding: 0;
+  padding: 0 2px;
 }
 
 .cal-res-select option {
@@ -4174,13 +4205,13 @@ body {
   position: relative;
 }
 
-/* Floating Green Add Event Button (Far Bottom Right) */
+/* Floating Green Add Event Button (Far Bottom Right of calendar box) */
 .btn-float-add-event {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
-  width: 52px;
-  height: 52px;
+  bottom: 14px;
+  right: 14px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background: #10b981;
   color: #0c0e14;
@@ -4204,7 +4235,21 @@ body {
   transform: scale(0.92);
 }
 
-/* 1. Day View Timeline with Pinch-to-Zoom anchored at touch center */
+/* Bottom Fade Overlay for Smooth Edge Falloff */
+.calendar-bottom-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, transparent, var(--bg-surface) 88%);
+  pointer-events: none;
+  z-index: 22;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+/* 1. Day View Timeline with Hidden Scrollbar */
 .day-timeline-scroll {
   flex: 1;
   height: 100%;
@@ -4212,22 +4257,30 @@ body {
   overflow-x: hidden;
   position: relative;
   touch-action: pan-y;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.day-timeline-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .day-timeline-body {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding-bottom: 24px;
+  padding-bottom: 32px;
 }
 
+/* Day timeline hour slot: no border-top across the full slot so line does not sit behind number */
 .day-timeline-hour-slot {
   position: relative;
   display: flex;
   height: var(--cal-day-hour-height, 60px);
   min-height: var(--cal-day-hour-height, 60px);
   box-sizing: border-box;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .day-time-label {
@@ -4237,29 +4290,37 @@ body {
   color: var(--text-dim);
   width: 44px;
   padding-top: 0;
-  margin-top: -8px;
   line-height: 1;
   flex-shrink: 0;
   user-select: none;
   text-align: right;
-  padding-right: 6px;
+  padding-right: 8px;
+  box-sizing: border-box;
+  transform: translateY(-50%); /* Center vertically right on the horizontal line */
+  z-index: 2;
 }
 
+/* Shortened line on the left side: starts after the hour number and is bolder */
 .day-slot-content {
   flex: 1;
   position: relative;
   height: var(--cal-day-hour-height, 60px);
   box-sizing: border-box;
   cursor: pointer;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="light"] .day-slot-content {
+  border-top: 1.5px solid rgba(0, 0, 0, 0.16);
 }
 
 /* Sub-interval dashed lines (15m, 10m, 5m, 30m) */
 .day-sub-interval-line {
   position: absolute;
-  left: 44px;
+  left: 0;
   right: 0;
   height: 1px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.06);
+  border-top: 1px dashed rgba(255, 255, 255, 0.07);
   pointer-events: none;
   z-index: 1;
 }
@@ -4307,14 +4368,14 @@ body {
   z-index: 20;
 }
 
-/* Day Event Card: Top line purely for name, line below for times & duration */
+/* Day Event Card: Top line purely for name, line below for times & duration without squashing */
 .day-event-card {
   position: absolute;
-  left: 48px;
+  left: 44px;
   right: 6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 8px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
@@ -4326,6 +4387,7 @@ body {
   z-index: 5;
   box-sizing: border-box;
   overflow: hidden;
+  touch-action: none; /* Prevents native vertical scroll when holding and dragging event */
 }
 
 .day-event-card:hover {
@@ -4375,8 +4437,8 @@ body {
 .day-event-card .day-event-meta-line {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.68rem;
+  gap: 4px;
+  font-size: 0.66rem;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -4386,18 +4448,27 @@ body {
 
 .day-event-card .event-time-range {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--accent-cyan);
+  flex-shrink: 0;
 }
 
 .day-event-card .event-duration-pill {
-  opacity: 0.85;
+  opacity: 0.9;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .day-event-card .event-cat-pill {
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.62rem;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
   background: rgba(255, 255, 255, 0.08);
   font-size: 0.64rem;
   overflow: hidden;
@@ -4488,6 +4559,14 @@ body {
   overflow-x: hidden;
   position: relative;
   touch-action: pan-y;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.week-grid-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .week-grid-body {
@@ -4497,15 +4576,23 @@ body {
   position: relative;
 }
 
+.week-time-col {
+  position: relative;
+  width: 50px;
+  flex-shrink: 0;
+}
+
 .week-hour-label {
+  position: absolute;
+  right: 6px;
   font-size: 0.68rem;
+  font-family: var(--font-mono);
   color: var(--text-dim);
   text-align: right;
-  padding-right: 6px;
-  height: var(--cal-week-hour-height, 52px);
   line-height: 1;
-  margin-top: -6px;
+  transform: translateY(-50%); /* Exactly in line with the horizontal week line */
   user-select: none;
+  pointer-events: none;
 }
 
 .week-day-col {
@@ -4661,14 +4748,14 @@ body {
   overflow: hidden;
 }
 
-/* Month Event Pill: Solid Category Background, No Emoji */
+/* Month Event Pill: Solid Category Background, Prioritize Task Name */
 .month-event-pill {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   font-size: 0.7rem;
   font-weight: 700;
-  padding: 2.5px 5px;
+  padding: 2px 4px;
   border-radius: 4px;
   color: #ffffff;
   white-space: nowrap;
@@ -4678,6 +4765,7 @@ body {
   user-select: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: transform 0.12s ease;
+  min-width: 0;
 }
 
 .month-event-pill:hover {
@@ -4685,6 +4773,8 @@ body {
 }
 
 .month-event-pill .event-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: clip; /* NO ellipsis */
   white-space: nowrap;
@@ -4711,37 +4801,105 @@ body {
   background: rgba(0, 240, 255, 0.12) !important;
 }
 
-/* Event Inspector Modal Styles */
+/* Event Inspector & Edit Modal: Compact layout to fit on screen without scrolling */
 .calendar-event-modal {
-  max-width: 480px;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow: hidden;
 }
 
-.btn-send-to-today {
+.calendar-event-modal .modal-body {
+  max-height: calc(92vh - 56px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 10px 16px 14px;
+  gap: 5px;
+}
+
+.calendar-event-modal .modal-body::-webkit-scrollbar {
+  display: none;
+}
+
+.calendar-event-modal .edit-task-form-group {
+  margin-bottom: 4px;
+}
+
+.calendar-event-modal .edit-task-label {
+  font-size: 0.74rem;
+  margin-bottom: 2px;
+}
+
+.calendar-event-modal .edit-task-input {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.calendar-event-modal .quick-duration-chips {
+  margin-top: 2px;
+  margin-bottom: 4px;
+  gap: 4px;
+}
+
+.calendar-event-modal .duration-chip {
+  padding: 3px 7px;
+  font-size: 0.72rem;
+}
+
+.calendar-event-modal .category-chips-list {
+  margin-top: 3px;
+  gap: 4px;
+}
+
+.calendar-event-modal .setting-row {
+  padding: 6px 0;
+  margin-top: 2px;
+}
+
+/* Red Round Cancel Button */
+.btn-modal-cancel-danger {
+  padding: 9px 18px;
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 14px;
-  background: rgba(0, 240, 255, 0.12);
-  border: 1.5px solid var(--accent-cyan);
-  color: var(--accent-cyan);
-  border-radius: var(--radius-md);
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.btn-send-to-today:hover, .btn-send-to-today:active {
-  background: rgba(0, 240, 255, 0.22);
+.btn-modal-cancel-danger:hover {
+  background: #dc2626;
+  transform: scale(1.02);
+}
+
+.btn-modal-cancel-danger:active {
+  transform: scale(0.96);
+}
+
+.calendar-event-modal .btn-modal-save {
+  border-radius: var(--radius-full);
+  padding: 9px 18px;
+  font-size: 0.88rem;
+}
+
+.calendar-event-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .btn-delete-cal-event {
-  padding: 9px;
+  padding: 8px;
   background: transparent;
   border: 1px solid rgba(239, 68, 68, 0.4);
   color: #ef4444;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   font-weight: 600;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: all 0.18s ease;
 }

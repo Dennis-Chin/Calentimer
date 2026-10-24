@@ -467,16 +467,15 @@
   <!-- Full Calendar View Modal (Day / Week / Month) -->
   <div class="modal-backdrop hidden" id="fullCalendarModalBackdrop">
     <div class="calendar-modal full-calendar-modal" id="fullCalendarModal">
-      <!-- Header Row 1: Nav buttons, Centered Date & Top Right Close Button -->
+      <!-- Short Drag Handle Bar to indicate swipe-down to minimise -->
+      <div class="cal-drag-handle-bar" aria-hidden="true"></div>
+
+      <!-- Header Row 1: Centered Date & Top Right Close Button -->
       <div class="modal-header full-calendar-header" id="fullCalendarHeader">
-        <div class="cal-header-left">
-          <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
-          <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
-          <button type="button" class="cal-nav-btn" id="btnCalNext" title="Next">▶</button>
-        </div>
+        <div class="cal-header-left" style="width: 36px; min-width: 36px;"></div>
 
         <div class="cal-header-center">
-          <span class="cal-current-label" id="calCurrentRangeLabel">Saturday, Oct 24</span>
+          <span class="cal-current-label" id="calCurrentRangeLabel">Saturday 24th October</span>
         </div>
 
         <div class="cal-header-right">
@@ -485,7 +484,7 @@
         </div>
       </div>
 
-      <!-- Controls Row 2: View Switcher and Resolution (Below Date & Above Calendar) -->
+      <!-- Controls Row 2: View Switcher, Nav Buttons and Interval (Below Date & Above Calendar) -->
       <div class="cal-sub-toolbar" id="calSubToolbar">
         <div class="cal-sub-left">
           <!-- View Switcher Dropdown (Day / Week / Month) -->
@@ -497,13 +496,20 @@
               <option value="month">Month</option>
             </select>
           </div>
+
+          <!-- Today & Arrow Nav Buttons placed immediately to the right of Day/Week/Month dropdown -->
+          <div class="cal-nav-buttons-group" id="calNavButtonsGroup">
+            <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
+            <button type="button" class="cal-nav-today-btn" id="btnCalToday">Today</button>
+            <button type="button" class="cal-nav-btn" id="btnCalNext" title="Next">▶</button>
+          </div>
         </div>
 
         <div class="cal-sub-right">
-          <!-- Time Interval Resolution Selector (Day view) -->
-          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Snap interval resolution">
-            <span class="cal-res-icon">⏱️</span>
-            <span class="cal-res-label">Snap:</span>
+          <!-- Time Interval Resolution Selector (Day view) with Clock Emoji and Interval: label -->
+          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
+            <span class="cal-res-icon">🕒</span>
+            <span class="cal-res-label">Interval:</span>
             <select id="calResolutionSelect" class="cal-res-select" title="Time Interval Resolution">
               <option value="5">5m</option>
               <option value="10">10m</option>
@@ -521,7 +527,7 @@
         <div class="calendar-view-container" id="calendarDayView">
           <div class="day-timeline-scroll" id="dayTimelineScroll">
             <div class="day-timeline-body" id="dayTimelineBody">
-              <!-- Dynamically populated with hour slots, 15m interval lines, current time bar & events -->
+              <!-- Dynamically populated with hour slots, interval lines, current time bar & events -->
             </div>
           </div>
         </div>
@@ -548,7 +554,10 @@
           </div>
         </div>
 
-        <!-- Floating Green Add Event Button (Bottom Right) -->
+        <!-- Bottom Fade Overlay for Smooth Edge Falloff -->
+        <div class="calendar-bottom-fade" aria-hidden="true"></div>
+
+        <!-- Floating Green Add Event Button (Far Bottom Right) -->
         <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -559,7 +568,7 @@
     </div>
   </div>
 
-  <!-- Event Inspector & Edit Modal (Identical in features to Task Editor) -->
+  <!-- Event Inspector & Edit Modal (Compact, Fits Screen Without Scrolling) -->
   <div class="modal-backdrop hidden" id="calendarEventModalBackdrop">
     <div class="settings-modal edit-task-modal calendar-event-modal" id="calendarEventModal">
       <div class="modal-header">
@@ -568,7 +577,7 @@
             <span id="calEventHeaderEmoji">💼</span>
             <span class="emoji-edit-hint">✏️</span>
           </button>
-          <span class="modal-title" id="calEventModalTitle">Event Details</span>
+          <span class="modal-title" id="calEventModalTitle">Add Event</span>
         </div>
         <button type="button" class="btn-close-modal" id="btnCloseCalEventModal" title="Close">✕</button>
       </div>
@@ -582,14 +591,12 @@
           <input type="text" id="calEventTitle" class="edit-task-input" required placeholder="e.g. Project Standup" autocomplete="off">
         </div>
 
-        <!-- Date -->
-        <div class="edit-task-form-group">
-          <label class="edit-task-label">Date</label>
-          <input type="date" id="calEventDate" class="edit-task-input" required>
-        </div>
-
-        <!-- Duration with Interactive Dial Picker -->
+        <!-- Date & Duration Side by Side to Fit Screen Vertically -->
         <div class="edit-task-row">
+          <div class="edit-task-form-group" style="flex: 1.2;">
+            <label class="edit-task-label">Date</label>
+            <input type="date" id="calEventDate" class="edit-task-input" required>
+          </div>
           <div class="edit-task-form-group" style="flex: 1;">
             <label class="edit-task-label">Duration (min)</label>
             <div class="duration-input-wrapper">
@@ -652,7 +659,7 @@
         </div>
 
         <!-- Time Bank Protection Toggle -->
-        <div class="setting-row" style="margin-top: 6px;">
+        <div class="setting-row" style="margin-top: 4px;">
           <div class="setting-info">
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="modal-toggle-icon piggy-toggle-icon active" id="calEventPiggyIcon">
@@ -672,7 +679,7 @@
         </div>
 
         <!-- Padlock Toggle: Fixed Meeting vs Flexible -->
-        <div class="setting-row" style="margin-top: 6px;">
+        <div class="setting-row" style="margin-top: 4px;">
           <div class="setting-info">
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="modal-toggle-icon lock-toggle-icon" id="calEventLockIcon">
@@ -690,16 +697,13 @@
           </label>
         </div>
 
-        <!-- Footer Actions -->
-        <div class="edit-modal-footer" style="margin-top: 18px; display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; gap: 8px;">
-            <button type="button" class="btn-modal-cancel" id="btnCancelCalEvent" style="flex: 1;">Cancel</button>
-            <button type="submit" class="btn-modal-save" id="btnSaveCalEvent" style="flex: 2;">Save Event</button>
+        <!-- Footer Actions: Red round cancel button & round save button -->
+        <div class="edit-modal-footer calendar-event-footer" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; gap: 10px; width: 100%;">
+            <button type="button" class="btn-modal-cancel-danger" id="btnCancelCalEvent" style="flex: 1;">Cancel</button>
+            <button type="submit" class="btn-modal-save" id="btnSaveCalEvent" style="flex: 1.6;">Save Event</button>
           </div>
-          <button type="button" class="btn-send-to-today" id="btnSendCalEventToToday">
-            <span>📅 Send to Today's Schedule</span>
-          </button>
-          <button type="button" class="btn-delete-cal-event" id="btnDeleteCalEvent">
+          <button type="button" class="btn-delete-cal-event" id="btnDeleteCalEvent" style="display: none; width: 100%;">
             🗑️ Delete Event
           </button>
         </div>
