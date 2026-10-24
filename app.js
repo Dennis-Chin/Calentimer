@@ -11,6 +11,7 @@ import { audioManager } from './audioManager.js';
 import { mobileServices } from './mobileServices.js';
 import { formatMinutesToTime, parseTimeToMinutes } from './schedulerEngine.js';
 import { analytics } from './analyticsDb.js';
+import { calendarView } from './calendarView.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -158,6 +159,7 @@ function initApp() {
     setupRotaryWheel();
     setupTaskPipeline();
     setupNavigationAndModals();
+    calendarView.init();
 
     // Initial render: calculate schedule and populate all lists immediately
     runtime.recalculate();
@@ -2497,6 +2499,10 @@ function applyEmojiSelection(emoji) {
     if (addTodoEmoji) addTodoEmoji.textContent = emoji;
     closeEmojiPicker(false);
     mobileServices.hapticTap();
+  } else if (currentEmojiTaskId === 'CAL_EVENT') {
+    if (calendarView) calendarView.setEventEmoji(emoji);
+    closeEmojiPicker(false);
+    mobileServices.hapticTap();
   } else if (typeof currentEmojiTaskId === 'string' && currentEmojiTaskId.indexOf('todo-') === 0) {
     taskStore.updateTodoTask(currentEmojiTaskId, { emoji: emoji });
     if (typeof renderTodoList === 'function') renderTodoList();
@@ -2526,6 +2532,8 @@ function openEmojiPicker(taskId) {
     currentTaskEmoji = currentAddTaskEmoji || '📚';
   } else if (taskId === 'NEW_TODO') {
     currentTaskEmoji = currentTodoEmoji || '📌';
+  } else if (taskId === 'CAL_EVENT') {
+    currentTaskEmoji = (calendarView && calendarView.currentEmoji) ? calendarView.currentEmoji : '💼';
   } else if (typeof taskId === 'string' && taskId.indexOf('todo-') === 0) {
     const todos = taskStore.getTodoTasks();
     const t = todos.find(item => item.id === taskId);
@@ -2564,6 +2572,7 @@ function openEmojiPicker(taskId) {
   (() => { const _el = document.getElementById("emojiPickerModalBackdrop"); if (_el) _el.classList.remove("hidden"); })();
   mobileServices.hapticTap();
 }
+window.openEmojiPicker = openEmojiPicker;
 
 function closeEmojiPicker(confirmSelected = true) {
   if (confirmSelected && selectedEmojiInPicker && currentEmojiTaskId) {
@@ -2926,6 +2935,9 @@ function openSettings() {
   closeDrawer();
   closeCalendar();
   closeTodo();
+  calendarView.close();
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
@@ -2946,6 +2958,9 @@ function openCalendar() {
   closeDrawer();
   closeSettings();
   closeTodo();
+  calendarView.close();
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
   renderCalendarModal();
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
@@ -2968,6 +2983,9 @@ function openTodo() {
   closeDrawer();
   closeSettings();
   closeCalendar();
+  calendarView.close();
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
   renderTodoList();
   const todoModal = document.getElementById('todoModalBackdrop');
   if (todoModal) {
@@ -4637,6 +4655,9 @@ function setupNavigationAndModals() {
       closeSettings();
       closeCalendar();
       closeTodo();
+      calendarView.close();
+      const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+      if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
       navItemTimer.classList.add('active');
       if (navItemCalendar) navItemCalendar.classList.remove('active');
       if (navItemTodo) navItemTodo.classList.remove('active');
@@ -4648,6 +4669,23 @@ function setupNavigationAndModals() {
     navItemCalendar.addEventListener('click', () => {
       analytics.trackInteraction('tab_switch', 'today_schedule');
       openCalendar();
+    });
+  }
+
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) {
+    navItemFullCalendar.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'full_calendar');
+      closeDrawer();
+      closeSettings();
+      closeCalendar();
+      closeTodo();
+      calendarView.open();
+      navItemFullCalendar.classList.add('active');
+      if (navItemTimer) navItemTimer.classList.remove('active');
+      if (navItemCalendar) navItemCalendar.classList.remove('active');
+      if (navItemTodo) navItemTodo.classList.remove('active');
+      mobileServices.hapticTap();
     });
   }
 

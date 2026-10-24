@@ -13,7 +13,8 @@ const STORAGE_KEYS = {
   CATEGORIES: 'calentimer_categories_v1',
   ALERTS_ENABLED: 'calentimer_alerts_enabled_v1',
   DURATION_PRESETS: 'calentimer_duration_presets_v1',
-  TODO_TASKS: 'calentimer_todo_tasks_v1'
+  TODO_TASKS: 'calentimer_todo_tasks_v1',
+  CALENDAR_EVENTS: 'calentimer_calendar_events_v1'
 };
 
 const memoryStorage = {};
@@ -683,6 +684,138 @@ export class TaskStore {
     const incomplete = current.filter(t => !t.completed);
     this.saveTodoTasks(incomplete);
     return incomplete;
+  }
+
+  // ==========================================
+  // Calendar Events (Month/Week/Day Integration)
+  // ==========================================
+
+  /**
+   * Retrieves all calendar events from storage.
+   * @returns {Array<object>}
+   */
+  getCalendarEvents() {
+    try {
+      const data = safeGetItem(STORAGE_KEYS.CALENDAR_EVENTS);
+      if (data !== null) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+
+    // Seed with realistic default events for today and surrounding days
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
+
+    const defaults = [
+      {
+        id: 'cal-event-1',
+        title: 'Team Standup',
+        date: todayStr,
+        startTime: '10:00',
+        endTime: '10:45',
+        plannedDuration: 45,
+        isLocked: true,
+        emoji: '💼',
+        category: 'Work'
+      },
+      {
+        id: 'cal-event-2',
+        title: 'Lunch & Recharge',
+        date: todayStr,
+        startTime: '12:30',
+        endTime: '13:15',
+        plannedDuration: 45,
+        isLocked: false,
+        emoji: '🍱',
+        category: 'Break'
+      },
+      {
+        id: 'cal-event-3',
+        title: 'Deep Focus Sprint',
+        date: todayStr,
+        startTime: '14:30',
+        endTime: '16:00',
+        plannedDuration: 90,
+        isLocked: true,
+        emoji: '🎯',
+        category: 'Study'
+      }
+    ];
+    this.saveCalendarEvents(defaults);
+    return defaults;
+  }
+
+  /**
+   * Saves calendar events list to storage.
+   * @param {Array<object>} events 
+   */
+  saveCalendarEvents(events) {
+    try {
+      const serialized = JSON.stringify(events || []);
+      safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, serialized);
+      this._notify();
+    } catch (e) {
+      console.error('TaskStore: Failed to save calendar events', e);
+    }
+  }
+
+  /**
+   * Adds a new calendar event.
+   * @param {object} eventData
+   * @returns {object}
+   */
+  addCalendarEvent(eventData) {
+    const current = this.getCalendarEvents();
+    const newEvent = {
+      id: eventData && eventData.id ? eventData.id : `cal-event-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      title: eventData && eventData.title ? String(eventData.title).trim() : 'New Event',
+      date: eventData && eventData.date ? eventData.date : new Date().toISOString().split('T')[0],
+      startTime: eventData && eventData.startTime ? eventData.startTime : '09:00',
+      endTime: eventData && eventData.endTime ? eventData.endTime : '10:00',
+      plannedDuration: eventData && typeof eventData.plannedDuration === 'number' ? eventData.plannedDuration : 60,
+      isLocked: eventData && typeof eventData.isLocked === 'boolean' ? eventData.isLocked : true,
+      emoji: eventData && eventData.emoji ? eventData.emoji : '📅',
+      category: eventData && eventData.category ? eventData.category : 'General'
+    };
+    current.push(newEvent);
+    this.saveCalendarEvents(current);
+    return newEvent;
+  }
+
+  /**
+   * Updates an existing calendar event.
+   * @param {string} id
+   * @param {object} updates
+   * @returns {object|null}
+   */
+  updateCalendarEvent(id, updates) {
+    const current = this.getCalendarEvents();
+    const index = current.findIndex(e => e.id === id);
+    if (index === -1) return null;
+
+    const item = Object.assign({}, current[index], updates);
+    current[index] = item;
+    this.saveCalendarEvents(current);
+    return item;
+  }
+
+  /**
+   * Deletes a calendar event.
+   * @param {string} id
+   * @returns {boolean}
+   */
+  deleteCalendarEvent(id) {
+    const current = this.getCalendarEvents();
+    const filtered = current.filter(e => e.id !== id);
+    if (filtered.length !== current.length) {
+      this.saveCalendarEvents(filtered);
+      return true;
+    }
+    return false;
   }
 }
 
