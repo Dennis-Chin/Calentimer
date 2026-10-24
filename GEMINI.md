@@ -5,8 +5,9 @@
 - **No shell/node inspection commands**: NEVER use shell commands (`run_command` with `node -e`, PowerShell `Select-String`, `Get-ChildItem`, `grep`, `cat`, etc.) simply to read code, search text, or verify tokens. This prevents unwanted interactive approval prompts.
 - **Reserved shell commands**: Shell commands (`run_command`) are strictly reserved for necessary external runtime tasks:
   - Starting or restarting dev servers
-  - Running unit test suites when requested or needed for verification
+  - Running the master test suite via `node testAll.js`
   - Git operations (`git commit`, `git push`) when requested or deploying
+- **Syntax verification**: Syntax and mobile compatibility audits are permanently integrated into `testSyntaxCompatibility.js`. Never run ad-hoc `node -e` inline scripts. Run `node testAll.js`.
 
 ## 2. Syntax & Compatibility Rules
 - **No Optional Chaining or Nullish Coalescing**: Strictly DO NOT use `?.` or `??` syntax anywhere in JavaScript files. Older mobile browser runtimes and WebViews throw `Uncaught SyntaxError: Unexpected token '?'`. Always use explicit boolean checks (`obj && obj.prop`, `typeof x !== 'undefined' ? x : default`).
