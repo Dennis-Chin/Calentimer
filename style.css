@@ -3959,26 +3959,28 @@ body {
    ========================================== */
 
 .full-calendar-modal {
-  max-width: 900px;
-  width: 98vw;
-  height: 95vh;
-  max-height: calc(100vh - 16px);
+  max-width: 840px;
+  width: 95vw;
+  height: 90vh;
+  max-height: 840px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 0;
   border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
   will-change: transform;
 }
 
-/* Consolidated Single Header Row with Centered Date and View Dropdown */
+/* Header Row 1: Nav buttons, Centered Date, Top Right Close Button */
 .full-calendar-header {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
   touch-action: pan-y;
   user-select: none;
@@ -3987,7 +3989,7 @@ body {
 .cal-header-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -3998,17 +4000,17 @@ body {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 .cal-current-label {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   font-weight: 800;
   color: var(--text-main);
   letter-spacing: 0.1px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 
 .cal-header-right {
@@ -4016,21 +4018,20 @@ body {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 .cal-nav-btn {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   transition: all 0.15s ease;
 }
 
@@ -4044,10 +4045,10 @@ body {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-main);
-  padding: 0 8px;
-  height: 28px;
+  padding: 0 10px;
+  height: 30px;
   border-radius: var(--radius-sm);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -4059,15 +4060,43 @@ body {
   color: var(--primary);
 }
 
+/* Controls Row 2: Sits Below Date and Above Calendar View */
+.cal-sub-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.cal-sub-left, .cal-sub-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-toolbar-icon {
+  font-size: 0.76rem;
+}
+
+.cal-res-label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
 /* Resolution Dropdown Selector (Day view) */
 .cal-res-wrapper {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 0 4px;
+  padding: 2px 8px;
   height: 28px;
 }
 
@@ -4095,10 +4124,11 @@ body {
 .cal-view-dropdown-wrapper {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 0 4px;
+  padding: 2px 6px;
   height: 28px;
 }
 
@@ -4127,10 +4157,11 @@ body {
 .full-calendar-body {
   flex: 1;
   overflow: hidden;
-  padding: 4px 6px 6px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   position: relative;
+  height: 100%;
 }
 
 .calendar-view-container {
@@ -4140,15 +4171,16 @@ body {
   flex: 1;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 /* Floating Green Add Event Button (Far Bottom Right) */
 .btn-float-add-event {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 50px;
-  height: 50px;
+  bottom: 20px;
+  right: 20px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: #10b981;
   color: #0c0e14;
@@ -4172,7 +4204,7 @@ body {
   transform: scale(0.92);
 }
 
-/* 1. Day View Timeline with Pinch to Stretch/Compress */
+/* 1. Day View Timeline with Pinch-to-Zoom anchored at touch center */
 .day-timeline-scroll {
   flex: 1;
   height: 100%;
@@ -4186,6 +4218,7 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  padding-bottom: 24px;
 }
 
 .day-timeline-hour-slot {
@@ -4202,10 +4235,14 @@ body {
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-dim);
-  width: 48px;
-  padding-top: 4px;
+  width: 44px;
+  padding-top: 0;
+  margin-top: -8px;
+  line-height: 1;
   flex-shrink: 0;
   user-select: none;
+  text-align: right;
+  padding-right: 6px;
 }
 
 .day-slot-content {
@@ -4219,7 +4256,7 @@ body {
 /* Sub-interval dashed lines (15m, 10m, 5m, 30m) */
 .day-sub-interval-line {
   position: absolute;
-  left: 48px;
+  left: 44px;
   right: 0;
   height: 1px;
   border-top: 1px dashed rgba(255, 255, 255, 0.06);
@@ -4234,7 +4271,7 @@ body {
 /* Current time light-blue line with time badge in LEFT gutter */
 .day-current-time-line {
   position: absolute;
-  left: 46px;
+  left: 44px;
   right: 0;
   height: 2px;
   background: #00f0ff;
@@ -4270,15 +4307,15 @@ body {
   z-index: 20;
 }
 
-/* Day Event Card: Title and Time Span / Duration Fit Cleanly on One Line */
+/* Day Event Card: Top line purely for name, line below for times & duration */
 .day-event-card {
   position: absolute;
-  left: 52px;
-  right: 8px;
+  left: 48px;
+  right: 6px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-left: 4px solid var(--primary);
@@ -4306,7 +4343,8 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
+  overflow: hidden;
 }
 
 .day-event-card .day-event-title-line {
@@ -4314,6 +4352,8 @@ body {
   align-items: center;
   gap: 5px;
   min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .day-event-card .day-event-emoji {
@@ -4322,24 +4362,25 @@ body {
 }
 
 .day-event-card .day-event-title {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
+  text-overflow: clip; /* NO ellipsis ..., just display maximum characters that fit */
+  line-height: 1.25;
+  width: 100%;
 }
 
 .day-event-card .day-event-meta-line {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 0.68rem;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip; /* NO ellipsis */
   line-height: 1.2;
 }
 
@@ -4360,7 +4401,7 @@ body {
   background: rgba(255, 255, 255, 0.08);
   font-size: 0.64rem;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -4463,7 +4504,7 @@ body {
   padding-right: 6px;
   height: var(--cal-week-hour-height, 52px);
   line-height: 1;
-  transform: translateY(-5px);
+  margin-top: -6px;
   user-select: none;
 }
 
@@ -4473,6 +4514,27 @@ body {
   height: calc(16 * var(--cal-week-hour-height, 52px));
 }
 
+/* Horizontal Hour Lines in Week View */
+.week-hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-theme="light"] .week-hour-line {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.cal-mini-lock-svg {
+  display: inline-block;
+  vertical-align: -1px;
+  flex-shrink: 0;
+}
+
 /* Week Event Card: Solid Category Background, No Emoji */
 .week-event-card {
   position: absolute;
@@ -4480,7 +4542,7 @@ body {
   right: 2px;
   border-radius: var(--radius-sm);
   color: #ffffff;
-  padding: 4px 6px;
+  padding: 3px 5px;
   display: flex;
   flex-direction: column;
   font-size: 0.72rem;
@@ -4490,6 +4552,29 @@ body {
   user-select: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
+  z-index: 5;
+}
+
+.week-event-card .week-event-title {
+  font-weight: 800;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip; /* NO ellipsis */
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.week-event-card .week-event-time {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.88);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 .week-event-card:hover {
@@ -4580,6 +4665,7 @@ body {
 .month-event-pill {
   display: flex;
   align-items: center;
+  gap: 3px;
   font-size: 0.7rem;
   font-weight: 700;
   padding: 2.5px 5px;
@@ -4587,7 +4673,7 @@ body {
   color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip; /* NO ellipsis */
   cursor: grab;
   user-select: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
@@ -4600,7 +4686,7 @@ body {
 
 .month-event-pill .event-title {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip; /* NO ellipsis */
   white-space: nowrap;
 }
 

@@ -467,7 +467,7 @@
   <!-- Full Calendar View Modal (Day / Week / Month) -->
   <div class="modal-backdrop hidden" id="fullCalendarModalBackdrop">
     <div class="calendar-modal full-calendar-modal" id="fullCalendarModal">
-      <!-- Consolidated Header with Centered Date, View Dropdown & Right Close Button -->
+      <!-- Header Row 1: Nav buttons, Centered Date & Top Right Close Button -->
       <div class="modal-header full-calendar-header" id="fullCalendarHeader">
         <div class="cal-header-left">
           <button type="button" class="cal-nav-btn" id="btnCalPrev" title="Previous">◀</button>
@@ -480,9 +480,30 @@
         </div>
 
         <div class="cal-header-right">
+          <!-- Close Button Top Right -->
+          <button type="button" class="btn-close-modal" id="btnCloseFullCalendar" title="Close calendar">✕</button>
+        </div>
+      </div>
+
+      <!-- Controls Row 2: View Switcher and Resolution (Below Date & Above Calendar) -->
+      <div class="cal-sub-toolbar" id="calSubToolbar">
+        <div class="cal-sub-left">
+          <!-- View Switcher Dropdown (Day / Week / Month) -->
+          <div class="cal-view-dropdown-wrapper" id="calViewDropdownWrapper">
+            <span class="cal-toolbar-icon">📅</span>
+            <select id="calViewSelect" class="cal-view-select" title="Select Calendar View">
+              <option value="day" selected>Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="cal-sub-right">
           <!-- Time Interval Resolution Selector (Day view) -->
           <div class="cal-res-wrapper" id="calResolutionWrapper" title="Snap interval resolution">
             <span class="cal-res-icon">⏱️</span>
+            <span class="cal-res-label">Snap:</span>
             <select id="calResolutionSelect" class="cal-res-select" title="Time Interval Resolution">
               <option value="5">5m</option>
               <option value="10">10m</option>
@@ -491,18 +512,6 @@
               <option value="60">60m</option>
             </select>
           </div>
-
-          <!-- View Switcher Dropdown (Day / Week / Month) -->
-          <div class="cal-view-dropdown-wrapper" id="calViewDropdownWrapper">
-            <select id="calViewSelect" class="cal-view-select" title="Select Calendar View">
-              <option value="day" selected>Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-            </select>
-          </div>
-
-          <!-- Close Button Top Right -->
-          <button type="button" class="btn-close-modal" id="btnCloseFullCalendar" title="Close calendar">✕</button>
         </div>
       </div>
 
