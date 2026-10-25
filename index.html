@@ -584,22 +584,7 @@
           </div>
         </div>
 
-        <div class="cal-sub-right">
-          <!-- Time Interval Resolution Selector with Clock Emoji and tight Interval: label -->
-          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
-            <span class="cal-res-icon">🕒</span>
-            <span class="cal-res-label">Interval:</span>
-            <span class="cal-res-val" id="calResolutionVal">15m</span>
-            <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
-            <select id="calResolutionSelect" class="cal-dropdown-select-overlay" title="Time Interval Resolution">
-              <option value="5">5m</option>
-              <option value="10">10m</option>
-              <option value="15" selected>15m</option>
-              <option value="30">30m</option>
-              <option value="60">60m</option>
-            </select>
-          </div>
-        </div>
+        <div class="cal-sub-right" style="width: 80px; min-width: 80px;"></div>
       </div>
 
       <!-- Calendar Views Container -->
@@ -638,13 +623,31 @@
         <!-- Bottom Fade Overlay for Smooth Edge Falloff -->
         <div class="calendar-bottom-fade" aria-hidden="true"></div>
 
-        <!-- Floating Green Add Event Button (Far Bottom Right) -->
-        <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-        </button>
+        <!-- Bottom Floating Controls: Interval (Left of +) & Add Event Button (+) -->
+        <div class="cal-bottom-bar" id="calBottomBar">
+          <!-- Time Interval Resolution Selector with Clock Emoji -->
+          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
+            <span class="cal-res-icon">🕒</span>
+            <span class="cal-res-label">Interval:</span>
+            <span class="cal-res-val" id="calResolutionVal">15m</span>
+            <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
+            <select id="calResolutionSelect" class="cal-dropdown-select-overlay" title="Time Interval Resolution">
+              <option value="5">5m</option>
+              <option value="10">10m</option>
+              <option value="15" selected>15m</option>
+              <option value="30">30m</option>
+              <option value="60">60m</option>
+            </select>
+          </div>
+
+          <!-- Floating Green Add Event Button (Far Bottom Right) -->
+          <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>

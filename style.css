@@ -4290,13 +4290,15 @@ body {
 }
 
 .full-calendar-body {
-  flex: 1;
+  flex: 1 1 auto;
   overflow: hidden;
   padding: 0;
   display: flex;
   flex-direction: column;
   position: relative;
-  height: 100%;
+  height: auto;
+  max-height: none !important;
+  min-height: 0;
 }
 
 .calendar-view-container {
@@ -4309,13 +4311,31 @@ body {
   position: relative;
 }
 
-/* Floating Green Add Event Button (Far Bottom Right of calendar box) */
-.btn-float-add-event {
+/* Bottom Floating Action Bar (Far Bottom Right of calendar box) */
+.cal-bottom-bar {
   position: absolute;
-  bottom: 8px;
-  right: 10px;
-  width: 50px;
-  height: 50px;
+  bottom: 12px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 30;
+  pointer-events: auto;
+}
+
+.cal-bottom-bar .cal-res-wrapper {
+  height: 38px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-elevated);
+  border: 1.5px solid var(--border-subtle);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+/* Floating Green Add Event Button */
+.btn-float-add-event {
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: #10b981;
   color: #0c0e14;
@@ -4325,7 +4345,7 @@ body {
   justify-content: center;
   box-shadow: 0 4px 18px rgba(16, 185, 129, 0.55);
   cursor: pointer;
-  z-index: 30;
+  flex-shrink: 0;
   transition: transform 0.18s ease, background 0.15s ease, box-shadow 0.18s ease;
 }
 
@@ -4339,17 +4359,18 @@ body {
   transform: scale(0.92);
 }
 
-/* Bottom Fade Overlay for Smooth Edge Falloff - Strictly Rectangular with No Rounded Corners */
+/* Bottom Fade Overlay for Smooth Edge Falloff - Softly meets the rounded bottom corners of the modal */
 .calendar-bottom-fade {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 48px;
-  background: linear-gradient(to bottom, transparent 0%, var(--bg-surface) 90%);
+  height: 60px;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg-surface) 92%);
   pointer-events: none;
   z-index: 22;
-  border-radius: 0 !important;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
 }
 
 /* 1. Day View Timeline with Hidden Scrollbar */

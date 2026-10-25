@@ -1129,7 +1129,7 @@ export class CalendarView {
     if (el.weekView) el.weekView.classList.toggle('hidden', viewName !== 'week');
     if (el.monthView) el.monthView.classList.toggle('hidden', viewName !== 'month');
 
-    // Interval selector in Day & Week views; hidden with space preserved in Month view
+    // Interval selector in Day & Week views; hidden in Month view
     if (el.resolutionWrapper) {
       if (viewName === 'day') {
         el.resolutionWrapper.style.visibility = 'visible';
@@ -1140,8 +1140,8 @@ export class CalendarView {
         el.resolutionWrapper.style.display = 'inline-flex';
         this._populateResolutionOptions([15, 30, 60], this.weekResolution || 15);
       } else {
-        // Month tab: keep in layout but hidden so Today/Arrow buttons remain strictly centered
-        el.resolutionWrapper.style.visibility = 'hidden';
+        // Month view: interval selector is hidden so only Add Event button sits on bottom right
+        el.resolutionWrapper.style.display = 'none';
       }
     }
 
