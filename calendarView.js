@@ -734,11 +734,25 @@ export class CalendarView {
         dayCol.className = 'week-day-col';
         dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
 
+        const resolution = this.weekResolution || 15;
         for (let h = startHour; h < endHour; h++) {
+          const hourTop = 14 + ((h - startHour) * hourHeight);
           const line = document.createElement('div');
           line.className = 'week-hour-line';
-          line.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
+          line.style.top = `${hourTop}px`;
           dayCol.appendChild(line);
+
+          if (resolution < 60) {
+            const stepCount = 60 / resolution;
+            for (let s = 1; s < stepCount; s++) {
+              const subLine = document.createElement('div');
+              subLine.className = 'week-sub-interval-line';
+              subLine.setAttribute('data-h-idx', String(h - startHour));
+              subLine.setAttribute('data-s-ratio', String(s / stepCount));
+              subLine.style.top = `${hourTop + ((s / stepCount) * hourHeight)}px`;
+              dayCol.appendChild(subLine);
+            }
+          }
         }
 
         const eventsForDate = allEvents.filter(e => e.date === dStr);
@@ -1051,6 +1065,13 @@ export class CalendarView {
       const lines = dayCols[i].querySelectorAll('.week-hour-line');
       for (let j = 0; j < lines.length; j++) {
         lines[j].style.top = `${14 + (j * hourHeight)}px`;
+      }
+      const subLines = dayCols[i].querySelectorAll('.week-sub-interval-line');
+      for (let s = 0; s < subLines.length; s++) {
+        const sub = subLines[s];
+        const hIdx = parseFloat(sub.getAttribute('data-h-idx') || '0');
+        const ratio = parseFloat(sub.getAttribute('data-s-ratio') || '0');
+        sub.style.top = `${14 + (hIdx * hourHeight) + (ratio * hourHeight)}px`;
       }
     }
 
@@ -1542,6 +1563,8 @@ export class CalendarView {
           for (let s = 1; s < stepCount; s++) {
             const subLine = document.createElement('div');
             subLine.className = 'week-sub-interval-line';
+            subLine.setAttribute('data-h-idx', String(h - startHour));
+            subLine.setAttribute('data-s-ratio', String(s / stepCount));
             const subTop = hourTop + ((s / stepCount) * hourHeight);
             subLine.style.top = `${subTop}px`;
             dayCol.appendChild(subLine);
@@ -1895,9 +1918,12 @@ export class CalendarView {
     };
 
     let hasJumpedDay = false;
+    let adjacentSlide = null;
+    let targetDir = 0;
+    let activeContainer = null;
 
     const jumpToAdjacentDay = (direction) => {
-      if (hasJumpedDay || !isDragging) return;
+      if (hasJumpedDay && isDragging) return;
       hasJumpedDay = true;
       isDragging = false;
       this.isDraggingEvent = false;
@@ -1925,7 +1951,7 @@ export class CalendarView {
       const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
       const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
 
-      // Calculate target date (yesterday or tomorrow)
+      // Calculate target date (direction: -1 = yesterday, 1 = tomorrow)
       const currentActiveDate = new Date(this.selectedDate || this.currentDate);
       currentActiveDate.setDate(currentActiveDate.getDate() + direction);
       const targetDateStr = this._formatDateISO(currentActiveDate);
@@ -1941,8 +1967,109 @@ export class CalendarView {
       mobileServices.hapticBuzz();
       this._showToast(`📅 Moved to ${direction > 0 ? 'tomorrow' : 'yesterday'} (${newStartTime} - ${newEndTime})`);
 
-      // Smooth slide transition to adjacent day
+      // Slide transition to adjacent day
       this.navigate(direction);
+    };
+
+    const triggerDaySlideJump = (direction, diffX, bodyWidth) => {
+      if (hasJumpedDay) return;
+      hasJumpedDay = true;
+      isDragging = false;
+      this.isDraggingEvent = false;
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+
+      const exitX = diffX < 0 ? -bodyWidth : bodyWidth;
+      if (activeContainer) {
+        activeContainer.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
+      }
+      if (adjacentSlide) {
+        adjacentSlide.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
+      }
+
+      setTimeout(() => {
+        if (adjacentSlide && adjacentSlide.parentNode) {
+          adjacentSlide.parentNode.removeChild(adjacentSlide);
+          adjacentSlide = null;
+        }
+        if (activeContainer) {
+          activeContainer.style.removeProperty('transform');
+          activeContainer.style.removeProperty('transition');
+        }
+        jumpToAdjacentDay(direction);
+      }, 220);
+    };
+
+    const handleDragMove = (clientX, clientY) => {
+      lastClientY = clientY;
+      applySnappedPosition(clientY);
+
+      const diffX = clientX - startX;
+      // Task floats freely horizontally with the finger
+      card.style.transform = `translate3d(${diffX}px, 0, 0) scale(1.05)`;
+
+      const modalBody = this.elements.modalBody;
+      const bodyWidth = modalBody ? (modalBody.clientWidth || 360) : 360;
+
+      if (!activeContainer && modalBody) {
+        activeContainer = modalBody.querySelector('.calendar-view-container');
+      }
+
+      // Drag left (diffX < 0) -> previous day (-1)
+      // Drag right (diffX > 0) -> next day (+1)
+      const currentDir = diffX < 0 ? -1 : 1;
+
+      if (Math.abs(diffX) > 15) {
+        if (targetDir !== currentDir) {
+          targetDir = currentDir;
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+            adjacentSlide = null;
+          }
+          const targetDate = new Date(this.selectedDate || this.currentDate);
+          targetDate.setDate(targetDate.getDate() + targetDir);
+          const currentScrollTop = container ? container.scrollTop : 0;
+          adjacentSlide = this._buildAdjacentPreviewSlide(targetDate, targetDir, currentScrollTop);
+          if (modalBody) {
+            modalBody.appendChild(adjacentSlide);
+            const adjScroll = adjacentSlide.querySelector('.day-timeline-scroll');
+            if (adjScroll) {
+              adjScroll.scrollTop = currentScrollTop;
+            }
+          }
+        }
+
+        if (activeContainer) {
+          activeContainer.style.transition = 'none';
+          activeContainer.style.transform = `translate3d(${diffX}px, 0, 0)`;
+        }
+        if (adjacentSlide) {
+          adjacentSlide.style.transition = 'none';
+          const adjX = targetDir === -1 ? (bodyWidth + diffX) : (-bodyWidth + diffX);
+          adjacentSlide.style.transform = `translate3d(${adjX}px, 0, 0)`;
+        }
+      } else {
+        if (adjacentSlide && adjacentSlide.parentNode) {
+          adjacentSlide.parentNode.removeChild(adjacentSlide);
+          adjacentSlide = null;
+          targetDir = 0;
+        }
+        if (activeContainer) {
+          activeContainer.style.transition = 'none';
+          activeContainer.style.transform = 'translate3d(0, 0, 0)';
+        }
+      }
+
+      if (Math.abs(diffX) > 85) {
+        triggerDaySlideJump(currentDir, diffX, bodyWidth);
+      }
     };
 
     const startDragMode = () => {
@@ -1972,7 +2099,7 @@ export class CalendarView {
     };
 
     const finishDrag = () => {
-      if (!isDragging) return;
+      if (!isDragging || hasJumpedDay) return;
       isDragging = false;
       this.isDraggingEvent = false;
       if (autoScrollRaf) {
@@ -1984,6 +2111,31 @@ export class CalendarView {
       }
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
+
+      // Spring activeContainer back and remove adjacentSlide if any
+      const modalBody = this.elements.modalBody;
+      const bodyWidth = modalBody ? (modalBody.clientWidth || 360) : 360;
+      if (activeContainer) {
+        activeContainer.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transform = 'translate3d(0, 0, 0)';
+        setTimeout(() => {
+          if (activeContainer) {
+            activeContainer.style.removeProperty('transform');
+            activeContainer.style.removeProperty('transition');
+          }
+        }, 200);
+      }
+      if (adjacentSlide) {
+        adjacentSlide.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+        const returnX = targetDir === -1 ? bodyWidth : -bodyWidth;
+        adjacentSlide.style.transform = `translate3d(${returnX}px, 0, 0)`;
+        setTimeout(() => {
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+            adjacentSlide = null;
+          }
+        }, 200);
+      }
 
       const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
       const hourHeight = this.dayHourHeight || 56;
@@ -2041,19 +2193,7 @@ export class CalendarView {
       }
       if (e.touches && e.touches.length === 1) {
         if (e.cancelable) e.preventDefault();
-        lastClientY = e.touches[0].clientY;
-        const currentX = e.touches[0].clientX;
-        const diffX = currentX - startX;
-
-        // Check horizontal resistance threshold for inter-day jump (> 85px)
-        if (Math.abs(diffX) > 85) {
-          jumpToAdjacentDay(diffX < 0 ? 1 : -1);
-          return;
-        }
-
-        // Subtle elastic horizontal tilt and snapped vertical position
-        card.style.transform = `translate3d(${Math.max(-28, Math.min(28, diffX * 0.22))}px, 0, 0)`;
-        applySnappedPosition(e.touches[0].clientY);
+        handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     }, { passive: false });
 
@@ -2101,8 +2241,7 @@ export class CalendarView {
           return;
         }
         me.preventDefault();
-        lastClientY = me.clientY;
-        applySnappedPosition(me.clientY);
+        handleDragMove(me.clientX, me.clientY);
       };
 
       const onMouseUp = () => {
@@ -2173,6 +2312,75 @@ export class CalendarView {
     };
 
     let currentOverCol = null;
+    let weekNavTimer = null;
+    let isWeekNavCooldown = false;
+
+    const checkWeekEdgePull = (clientX) => {
+      if (!container || isWeekNavCooldown) return;
+      const rect = container.getBoundingClientRect();
+      const isLeft = clientX < rect.left + 28;
+      const isRight = clientX > rect.right - 28;
+
+      if (isLeft || isRight) {
+        if (!weekNavTimer) {
+          const navDir = isRight ? 1 : -1;
+          weekNavTimer = setTimeout(() => {
+            weekNavTimer = null;
+            if (!isDragging) return;
+
+            isWeekNavCooldown = true;
+            setTimeout(() => { isWeekNavCooldown = false; }, 650);
+
+            // Temporarily move card to container so render doesn't delete it
+            const cardRect = card.getBoundingClientRect();
+            const contRect = container.getBoundingClientRect();
+            const curLeft = cardRect.left - contRect.left + container.scrollLeft;
+            const curTop = cardRect.top - contRect.top + container.scrollTop;
+
+            card.style.position = 'absolute';
+            card.style.left = `${curLeft}px`;
+            card.style.top = `${curTop}px`;
+            card.style.width = `${cardRect.width}px`;
+            card.style.zIndex = '99999';
+            card.style.transform = 'scale(1.08)';
+            container.appendChild(card);
+
+            startX = clientX;
+            startY = lastClientY;
+
+            mobileServices.hapticBuzz();
+            this._showToast(navDir > 0 ? '📅 Next week' : '📅 Previous week');
+
+            // Switch week
+            this.navigate(navDir);
+
+            // Re-append card to container on top of newly rendered week grid
+            container.appendChild(card);
+          }, 400);
+        }
+      } else {
+        if (weekNavTimer) {
+          clearTimeout(weekNavTimer);
+          weekNavTimer = null;
+        }
+      }
+    };
+
+    const onWindowTouchMove = (e) => {
+      if (!isDragging || !(e.touches && e.touches.length === 1)) return;
+      if (e.cancelable) e.preventDefault();
+      lastClientX = e.touches[0].clientX;
+      lastClientY = e.touches[0].clientY;
+      updateWeekDragPosition(lastClientX, lastClientY);
+    };
+
+    const onWindowTouchEnd = () => {
+      finishDrag(lastClientX, lastClientY);
+    };
+
+    const onWindowTouchCancel = () => {
+      finishDrag(lastClientX, lastClientY);
+    };
 
     const startDragMode = () => {
       if (ev.isLocked) {
@@ -2195,10 +2403,14 @@ export class CalendarView {
         container.style.overflowY = 'hidden';
       }
       startAutoScrollLoop();
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onWindowTouchCancel, { passive: true });
     };
 
     const updateWeekDragPosition = (clientX, clientY) => {
       card.style.transform = `translate3d(${clientX - startX}px, ${clientY - startY}px, 0) scale(1.08)`;
+      checkWeekEdgePull(clientX);
 
       card.style.pointerEvents = 'none';
       const targetEl = document.elementFromPoint(clientX, clientY);
@@ -2241,6 +2453,14 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      if (weekNavTimer) {
+        clearTimeout(weekNavTimer);
+        weekNavTimer = null;
+      }
+      isWeekNavCooldown = false;
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
       if (autoScrollRaf) {
         cancelAnimationFrame(autoScrollRaf);
         autoScrollRaf = null;
@@ -2250,6 +2470,9 @@ export class CalendarView {
       }
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
+      if (card.parentNode === container) {
+        container.removeChild(card);
+      }
 
       if (currentOverCol) {
         currentOverCol.classList.remove('drag-target-over');
