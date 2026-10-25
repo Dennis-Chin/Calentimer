@@ -4970,11 +4970,29 @@ body {
   cursor: pointer;
   transition: all 0.15s ease;
   overflow: hidden;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 .month-day-cell:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+.month-day-cell:active,
+.month-day-cell:focus {
+  background: var(--bg-surface-elevated) !important;
+  border-color: var(--border-subtle) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.month-day-cell.today:active,
+.month-day-cell.today:focus {
+  border-color: var(--accent-cyan) !important;
+  background: rgba(0, 240, 255, 0.05) !important;
 }
 
 .month-day-cell.other-month {
@@ -5073,9 +5091,9 @@ body {
 /* Day View Drop Preview Silhouette: Blue / Cyan Outline Stuck to Timeline */
 .day-drop-preview-silhouette {
   position: absolute;
-  left: 60px;
-  right: 12px;
-  border-radius: var(--radius-sm);
+  left: 42px;
+  right: 4px;
+  border-radius: var(--radius-md);
   border: 2.5px dashed var(--accent-cyan);
   background: rgba(0, 240, 255, 0.22);
   box-shadow: 0 0 16px rgba(0, 240, 255, 0.55), inset 0 0 10px rgba(0, 240, 255, 0.25);
@@ -5097,21 +5115,6 @@ body {
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
-  transition: none !important;
-}
-
-/* Month View Drop Preview Silhouette: Cyan Outline inside Target Cell */
-.month-drop-preview-silhouette {
-  min-height: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: 2px dashed var(--accent-cyan);
-  background: rgba(0, 240, 255, 0.22);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.55), inset 0 0 8px rgba(0, 240, 255, 0.25);
-  pointer-events: none;
-  box-sizing: border-box;
-  margin: -1px -1px;
-  width: calc(100% + 2px);
   transition: none !important;
 }
 

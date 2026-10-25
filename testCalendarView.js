@@ -647,7 +647,7 @@ assert(calendar.isDraggingEvent === false, 'Day drag finishes cleanly on touchen
 const daySilhouetteAfter = calendar.elements.dayTimelineBody.children.find(c => c.classList && c.classList.contains('day-drop-preview-silhouette'));
 assert(!daySilhouetteAfter, 'Day drop preview silhouette is removed after drag ends');
 
-console.log('\n--- 13. Testing Month View Drop Preview Silhouette & 50% Sensitivity ---');
+console.log('\n--- 13. Testing Month View Drag Target Cell Highlight (No Silhouette) & 50% Sensitivity ---');
 calendar.switchView('month');
 calendar.render();
 
@@ -673,7 +673,7 @@ for (let i = 0; i < monthGridCellsList.length; i++) {
     }
   }
 }
-assert(monthPillForSilhouette !== null, 'Unlocked month event pill found for silhouette test');
+assert(monthPillForSilhouette !== null, 'Unlocked month event pill found for drag test');
 
 monthPillForSilhouette.dispatchSimulatedEvent('touchstart', {
   touches: [{ clientX: 100, clientY: 150 }]
@@ -687,14 +687,13 @@ window.dispatchSimulatedEvent('touchmove', {
   cancelable: true
 });
 
+assert(targetCellMock.classList.contains('drag-target-over'), 'Target day cell receives drag-target-over glowing highlight');
 const monthSilhouette = targetList.children.find(c => c.classList && c.classList.contains('month-drop-preview-silhouette'));
-assert(monthSilhouette !== null && monthSilhouette !== undefined, 'Month drop preview silhouette appended to target day cell events list');
-assert(monthSilhouette.style.display === 'block', 'Month drop preview silhouette is displayed at block in target cell');
+assert(!monthSilhouette, 'Month view does not render separate silhouette (cell glowing blue highlight is sufficient)');
 
 monthPillForSilhouette.dispatchSimulatedEvent('touchend', { cancelable: true });
 assert(calendar.isDraggingEvent === false, 'Month drag mode finished');
-const monthSilhouetteAfter = targetList.children.find(c => c.classList && c.classList.contains('month-drop-preview-silhouette'));
-assert(!monthSilhouetteAfter, 'Month drop preview silhouette cleanly removed on finishDrag');
+assert(targetCellMock.classList.contains('drag-target-over') === false, 'drag-target-over cleanly removed on finishDrag');
 
 global.document.elementFromPoint = origElementFromPoint;
 

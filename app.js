@@ -1666,6 +1666,7 @@ function setupControls() {
   isDrawerPullingUp = false;
 
   function onDrawerTouchStart(e) {
+    if (isNavSwiping) return;
     if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
       isDrawerTouching = false;
       isDrawerPullingDown = false;
@@ -1682,6 +1683,16 @@ function setupControls() {
   }
 
   function onDrawerTouchMove(e) {
+    if (isNavSwiping) {
+      if (isDrawerPullingDown || isDrawerPullingUp) {
+        taskDrawer.style.removeProperty('transform');
+        taskDrawer.classList.remove('will-minimise', 'will-open');
+        isDrawerPullingDown = false;
+        isDrawerPullingUp = false;
+      }
+      isDrawerTouching = false;
+      return;
+    }
     if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
       isDrawerTouching = false;
       if (isDrawerPullingDown || isDrawerPullingUp) {
@@ -4613,11 +4624,13 @@ function setupNavigationAndModals() {
       return;
     }
 
-    // Guard: If touch starts inside Today's Tasks drawer or its header pull pill, ignore for nav menu
-    if (target.closest('.task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop, .drawer-header, #drawerHeader, .drawer-pull-pill')) {
-      navTouchStartX = null;
-      navTouchStartY = null;
-      return;
+    // Guard: If Today's Tasks drawer is open (expanded), ignore touches inside it for nav menu
+    if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
+      if (target.closest('.task-drawer, #taskDrawer, .task-drawer-backdrop, #taskDrawerBackdrop')) {
+        navTouchStartX = null;
+        navTouchStartY = null;
+        return;
+      }
     }
 
     // Guard: If touch starts inside or on the timer wheel/dial elements, check if inside dial circle.
@@ -4651,15 +4664,10 @@ function setupNavigationAndModals() {
     }
 
     const touch = e.touches[0];
-    // Guard: Bottom 95px of viewport is where collapsed Today's Tasks tab header sits
-    if (touch && touch.clientY > window.innerHeight - 95) {
-      navTouchStartX = null;
-      navTouchStartY = null;
-      return;
-    }
+    if (!touch) return;
 
-    // Never start nav menu swipe if Today's Tasks drawer is open or being interacted with
-    if (isDrawerTouching || isDrawerPullingUp || isDrawerPullingDown || (taskDrawer && !taskDrawer.classList.contains('collapsed'))) {
+    // Never start nav menu swipe if Today's Tasks drawer is open or actively pulling up/down
+    if (isDrawerPullingUp || isDrawerPullingDown || (taskDrawer && !taskDrawer.classList.contains('collapsed'))) {
       navTouchStartX = null;
       navTouchStartY = null;
       return;
@@ -4674,7 +4682,7 @@ function setupNavigationAndModals() {
   window.addEventListener('touchmove', (e) => {
     if (!navDrawer || !navDrawerBackdrop) return;
     if (navTouchStartX === null || navTouchStartY === null) return;
-    if (isDraggingOuterDial || isScrubbingGreenLine || isDrawerTouching || isDrawerPullingUp || isDrawerPullingDown) {
+    if (isDraggingOuterDial || isScrubbingGreenLine || isDrawerPullingUp || isDrawerPullingDown) {
       if (isNavSwiping) {
         isNavSwiping = false;
         closeDrawer();
@@ -5265,6 +5273,129 @@ function setupNavigationAndModals() {
   if (todoListContainer) {
     setupInteractiveTodoDrag(todoListContainer);
   }
+
+  // ==========================================
+  // Confirm Exit App Modal & Mobile Back Button
+  // ==========================================
+  const confirmExitAppModalBackdrop = document.getElementById('confirmExitAppModalBackdrop');
+  const btnCancelExitApp = document.getElementById('btnCancelExitApp');
+  const btnConfirmExitApp = document.getElementById('btnConfirmExitApp');
+
+  function openConfirmExitAppModal() {
+    if (confirmExitAppModalBackdrop) {
+      confirmExitAppModalBackdrop.classList.remove('hidden');
+      mobileServices.hapticWarning();
+    }
+  }
+
+  function closeConfirmExitAppModal() {
+    if (confirmExitAppModalBackdrop) {
+      confirmExitAppModalBackdrop.classList.add('hidden');
+    }
+  }
+
+  if (btnCancelExitApp) {
+    btnCancelExitApp.addEventListener('click', () => {
+      closeConfirmExitAppModal();
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (confirmExitAppModalBackdrop) {
+    confirmExitAppModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmExitAppModalBackdrop) {
+        closeConfirmExitAppModal();
+      }
+    });
+  }
+
+  if (btnConfirmExitApp) {
+    btnConfirmExitApp.addEventListener('click', () => {
+      closeConfirmExitAppModal();
+      if (window.navigator && window.navigator.app && typeof window.navigator.app.exitApp === 'function') {
+        window.navigator.app.exitApp();
+      } else {
+        try {
+          window.close();
+        } catch (_) {}
+      }
+    });
+  }
+
+  // Initialize browser history entry so back button can be intercepted
+  try {
+    if (window.history && typeof window.history.pushState === 'function') {
+      window.history.replaceState({ appState: 'root' }, '');
+      window.history.pushState({ appState: 'app' }, '');
+    }
+  } catch (_) {}
+
+  function handleMobileBackButton() {
+    // 1. If Exit modal is already open, back button dismisses it
+    if (confirmExitAppModalBackdrop && !confirmExitAppModalBackdrop.classList.contains('hidden')) {
+      closeConfirmExitAppModal();
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({ appState: 'app' }, '');
+      }
+      return;
+    }
+
+    // 2. If any other modal is open, back button closes it
+    const openModals = document.querySelectorAll('.modal-backdrop:not(.hidden)');
+    let activeModal = null;
+    for (let i = 0; i < openModals.length; i++) {
+      if (openModals[i] !== confirmExitAppModalBackdrop) {
+        activeModal = openModals[i];
+        break;
+      }
+    }
+
+    if (activeModal) {
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({ appState: 'app' }, '');
+      }
+      const closeBtn = activeModal.querySelector('.btn-close-modal, .btn-confirm-cancel, #btnCloseFullCalendar');
+      if (closeBtn) {
+        closeBtn.click();
+      } else {
+        activeModal.classList.add('hidden');
+      }
+      mobileServices.hapticTap();
+      return;
+    }
+
+    // 3. If Today's Tasks drawer is expanded, back button closes it
+    if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({ page: 'calentimer' }, '');
+      }
+      closeTaskDrawer();
+      mobileServices.hapticTap();
+      return;
+    }
+
+    // 4. If Nav Drawer is open, back button closes it
+    if (navDrawer && navDrawer.classList.contains('open')) {
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({ page: 'calentimer' }, '');
+      }
+      closeDrawer();
+      mobileServices.hapticTap();
+      return;
+    }
+
+    // 5. On the main timer screen! Re-push state so user doesn't leave unexpectedly and show confirmation popup!
+    if (window.history && typeof window.history.pushState === 'function') {
+      window.history.pushState({ appState: 'app' }, '');
+    }
+    openConfirmExitAppModal();
+  }
+
+  window.addEventListener('popstate', handleMobileBackButton);
+  document.addEventListener('backbutton', (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    handleMobileBackButton();
+  }, false);
 }
 
 // Track visibility changes (app backgrounding during active session)

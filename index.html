@@ -885,6 +885,19 @@
     </div>
   </div>
 
+  <!-- Custom Confirmation Modal for Exiting / Closing App -->
+  <div class="modal-backdrop hidden" id="confirmExitAppModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon">👋</div>
+      <div class="confirm-modal-title" id="confirmExitAppTitle">Close App?</div>
+      <div class="confirm-modal-desc" id="confirmExitAppDesc">Are you sure you want to close Calentimer?</div>
+      <div class="confirm-modal-actions">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelExitApp">Cancel</button>
+        <button type="button" class="btn-confirm-danger" id="btnConfirmExitApp" style="background:#ef4444;color:#fff;">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Add Task Modal (Opened via Calendar + Add Task or Task Drawer) -->
   <div class="modal-backdrop hidden" id="addTaskModalBackdrop">
     <div class="settings-modal add-task-modal" id="addTaskModal">
