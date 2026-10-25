@@ -91,6 +91,9 @@ let currentDialRotationDeg = 0;
 let pendingMinuteAdjustment = 0;
 let lastAudibleMinuteTick = 0;
 
+// Navigation Drawer Swipe State (Shared across nav drawer and task drawer handlers)
+let isNavSwiping = false;
+
 // Today's Tasks Drawer Touch/Pull State (Global so nav menu gestures can inspect drawer interaction)
 let isDrawerTouching = false;
 let isDrawerPullingDown = false;
@@ -4609,7 +4612,7 @@ function setupNavigationAndModals() {
   // Swipe right on screen to smoothly open nav menu; swipe left to smoothly close
   let navTouchStartX = null;
   let navTouchStartY = null;
-  let isNavSwiping = false;
+  isNavSwiping = false;
   let isDrawerOpenAtTouchStart = false;
 
   window.addEventListener('touchstart', (e) => {

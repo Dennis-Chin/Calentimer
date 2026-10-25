@@ -116,6 +116,42 @@ targetFiles.forEach(function(fileName) {
   assert(isSyntaxValid, `${fileName} passes V8 syntax validation (node --check)`);
 });
 
+console.log('\n--- 3. Testing Module-Level & Shared Scope Identifier Integrity ---');
+
+// Audit app.js to ensure shared flags are declared at top-level module scope
+const appContent = fs.readFileSync(path.resolve(process.cwd(), 'app.js'), 'utf8');
+const appRequiredTopLevelDeclarations = [
+  'isNavSwiping',
+  'isDrawerTouching',
+  'isDrawerPullingDown',
+  'isDrawerPullingUp',
+  'isDraggingTask',
+  'isScrubbingGreenLine',
+  'isDraggingOuterDial'
+];
+
+appRequiredTopLevelDeclarations.forEach(function(varName) {
+  // Regex ensures it is declared with let/const/var at top level before function definitions
+  const regex = new RegExp(`^\\s*(?:let|var|const)\\s+${varName}\\b`, 'm');
+  const isDeclared = regex.test(appContent);
+  assert(isDeclared, `app.js has top-level module declaration for '${varName}'`);
+});
+
+// Audit calendarView.js to ensure required drag variables are declared within handlers
+const calContent = fs.readFileSync(path.resolve(process.cwd(), 'calendarView.js'), 'utf8');
+const calRequiredDeclarations = [
+  'lastClientX',
+  'lastClientY',
+  'isPinching',
+  'pinchCooldownUntil',
+  '_activeDragCancelHandler'
+];
+
+calRequiredDeclarations.forEach(function(token) {
+  const isFound = calContent.includes(token);
+  assert(isFound, `calendarView.js contains required coordinate/state handler '${token}'`);
+});
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);
