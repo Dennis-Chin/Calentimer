@@ -562,6 +562,142 @@ assert(mockDocBody.children.includes(unlockedWeekCard), 'Week card reparented to
 unlockedWeekCard.dispatchSimulatedEvent('touchend', { cancelable: true });
 assert(calendar.isDraggingEvent === false, 'Week drag finishes cleanly on touchend');
 
+console.log('\n--- 11. Testing Pull Down to Minimise Modal & will-minimise Indicator ---');
+calendar.open();
+assert(calendar.elements.backdrop.classList.contains('hidden') === false, 'Calendar modal is open');
+
+const modalHeader = calendar.elements.header;
+const modalEl = calendar.elements.modal;
+
+// Pull down with deltaY < 110 threshold
+modalEl.dispatchSimulatedEvent('touchstart', {
+  target: modalHeader,
+  touches: [{ clientX: 180, clientY: 50 }]
+});
+modalEl.dispatchSimulatedEvent('touchmove', {
+  target: modalHeader,
+  touches: [{ clientX: 180, clientY: 100 }], // deltaY = 50 < 110px
+  cancelable: true
+});
+assert(modalEl.classList.contains('will-minimise') === false, 'will-minimise is false when pull distance is under threshold');
+
+// Pull down further past 110px threshold
+modalEl.dispatchSimulatedEvent('touchmove', {
+  target: modalHeader,
+  touches: [{ clientX: 180, clientY: 200 }], // deltaY = 150 >= 110px
+  cancelable: true
+});
+assert(modalEl.classList.contains('will-minimise') === true, 'will-minimise is true when dragged past threshold, turning close icon into down arrow');
+
+// Swipe back up before release
+modalEl.dispatchSimulatedEvent('touchmove', {
+  target: modalHeader,
+  touches: [{ clientX: 180, clientY: 90 }], // deltaY = 40 < 110px
+  cancelable: true
+});
+assert(modalEl.classList.contains('will-minimise') === false, 'will-minimise reverts to false if user swipes back up before release');
+
+// Pull past threshold again and release to minimise
+modalEl.dispatchSimulatedEvent('touchmove', {
+  target: modalHeader,
+  touches: [{ clientX: 180, clientY: 200 }],
+  cancelable: true
+});
+assert(modalEl.classList.contains('will-minimise') === true, 'will-minimise is true before release');
+modalEl.dispatchSimulatedEvent('touchend', { target: modalHeader });
+assert(modalEl.classList.contains('will-minimise') === false, 'will-minimise class removed on dismiss');
+await new Promise(resolve => setTimeout(resolve, 290));
+assert(calendar.elements.backdrop.classList.contains('hidden') === true, 'Calendar modal dismissed smoothly on pull-down release');
+
+console.log('\n--- 12. Testing Day View Locked Pulse Glow & Drop Silhouette ---');
+calendar.open();
+calendar.switchView('day');
+calendar.render();
+
+// Check locked card in day view
+const dayLockedCard = calendar.elements.dayTimelineBody.children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_locked');
+assert(dayLockedCard !== null && dayLockedCard !== undefined, 'Locked day card found in day timeline');
+assert(dayLockedCard.classList.contains('is-locked'), 'Locked day card has .is-locked inner orange border');
+
+// Attempt to drag locked card
+dayLockedCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 150, clientY: 200 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(dayLockedCard.classList.contains('lock-pulse-glow'), 'Day locked card triggers lock-pulse-glow border');
+assert(calendar.isDraggingEvent !== true, 'Locked day card cannot be dragged');
+dayLockedCard.dispatchSimulatedEvent('touchend', { cancelable: true });
+
+// Check unlocked card drag and drop silhouette in day view
+const dayUnlockedCard = calendar.elements.dayTimelineBody.children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_1');
+assert(dayUnlockedCard !== null && dayUnlockedCard !== undefined, 'Unlocked day card found');
+
+dayUnlockedCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 150, clientY: 200 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === true, 'Unlocked day card enters drag mode after 200ms hold');
+
+const daySilhouette = calendar.elements.dayTimelineBody.children.find(c => c.classList && c.classList.contains('day-drop-preview-silhouette'));
+assert(daySilhouette !== null && daySilhouette !== undefined, 'Day drop preview silhouette is attached to day timeline');
+assert(daySilhouette.style.display !== 'none', 'Day drop preview silhouette is visible during drag');
+
+dayUnlockedCard.dispatchSimulatedEvent('touchend', { cancelable: true });
+assert(calendar.isDraggingEvent === false, 'Day drag finishes cleanly on touchend');
+const daySilhouetteAfter = calendar.elements.dayTimelineBody.children.find(c => c.classList && c.classList.contains('day-drop-preview-silhouette'));
+assert(!daySilhouetteAfter, 'Day drop preview silhouette is removed after drag ends');
+
+console.log('\n--- 13. Testing Month View Drop Preview Silhouette & 50% Sensitivity ---');
+calendar.switchView('month');
+calendar.render();
+
+const targetCellMock = createMockElement('div');
+targetCellMock.className = 'month-day-cell';
+targetCellMock.setAttribute('data-date', tomorrowStr);
+const targetList = createMockElement('div');
+targetList.className = 'cell-events-list';
+targetCellMock.appendChild(targetList);
+
+const origElementFromPoint = global.document.elementFromPoint;
+global.document.elementFromPoint = (x, y) => targetCellMock;
+
+let monthPillForSilhouette = null;
+const monthGridCellsList = calendar.elements.monthGrid.children.filter(c => c.classList && c.classList.contains('month-day-cell'));
+for (let i = 0; i < monthGridCellsList.length; i++) {
+  const list = monthGridCellsList[i].children.find(c => c.classList && c.classList.contains('cell-events-list'));
+  if (list && list.children.length > 0) {
+    const unlockedPill = list.children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_month_unlocked');
+    if (unlockedPill) {
+      monthPillForSilhouette = unlockedPill;
+      break;
+    }
+  }
+}
+assert(monthPillForSilhouette !== null, 'Unlocked month event pill found for silhouette test');
+
+monthPillForSilhouette.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 100, clientY: 150 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === true, 'Month pill in drag mode');
+
+// Simulate touchmove across to target cell
+window.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 120, clientY: 160 }],
+  cancelable: true
+});
+
+const monthSilhouette = targetList.children.find(c => c.classList && c.classList.contains('month-drop-preview-silhouette'));
+assert(monthSilhouette !== null && monthSilhouette !== undefined, 'Month drop preview silhouette appended to target day cell events list');
+assert(monthSilhouette.style.display === 'block', 'Month drop preview silhouette is displayed at block in target cell');
+
+monthPillForSilhouette.dispatchSimulatedEvent('touchend', { cancelable: true });
+assert(calendar.isDraggingEvent === false, 'Month drag mode finished');
+const monthSilhouetteAfter = targetList.children.find(c => c.classList && c.classList.contains('month-drop-preview-silhouette'));
+assert(!monthSilhouetteAfter, 'Month drop preview silhouette cleanly removed on finishDrag');
+
+global.document.elementFromPoint = origElementFromPoint;
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

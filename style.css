@@ -5040,8 +5040,10 @@ body {
   transform: translateY(-1px);
 }
 
-/* Inner orange border for locked month pills (does not overflow shape) */
-.month-event-pill.is-locked {
+/* Inner orange border for locked cards & pills (does not overflow shape) */
+.month-event-pill.is-locked,
+.week-event-card.is-locked,
+.day-event-card.is-locked {
   box-shadow: inset 0 0 0 1.5px #f59e0b !important;
 }
 
@@ -5057,7 +5059,30 @@ body {
 .week-event-card.lock-pulse-glow,
 .month-event-pill.lock-pulse-glow,
 .day-event-card.lock-pulse-glow {
-  animation: cardLockPulseGlow 0.9s ease-in-out !important;
+  animation: cardLockPulseGlow 0.95s ease-in-out !important;
+}
+
+.day-event-card.lock-pulse-glow .cal-event-lock-btn,
+.day-event-card.lock-pulse-glow .cal-event-lock-btn svg,
+.week-event-card.lock-pulse-glow .cal-mini-lock-svg,
+.month-event-pill.lock-pulse-glow .cal-mini-lock-svg {
+  animation: lockPulseGlow 0.95s ease-in-out !important;
+  color: #f59e0b !important;
+}
+
+/* Day View Drop Preview Silhouette: Blue / Cyan Outline Stuck to Timeline */
+.day-drop-preview-silhouette {
+  position: absolute;
+  left: 60px;
+  right: 12px;
+  border-radius: var(--radius-sm);
+  border: 2.5px dashed var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.22);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.55), inset 0 0 10px rgba(0, 240, 255, 0.25);
+  pointer-events: none;
+  z-index: 10;
+  box-sizing: border-box;
+  transition: none !important;
 }
 
 /* Week View Drop Preview Silhouette: Blue / Cyan Outline Stuck to Grid */
@@ -5073,6 +5098,41 @@ body {
   z-index: 10;
   box-sizing: border-box;
   transition: none !important;
+}
+
+/* Month View Drop Preview Silhouette: Cyan Outline inside Target Cell */
+.month-drop-preview-silhouette {
+  min-height: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px dashed var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.22);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.55), inset 0 0 8px rgba(0, 240, 255, 0.25);
+  pointer-events: none;
+  box-sizing: border-box;
+  margin: -1px -1px;
+  width: calc(100% + 2px);
+  transition: none !important;
+}
+
+/* Pull Down to Minimise Indicator for Full Calendar Modal */
+.cal-close-icon-arrow {
+  display: none;
+}
+
+.cal-close-icon-x {
+  display: inline-block;
+  line-height: 1;
+}
+
+.modal-full-calendar.will-minimise .cal-close-icon-x {
+  display: none !important;
+}
+
+.modal-full-calendar.will-minimise .cal-close-icon-arrow {
+  display: inline-flex !important;
+  color: var(--accent-cyan);
+  transform: translateY(1px);
 }
 
 .month-event-pill .event-title {

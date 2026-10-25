@@ -323,6 +323,7 @@ export class CalendarView {
       if (this.isDraggingEvent) {
         if (isPullingDown) {
           isPullingDown = false;
+          modal.classList.remove('will-minimise');
           modal.style.removeProperty('transform');
           modal.style.removeProperty('transition');
         }
@@ -344,11 +345,21 @@ export class CalendarView {
 
         if (isAtTop || isHeaderTouch) {
           isPullingDown = true;
-          // Apply 0.35 resistance damping for firm pull feeling
-          const rubberbandY = Math.min(deltaY * 0.35, 180);
+          // Apply firm 0.28 resistance damping for deliberate pull feeling
+          const rubberbandY = Math.min(deltaY * 0.28, 140);
           modal.style.transition = 'none';
           modal.style.transform = `translate3d(0, ${rubberbandY}px, 0)`;
+
+          // Deliberate pull threshold: when pulled down >= 110px, X turns into downward arrow
+          // If swiped back up, it turns back into X
+          if (deltaY >= 110) {
+            modal.classList.add('will-minimise');
+          } else {
+            modal.classList.remove('will-minimise');
+          }
         }
+      } else if (deltaY <= 0 && isPullingDown) {
+        modal.classList.remove('will-minimise');
       }
     };
 
@@ -356,19 +367,17 @@ export class CalendarView {
       if (!isPullingDown) {
         touchStartY = 0;
         touchStartX = 0;
+        modal.classList.remove('will-minimise');
         return;
       }
       isPullingDown = false;
-      const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
-      const deltaY = currentY - touchStartY;
-      const elapsed = Math.max(1, Date.now() - touchStartTime);
-      const velocity = deltaY / elapsed;
+      const willMinimise = modal.classList.contains('will-minimise');
+      modal.classList.remove('will-minimise');
 
       touchStartY = 0;
       touchStartX = 0;
 
-      // Higher resistance: requires a deliberate pull (deltaY > 140px or fast flick deltaY > 90px with high velocity)
-      if (deltaY > 140 || (deltaY > 90 && velocity > 0.65)) {
+      if (willMinimise) {
         // Pure slide down animation (identical to Today's Schedule swipe down - no fading)
         modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
         modal.style.transform = 'translate3d(0, 100vh, 0)';
@@ -379,7 +388,7 @@ export class CalendarView {
           this.close();
         }, 270);
       } else {
-        // Did not pull far enough: smoothly springs back up
+        // Did not pull far enough, or swiped back up before letting go: smoothly springs back up
         modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
         modal.style.transform = 'translate3d(0, 0, 0)';
         setTimeout(() => {
@@ -1879,7 +1888,11 @@ export class CalendarView {
     let lastClientY = 0;
     let grabOffsetX = 0;
     let grabOffsetY = 0;
+    let silhouette = null;
     let autoScrollRaf = null;
+    let dayNavTimer = null;
+    let isDayPanning = false;
+    let isDayPanCooldown = false;
     const resolution = this.currentResolution || 15;
     const durMin = ev.plannedDuration || 60;
     let container = this.elements.dayTimelineScroll;
@@ -1893,27 +1906,6 @@ export class CalendarView {
       startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
       endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
     }
-
-    const applySnappedPosition = (clientY) => {
-      const hourHeight = this.dayHourHeight || 56;
-      const deltaY = clientY - startY;
-      const rawTop = Math.max(0, (initialTop - 14) + deltaY);
-      const rawMinutes = (startHour * 60) + ((rawTop / hourHeight) * 60);
-      const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
-      const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
-      card.style.top = `${snappedTopPx}px`;
-
-      const previewStartH = Math.floor(snappedMinutes / 60);
-      const previewStartM = snappedMinutes % 60;
-      const previewEndTotal = snappedMinutes + durMin;
-      const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
-      const previewEndM = previewEndTotal % 60;
-
-      const timeRangeEl = card.querySelector('.event-time-range');
-      if (timeRangeEl) {
-        timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
-      }
-    };
 
     const startAutoScrollLoop = () => {
       const step = () => {
@@ -1935,8 +1927,7 @@ export class CalendarView {
           container.scrollTop = Math.max(0, container.scrollTop + scrollDelta);
           const actualScrolled = container.scrollTop - oldScroll;
           if (actualScrolled !== 0) {
-            startY -= actualScrolled;
-            applySnappedPosition(lastClientY);
+            updateDayDragPosition(lastClientX, lastClientY);
           }
         }
 
@@ -1945,9 +1936,29 @@ export class CalendarView {
       autoScrollRaf = requestAnimationFrame(step);
     };
 
-    let isDayPanning = false;
-    let isDayPanCooldown = false;
-    let targetDayDate = new Date(this.selectedDate || this.currentDate);
+    const checkDayEdgePull = (clientX) => {
+      const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
+      if (!modalBody || isDayPanning || isDayPanCooldown) return;
+      const modalRect = modalBody.getBoundingClientRect();
+      const isLeft = clientX < modalRect.left + 45;
+      const isRight = clientX > modalRect.right - 45;
+
+      if (isLeft || isRight) {
+        if (!dayNavTimer) {
+          const navDir = isRight ? 1 : -1;
+          dayNavTimer = setTimeout(() => {
+            dayNavTimer = null;
+            if (!isDragging) return;
+            panToAdjacentDay(navDir);
+          }, 480);
+        }
+      } else {
+        if (dayNavTimer) {
+          clearTimeout(dayNavTimer);
+          dayNavTimer = null;
+        }
+      }
+    };
 
     const panToAdjacentDay = (direction) => {
       if (isDayPanning || isDayPanCooldown || !isDragging) return;
@@ -1970,7 +1981,6 @@ export class CalendarView {
       // direction > 0: Dragged right -> Next day
       const nextDate = new Date(this.selectedDate || this.currentDate);
       nextDate.setDate(nextDate.getDate() + direction);
-      targetDayDate = nextDate;
 
       const currentScrollTop = container ? container.scrollTop : 0;
       const adjacentSlide = this._buildAdjacentPreviewSlide(nextDate, direction, currentScrollTop);
@@ -1979,9 +1989,6 @@ export class CalendarView {
         return;
       }
 
-      // Initial placement of adjacent slide:
-      // If moving to previous day (direction === -1), it enters from the left (-bodyWidth)
-      // If moving to next day (direction === 1), it enters from the right (+bodyWidth)
       const startXAdj = direction < 0 ? -bodyWidth : bodyWidth;
       adjacentSlide.style.transition = 'none';
       adjacentSlide.style.transform = `translate3d(${startXAdj}px, 0, 0)`;
@@ -1991,21 +1998,6 @@ export class CalendarView {
       if (adjScroll) {
         adjScroll.scrollTop = currentScrollTop;
       }
-
-      // Detach card to modalBody with absolute positioning so it stays attached to finger during pan
-      const cardRect = card.getBoundingClientRect();
-      const modalRect = modalBody.getBoundingClientRect();
-      const floatLeft = (lastClientX - grabOffsetX) - modalRect.left;
-      const floatTop = (lastClientY - grabOffsetY) - modalRect.top;
-
-      card.style.position = 'absolute';
-      card.style.left = `${floatLeft}px`;
-      card.style.top = `${floatTop}px`;
-      card.style.width = `${cardRect.width}px`;
-      card.style.zIndex = '99999';
-      card.style.transform = 'scale(1.05)';
-      card.style.pointerEvents = 'none';
-      modalBody.appendChild(card);
 
       // Force reflow
       void adjacentSlide.offsetWidth;
@@ -2030,62 +2022,88 @@ export class CalendarView {
 
         container = this.elements.dayTimelineScroll;
         if (container) container.style.overflowY = 'hidden';
-        const newBody = this.elements.dayTimelineBody;
-        card.style.removeProperty('position');
-        card.style.removeProperty('left');
-        card.style.removeProperty('width');
-        card.style.removeProperty('z-index');
-        card.style.removeProperty('pointer-events');
-        card.style.removeProperty('transform');
-        if (newBody) {
-          newBody.appendChild(card);
-        }
-
-        // Re-anchor coordinates so dragging continues uninterrupted without any jump
-        startX = lastClientX;
-        startY = lastClientY;
-        const contRect = container ? container.getBoundingClientRect() : { top: 0 };
-        initialTop = Math.max(14, (lastClientY - grabOffsetY - contRect.top) + (container ? container.scrollTop : 0));
-        applySnappedPosition(lastClientY);
-        card.style.transform = 'scale(1.05)';
 
         isDayPanning = false;
         mobileServices.hapticBuzz();
         this._showToast(direction > 0 ? '📅 Next day' : '📅 Previous day');
 
-        // Allow panning again after short cooldown
+        if (isDragging) {
+          updateDayDragPosition(lastClientX, lastClientY);
+        }
+
+        // Allow panning again after short cooldown; if user continues holding near edge, repeat pan!
         setTimeout(() => {
           isDayPanCooldown = false;
+          if (isDragging) {
+            checkDayEdgePull(lastClientX);
+          }
         }, 450);
       }, 320);
     };
 
-    const handleDragMove = (clientX, clientY) => {
+    const updateDayDragPosition = (clientX, clientY) => {
+      if (!isDragging) return;
       lastClientX = clientX;
       lastClientY = clientY;
 
-      if (isDayPanning) {
-        // While day is smoothly panning, keep the floating card glued to finger
-        const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
-        if (modalBody && card.parentNode === modalBody) {
-          const modalRect = modalBody.getBoundingClientRect();
-          card.style.left = `${(clientX - grabOffsetX) - modalRect.left}px`;
-          card.style.top = `${(clientY - grabOffsetY) - modalRect.top}px`;
-        }
-        return;
-      }
+      // Floating card stays precisely attached to the finger with ZERO relative shift
+      card.style.left = `${clientX - grabOffsetX}px`;
+      card.style.top = `${clientY - grabOffsetY}px`;
+      card.style.transform = 'scale(1.05)';
 
-      applySnappedPosition(clientY);
+      checkDayEdgePull(clientX);
 
+      // Trigger day pan if resistance threshold exceeded (105px resistance)
       const diffX = clientX - startX;
-      // Task floats freely horizontally with the finger
-      card.style.transform = `translate3d(${diffX}px, 0, 0) scale(1.05)`;
-
-      // Trigger smooth pan if resistance threshold exceeded (105px resistance)
       if (Math.abs(diffX) > 105) {
-        const panDir = diffX < 0 ? -1 : 1;
-        panToAdjacentDay(panDir);
+        panToAdjacentDay(diffX < 0 ? -1 : 1);
       }
+
+      // Update silhouette in active day timeline
+      const newBody = this.elements.dayTimelineBody;
+      if (silhouette && newBody && container) {
+        const contRect = container.getBoundingClientRect();
+        const hourHeight = this.dayHourHeight || 56;
+        const cardTopY = (clientY - grabOffsetY) - contRect.top + container.scrollTop - 14;
+        const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
+        const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+        const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
+        const durHeight = Math.max(26, (durMin / 60) * hourHeight);
+
+        if (silhouette.parentNode !== newBody) {
+          newBody.appendChild(silhouette);
+        }
+        silhouette.style.top = `${snappedTopPx - 1}px`;
+        silhouette.style.height = `${durHeight + 2}px`;
+        silhouette.style.display = 'block';
+
+        const previewStartH = Math.floor(snappedMinutes / 60);
+        const previewStartM = snappedMinutes % 60;
+        const previewEndTotal = snappedMinutes + durMin;
+        const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
+        const previewEndM = previewEndTotal % 60;
+
+        const timeRangeEl = card.querySelector('.event-time-range');
+        if (timeRangeEl) {
+          timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
+        }
+      }
+    };
+
+    const onWindowTouchMove = (e) => {
+      if (!isDragging || !(e.touches && e.touches.length === 1)) return;
+      if (e.cancelable) e.preventDefault();
+      lastClientX = e.touches[0].clientX;
+      lastClientY = e.touches[0].clientY;
+      updateDayDragPosition(lastClientX, lastClientY);
+    };
+
+    const onWindowTouchEnd = () => {
+      finishDrag();
+    };
+
+    const onWindowTouchCancel = () => {
+      finishDrag();
     };
 
     const startDragMode = () => {
@@ -2093,31 +2111,67 @@ export class CalendarView {
         mobileServices.hapticWarning();
         this._showToast('🔒 Disable padlock to move this event');
         card.classList.remove('lock-pulse-glow');
+        const lockBtn = card.querySelector('.cal-event-lock-btn');
+        if (lockBtn) lockBtn.classList.remove('pulse-glow');
         void card.offsetWidth;
         card.classList.add('lock-pulse-glow');
+        if (lockBtn) lockBtn.classList.add('pulse-glow');
         setTimeout(() => {
           if (card) card.classList.remove('lock-pulse-glow');
+          if (lockBtn) lockBtn.classList.remove('pulse-glow');
         }, 950);
         return;
       }
       isDragging = true;
       this.isDraggingEvent = true;
+
+      const cRect = card.getBoundingClientRect();
+      const curX = lastClientX || startX;
+      const curY = lastClientY || startY;
+      if (!grabOffsetX) grabOffsetX = curX - cRect.left;
+      if (!grabOffsetY) grabOffsetY = curY - cRect.top;
+
+      card.style.position = 'fixed';
+      card.style.left = `${curX - grabOffsetX}px`;
+      card.style.top = `${curY - grabOffsetY}px`;
+      card.style.width = `${cRect.width}px`;
+      card.style.zIndex = '99999';
+      card.style.pointerEvents = 'none';
+      card.style.transition = 'none';
       card.classList.add('is-dragging-cal-event');
+      card.style.transform = 'scale(1.05)';
+      document.body.appendChild(card);
+
       mobileServices.hapticBuzz();
       if (container) {
         container.style.overflowY = 'hidden';
       }
+      if (!silhouette) {
+        silhouette = document.createElement('div');
+        silhouette.className = 'day-drop-preview-silhouette';
+        silhouette.style.display = 'none';
+      }
+      updateDayDragPosition(curX, curY);
       startAutoScrollLoop();
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onWindowTouchCancel, { passive: true });
     };
 
     const finishDrag = () => {
       if (!isDragging) return;
-      if (isDayPanning) {
-        setTimeout(finishDrag, 50);
-        return;
-      }
       isDragging = false;
       this.isDraggingEvent = false;
+
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
+      isDayPanCooldown = false;
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
+
       if (autoScrollRaf) {
         cancelAnimationFrame(autoScrollRaf);
         autoScrollRaf = null;
@@ -2129,13 +2183,24 @@ export class CalendarView {
       card.style.removeProperty('transform');
       card.style.removeProperty('position');
       card.style.removeProperty('left');
+      card.style.removeProperty('top');
       card.style.removeProperty('width');
       card.style.removeProperty('z-index');
       card.style.removeProperty('pointer-events');
+      card.style.removeProperty('transition');
 
-      const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
+      if (card.parentNode) {
+        card.parentNode.removeChild(card);
+      }
+      if (silhouette && silhouette.parentNode) {
+        silhouette.parentNode.removeChild(silhouette);
+        silhouette = null;
+      }
+
       const hourHeight = this.dayHourHeight || 56;
-      const rawMinutes = (startHour * 60) + ((currentTop / hourHeight) * 60);
+      let contRect = container ? container.getBoundingClientRect() : { top: 0 };
+      let cardTopY = (lastClientY - grabOffsetY) - contRect.top + (container ? container.scrollTop : 0) - 14;
+      const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
       const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
 
       const newStartH = Math.floor(newStartMin / 60);
@@ -2197,7 +2262,7 @@ export class CalendarView {
         if (e.cancelable) e.preventDefault();
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
-        handleDragMove(lastClientX, lastClientY);
+        updateDayDragPosition(lastClientX, lastClientY);
       }
     }, { passive: false });
 
@@ -2250,7 +2315,7 @@ export class CalendarView {
           return;
         }
         me.preventDefault();
-        handleDragMove(me.clientX, me.clientY);
+        updateDayDragPosition(me.clientX, me.clientY);
       };
 
       const onMouseUp = () => {
@@ -2341,7 +2406,12 @@ export class CalendarView {
             if (!isDragging) return;
 
             isWeekNavCooldown = true;
-            setTimeout(() => { isWeekNavCooldown = false; }, 650);
+            setTimeout(() => {
+              isWeekNavCooldown = false;
+              if (isDragging) {
+                checkWeekEdgePull(lastClientX);
+              }
+            }, 650);
 
             const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
             const activeContainer = this.elements.weekView;
@@ -2377,12 +2447,16 @@ export class CalendarView {
                 }
                 container = this.elements.weekGridScroll;
                 if (container) container.style.overflowY = 'hidden';
-                updateWeekDragPosition(lastClientX, lastClientY);
+                if (isDragging) {
+                  updateWeekDragPosition(lastClientX, lastClientY);
+                }
               }, 320);
             } else {
               this.navigate(navDir, currentScrollTop);
               container = this.elements.weekGridScroll;
-              updateWeekDragPosition(lastClientX, lastClientY);
+              if (isDragging) {
+                updateWeekDragPosition(lastClientX, lastClientY);
+              }
             }
 
             mobileServices.hapticBuzz();
@@ -2454,6 +2528,7 @@ export class CalendarView {
         silhouette.className = 'week-drop-preview-silhouette';
         silhouette.style.display = 'none';
       }
+      updateWeekDragPosition(curX, curY);
       startAutoScrollLoop();
       window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
       window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
@@ -2461,13 +2536,18 @@ export class CalendarView {
     };
 
     const updateWeekDragPosition = (clientX, clientY) => {
+      if (!isDragging) return;
       card.style.left = `${clientX - grabOffsetX}px`;
       card.style.top = `${clientY - grabOffsetY}px`;
       card.style.transform = 'scale(1.05)';
       checkWeekEdgePull(clientX);
 
+      const cRect = card.getBoundingClientRect();
+      const centerX = (clientX - grabOffsetX) + (cRect.width / 2);
+      const centerY = (clientY - grabOffsetY) + (cRect.height / 2);
+
       card.style.pointerEvents = 'none';
-      const targetEl = document.elementFromPoint(clientX, clientY);
+      const targetEl = document.elementFromPoint(centerX, centerY);
 
       const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
       if (targetCol !== currentOverCol) {
@@ -2557,7 +2637,10 @@ export class CalendarView {
       }
 
       card.style.pointerEvents = 'none';
-      const targetEl = document.elementFromPoint(clientX, clientY);
+      const cRect = card.getBoundingClientRect();
+      const centerX = (clientX - grabOffsetX) + (cRect.width / 2);
+      const centerY = (clientY - grabOffsetY) + (cRect.height / 2);
+      const targetEl = document.elementFromPoint(centerX, centerY);
       card.style.pointerEvents = '';
 
       const targetCol = targetEl ? targetEl.closest('.week-day-col') : currentOverCol;
@@ -2713,6 +2796,9 @@ export class CalendarView {
     let lastClientY = 0;
     let grabOffsetX = 0;
     let grabOffsetY = 0;
+    let pillWidth = 0;
+    let pillHeight = 0;
+    let silhouette = null;
     let currentOverCell = null;
     let monthNavTimer = null;
     let isMonthNavCooldown = false;
@@ -2732,7 +2818,12 @@ export class CalendarView {
             if (!isDragging) return;
 
             isMonthNavCooldown = true;
-            setTimeout(() => { isMonthNavCooldown = false; }, 650);
+            setTimeout(() => {
+              isMonthNavCooldown = false;
+              if (isDragging) {
+                checkMonthEdgePull(lastClientX);
+              }
+            }, 650);
 
             const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
             const activeContainer = this.elements.monthView || (modalBody && modalBody.querySelector('.calendar-view-container'));
@@ -2812,10 +2903,16 @@ export class CalendarView {
       this.isDraggingEvent = true;
 
       const pRect = pill.getBoundingClientRect();
+      pillWidth = pRect.width || 80;
+      pillHeight = pRect.height || 22;
       const curX = lastClientX || startX;
       const curY = lastClientY || startY;
       grabOffsetX = curX - pRect.left;
       grabOffsetY = curY - pRect.top;
+
+      silhouette = document.createElement('div');
+      silhouette.className = 'month-drop-preview-silhouette';
+      silhouette.style.display = 'none';
 
       pill.style.position = 'fixed';
       pill.style.left = `${curX - grabOffsetX}px`;
@@ -2829,6 +2926,7 @@ export class CalendarView {
       pill.style.transform = 'scale(1.12)';
       document.body.appendChild(pill);
       mobileServices.hapticBuzz();
+      updateDragPosition(curX, curY);
 
       window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
       window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
@@ -2836,20 +2934,34 @@ export class CalendarView {
     };
 
     const updateDragPosition = (clientX, clientY) => {
+      if (!isDragging) return;
       pill.style.left = `${clientX - grabOffsetX}px`;
       pill.style.top = `${clientY - grabOffsetY}px`;
       pill.style.transform = 'scale(1.12)';
 
       checkMonthEdgePull(clientX);
 
+      const centerX = (clientX - grabOffsetX) + (pillWidth / 2);
+      const centerY = (clientY - grabOffsetY) + (pillHeight / 2);
+
       pill.style.pointerEvents = 'none';
-      const targetEl = document.elementFromPoint(clientX, clientY);
+      const targetEl = document.elementFromPoint(centerX, centerY);
 
       const targetCell = targetEl ? targetEl.closest('.month-day-cell') : null;
       if (targetCell !== currentOverCell) {
         if (currentOverCell) currentOverCell.classList.remove('drag-target-over');
         currentOverCell = targetCell;
         if (currentOverCell) currentOverCell.classList.add('drag-target-over');
+      }
+
+      if (currentOverCell && silhouette) {
+        const eventsList = currentOverCell.querySelector('.cell-events-list') || currentOverCell;
+        if (silhouette.parentNode !== eventsList) {
+          eventsList.appendChild(silhouette);
+        }
+        silhouette.style.display = 'block';
+      } else if (silhouette) {
+        silhouette.style.display = 'none';
       }
     };
 
@@ -2883,12 +2995,20 @@ export class CalendarView {
         document.body.removeChild(pill);
       }
 
+      if (silhouette && silhouette.parentNode) {
+        silhouette.parentNode.removeChild(silhouette);
+      }
+      silhouette = null;
+
       if (currentOverCell) {
         currentOverCell.classList.remove('drag-target-over');
       }
 
+      const centerX = (clientX - grabOffsetX) + (pillWidth / 2);
+      const centerY = (clientY - grabOffsetY) + (pillHeight / 2);
+
       pill.style.pointerEvents = 'none';
-      const targetEl = document.elementFromPoint(clientX, clientY);
+      const targetEl = document.elementFromPoint(centerX, centerY);
       pill.style.pointerEvents = '';
 
       const targetCell = targetEl ? targetEl.closest('.month-day-cell') : currentOverCell;
