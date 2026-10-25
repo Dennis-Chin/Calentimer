@@ -1845,6 +1845,7 @@ function showToastNotification(msg) {
     }, 220);
   }, 2200);
 }
+window.showToastNotification = showToastNotification;
 
 // ==========================================
 // Break Option Logic
@@ -4391,10 +4392,10 @@ function setupNavigationAndModals() {
   }
 
   bindClockPicker('btnAddModalStartTimeClock', 'addModalStartTimeNative', 'addModalStartTime', () => {
-    if (addModalEndTime && addModalEndTime.value) {
-      updateAddModalDurationFromTimeSpan();
-    } else {
+    if (addModalDurationInput && addModalDurationInput.value) {
       updateAddModalEndTimeFromDuration();
+    } else if (addModalEndTime && addModalEndTime.value) {
+      updateAddModalDurationFromTimeSpan();
     }
   });
 
@@ -4405,18 +4406,18 @@ function setupNavigationAndModals() {
   if (addModalStartTime) {
     addModalStartTime.addEventListener('input', () => {
       if (addModalStartTime.value.length === 5) {
-        if (addModalEndTime && addModalEndTime.value) {
-          updateAddModalDurationFromTimeSpan();
-        } else if (addModalDurationInput && addModalDurationInput.value) {
+        if (addModalDurationInput && addModalDurationInput.value) {
           updateAddModalEndTimeFromDuration();
+        } else if (addModalEndTime && addModalEndTime.value) {
+          updateAddModalDurationFromTimeSpan();
         }
       }
     });
     addModalStartTime.addEventListener('change', () => {
-      if (addModalEndTime && addModalEndTime.value) {
-        updateAddModalDurationFromTimeSpan();
-      } else if (addModalDurationInput && addModalDurationInput.value) {
+      if (addModalDurationInput && addModalDurationInput.value) {
         updateAddModalEndTimeFromDuration();
+      } else if (addModalEndTime && addModalEndTime.value) {
+        updateAddModalDurationFromTimeSpan();
       }
     });
   }
@@ -4464,10 +4465,10 @@ function setupNavigationAndModals() {
   }
 
   bindClockPicker('btnEditTaskStartTimeClock', 'editTaskStartTimeNative', 'editTaskStartTime', () => {
-    if (editTaskEndTime && editTaskEndTime.value) {
-      updateEditModalDurationFromTimeSpan();
-    } else {
+    if (editTaskDurationInput && editTaskDurationInput.value) {
       updateEditModalEndTimeFromDuration();
+    } else if (editTaskEndTime && editTaskEndTime.value) {
+      updateEditModalDurationFromTimeSpan();
     }
   });
 
@@ -4478,18 +4479,18 @@ function setupNavigationAndModals() {
   if (editTaskStartTime) {
     editTaskStartTime.addEventListener('input', () => {
       if (editTaskStartTime.value.length === 5) {
-        if (editTaskEndTime && editTaskEndTime.value) {
-          updateEditModalDurationFromTimeSpan();
-        } else if (editTaskDurationInput && editTaskDurationInput.value) {
+        if (editTaskDurationInput && editTaskDurationInput.value) {
           updateEditModalEndTimeFromDuration();
+        } else if (editTaskEndTime && editTaskEndTime.value) {
+          updateEditModalDurationFromTimeSpan();
         }
       }
     });
     editTaskStartTime.addEventListener('change', () => {
-      if (editTaskEndTime && editTaskEndTime.value) {
-        updateEditModalDurationFromTimeSpan();
-      } else if (editTaskDurationInput && editTaskDurationInput.value) {
+      if (editTaskDurationInput && editTaskDurationInput.value) {
         updateEditModalEndTimeFromDuration();
+      } else if (editTaskEndTime && editTaskEndTime.value) {
+        updateEditModalDurationFromTimeSpan();
       }
     });
   }

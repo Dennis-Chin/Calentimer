@@ -4753,7 +4753,9 @@ body {
   color: #f59e0b !important;
 }
 
-.day-event-card.lock-pulse-glow {
+.day-event-card.lock-pulse-glow,
+.week-event-card.lock-pulse-glow,
+.month-event-pill.lock-pulse-glow {
   animation: eventBorderLockPulse 0.95s ease-in-out !important;
 }
 

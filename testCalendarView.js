@@ -996,6 +996,36 @@ const nextDate = new Date(prevDateStr);
 nextDate.setDate(nextDate.getDate() + 1);
 assert(calendar._formatDateISO(calendar.currentDate) === calendar._formatDateISO(nextDate), 'View transitioned to next day');
 
+console.log('\n--- 13. Testing Dynamic Duration & Start Time Auto-Adjustment & Slide Elements ---');
+// 1. Open Event Inspector with new event
+calendar.openEventInspector(null, '2026-10-25', '10:00', '11:00');
+assert(calendar.elements.eventDurationInput.value === '60', 'Default new event duration is 60');
+
+// User enters duration = 45m
+calendar.elements.eventDurationInput.value = '45';
+calendar.elements.eventDurationInput.dispatchSimulatedEvent('input');
+assert(calendar.elements.eventEndTimeInput.value === '10:45', 'End time adjusts to 10:45 (10:00 + 45m)');
+
+// User selects new start time = 14:00
+calendar.elements.eventStartTimeInput.value = '14:00';
+calendar.elements.eventStartTimeInput.dispatchSimulatedEvent('input');
+assert(calendar.elements.eventEndTimeInput.value === '14:45', 'End time dynamically adjusts to 14:45 (14:00 + 45m duration preserved)');
+
+// User changes start time via clock picker (onStartTimeSelected) to 15:30
+calendar.elements.eventStartTimeInput.value = '15:30';
+calendar.onStartTimeSelected();
+assert(calendar.elements.eventEndTimeInput.value === '16:15', 'End time dynamically adjusts to 16:15 via onStartTimeSelected (15:30 + 45m)');
+
+// 2. Testing _buildAdjacentPreviewSlide has padlock & today time line
+const todayDate = new Date();
+const todaySlide = calendar._buildAdjacentPreviewSlide(todayDate, 1, 0);
+const todayLineInSlide = todaySlide.querySelector('.day-current-time-line');
+assert(todayLineInSlide !== null, 'Dynamic current time line is rendered on slide when swiping to/from today');
+
+const lockBtnInSlide = todaySlide.querySelector('.cal-event-lock-btn');
+assert(lockBtnInSlide !== null, 'Padlock element is rendered on day event card during swipe in preview slide');
+calendar.closeEventInspector();
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

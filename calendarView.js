@@ -253,21 +253,15 @@ export class CalendarView {
       });
     }
 
-    // Auto-update duration calculation when Start or End time changes
+    // Auto-update end time calculation when Start time changes (End Time = Start Time + Duration)
     if (el.eventStartTimeInput) {
       el.eventStartTimeInput.addEventListener('input', () => {
         if (el.eventStartTimeInput.value.length === 5) {
-          if (el.eventEndTimeInput && el.eventEndTimeInput.value.length === 5) {
-            this._updateDurationFromTimeSpan();
-          } else {
-            this.updateEndTimeFromDuration();
-          }
+          this.updateEndTimeFromDuration();
         }
       });
       el.eventStartTimeInput.addEventListener('change', () => {
-        if (el.eventEndTimeInput && el.eventEndTimeInput.value.length === 5) {
-          this._updateDurationFromTimeSpan();
-        } else {
+        if (el.eventStartTimeInput.value.length === 5) {
           this.updateEndTimeFromDuration();
         }
       });
@@ -717,6 +711,12 @@ export class CalendarView {
         body.appendChild(slot);
       }
 
+      // Render Dynamic Light-Blue Current Time Line on slide if target day is today
+      const todayStr = this._formatDateISO(new Date());
+      if (targetStr === todayStr) {
+        this._renderCurrentTimeLine(body);
+      }
+
       for (let j = 0; j < eventsForDay.length; j++) {
         const ev = eventsForDay[j];
         const startMin = this._parseTimeToMinutes(ev.startTime);
@@ -745,13 +745,17 @@ export class CalendarView {
               <span class="event-cat-pill">${this._escapeHtml(ev.category || 'Work')}</span>
             </div>
           </div>
-          ${ev.isLocked ? `
-            <div class="cal-event-lock-btn is-locked" style="pointer-events:none;">
+          <div class="cal-event-lock-btn ${ev.isLocked ? 'is-locked' : ''}" style="pointer-events:none;">
+            ${ev.isLocked ? `
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
               </svg>
-            </div>
-          ` : ''}
+            ` : `
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5-2.28 0-4.27 1.54-4.84 3.75-.14.54.18 1.08.72 1.22.53.14 1.08-.18 1.22-.72C9.46 3.86 10.63 3 12 3c1.66 0 3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+              </svg>
+            `}
+          </div>
         `;
         body.appendChild(card);
       }
@@ -1945,8 +1949,8 @@ export class CalendarView {
   // Dynamic Current Time Line & Auto-Scroll (Left-Side Badge & Exact Clock Sync)
   // ==========================================
 
-  _renderCurrentTimeLine() {
-    const body = this.elements.dayTimelineBody;
+  _renderCurrentTimeLine(targetBody) {
+    const body = targetBody || this.elements.dayTimelineBody;
     if (!body) return;
 
     let line = body.querySelector('.day-current-time-line');
@@ -3716,11 +3720,7 @@ export class CalendarView {
   }
 
   onStartTimeSelected() {
-    if (this.elements.eventEndTimeInput && this.elements.eventEndTimeInput.value.length === 5) {
-      this._updateDurationFromTimeSpan();
-    } else {
-      this.updateEndTimeFromDuration();
-    }
+    this.updateEndTimeFromDuration();
   }
 
   onEndTimeSelected() {
@@ -3928,7 +3928,25 @@ export class CalendarView {
   _showToast(msg) {
     if (typeof window !== 'undefined' && typeof window.showToastNotification === 'function') {
       window.showToastNotification(msg);
+      return;
     }
+    const toast = typeof document !== 'undefined' ? document.getElementById('toastNotification') : null;
+    if (!toast) return;
+    toast.style.removeProperty('background');
+    toast.style.removeProperty('color');
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(10px)';
+      setTimeout(() => {
+        toast.classList.add('hidden');
+        toast.style.removeProperty('background');
+        toast.style.removeProperty('color');
+      }, 220);
+    }, 2200);
   }
 }
 
