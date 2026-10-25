@@ -405,8 +405,10 @@ export class CalendarView {
 
     let touchStartX = 0;
     let touchStartY = 0;
+    let initialScrollTop = 0;
     let swipeStartTime = 0;
     let isSwipingHorizontal = false;
+    let isScrollingVertical = false;
     let activeContainer = null;
     let adjacentSlide = null;
     let currentSlideDirection = 0; // -1 for prev, 1 for next
@@ -428,7 +430,10 @@ export class CalendarView {
         touchStartY = e.touches[0].clientY;
         swipeStartTime = Date.now();
         isSwipingHorizontal = false;
+        isScrollingVertical = false;
         activeContainer = getActiveContainer();
+        const currentScrollEl = activeContainer ? activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll') : null;
+        initialScrollTop = currentScrollEl ? currentScrollEl.scrollTop : 0;
         currentSlideDirection = 0;
         if (adjacentSlide && adjacentSlide.parentNode) {
           adjacentSlide.parentNode.removeChild(adjacentSlide);
@@ -449,7 +454,15 @@ export class CalendarView {
         }
         return;
       }
+      if (isScrollingVertical) return;
       if (!touchStartX || !touchStartY || !activeContainer) return;
+
+      const currentScrollEl = activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll');
+      if (currentScrollEl && Math.abs(currentScrollEl.scrollTop - initialScrollTop) > 1) {
+        isScrollingVertical = true;
+        return;
+      }
+
       if (e.touches && e.touches.length > 1) {
         if (isSwipingHorizontal) {
           isSwipingHorizontal = false;
@@ -468,7 +481,12 @@ export class CalendarView {
       const diffY = currentY - touchStartY;
 
       if (!isSwipingHorizontal) {
-        if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY) * 1.4) {
+        // If gesture moved predominantly vertically first, lock into vertical scrolling until touch ends
+        if (Math.abs(diffY) > 6 && Math.abs(diffY) >= Math.abs(diffX) * 0.85) {
+          isScrollingVertical = true;
+          return;
+        }
+        if (Math.abs(diffX) > 14 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
           isSwipingHorizontal = true;
         }
       }
@@ -493,7 +511,6 @@ export class CalendarView {
             targetDate.setMonth(targetDate.getMonth() + (targetDirection > 0 ? 1 : -1));
           }
 
-          const currentScrollEl = activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll');
           const currentScrollTop = currentScrollEl ? currentScrollEl.scrollTop : 0;
 
           adjacentSlide = this._buildAdjacentPreviewSlide(targetDate, targetDirection, currentScrollTop);
@@ -518,6 +535,7 @@ export class CalendarView {
     }, { passive: true });
 
     const onTouchEnd = (e) => {
+      isScrollingVertical = false;
       if (!isSwipingHorizontal || !activeContainer) {
         touchStartX = 0;
         touchStartY = 0;
@@ -539,17 +557,17 @@ export class CalendarView {
       touchStartX = 0;
       touchStartY = 0;
 
-      if (Math.abs(diffX) > 50 || (Math.abs(diffX) > 20 && velocity > 0.3)) {
+      if (Math.abs(diffX) > 65 || (Math.abs(diffX) > 24 && velocity > 0.35)) {
         const isNext = diffX < 0;
         const exitX = isNext ? -bodyWidth : bodyWidth;
         const currentScrollEl = activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll');
         const savedScrollTop = currentScrollEl ? currentScrollEl.scrollTop : 0;
 
-        activeContainer.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
         activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
 
         if (adjacentSlide) {
-          adjacentSlide.style.transition = 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+          adjacentSlide.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
           adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
         }
 
@@ -564,12 +582,12 @@ export class CalendarView {
             activeContainer.style.removeProperty('transform');
             activeContainer.style.removeProperty('transition');
           }
-        }, 220);
+        }, 320);
       } else {
-        activeContainer.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+        activeContainer.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
         activeContainer.style.transform = 'translate3d(0, 0, 0)';
         if (adjacentSlide) {
-          adjacentSlide.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+          adjacentSlide.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
           const returnX = currentSlideDirection > 0 ? bodyWidth : -bodyWidth;
           adjacentSlide.style.transform = `translate3d(${returnX}px, 0, 0)`;
           setTimeout(() => {
@@ -577,7 +595,7 @@ export class CalendarView {
               adjacentSlide.parentNode.removeChild(adjacentSlide);
               adjacentSlide = null;
             }
-          }, 200);
+          }, 250);
         }
       }
     };
@@ -1859,6 +1877,8 @@ export class CalendarView {
     let initialTop = 0;
     let lastClientX = 0;
     let lastClientY = 0;
+    let grabOffsetX = 0;
+    let grabOffsetY = 0;
     let autoScrollRaf = null;
     const resolution = this.currentResolution || 15;
     const durMin = ev.plannedDuration || 60;
@@ -1975,8 +1995,8 @@ export class CalendarView {
       // Detach card to modalBody with absolute positioning so it stays attached to finger during pan
       const cardRect = card.getBoundingClientRect();
       const modalRect = modalBody.getBoundingClientRect();
-      const floatLeft = cardRect.left - modalRect.left;
-      const floatTop = cardRect.top - modalRect.top;
+      const floatLeft = (lastClientX - grabOffsetX) - modalRect.left;
+      const floatTop = (lastClientY - grabOffsetY) - modalRect.top;
 
       card.style.position = 'absolute';
       card.style.left = `${floatLeft}px`;
@@ -1990,10 +2010,10 @@ export class CalendarView {
       // Force reflow
       void adjacentSlide.offsetWidth;
 
-      // Animate activeContainer and adjacentSlide smoothly over 240ms
+      // Animate activeContainer and adjacentSlide smoothly over 320ms
       const exitX = direction < 0 ? bodyWidth : -bodyWidth;
-      activeContainer.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-      adjacentSlide.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
+      activeContainer.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
+      adjacentSlide.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
       activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
       adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
 
@@ -2021,11 +2041,11 @@ export class CalendarView {
           newBody.appendChild(card);
         }
 
-        // Re-anchor coordinates so dragging continues uninterrupted
+        // Re-anchor coordinates so dragging continues uninterrupted without any jump
         startX = lastClientX;
         startY = lastClientY;
         const contRect = container ? container.getBoundingClientRect() : { top: 0 };
-        initialTop = Math.max(14, (lastClientY - contRect.top) + (container ? container.scrollTop : 0));
+        initialTop = Math.max(14, (lastClientY - grabOffsetY - contRect.top) + (container ? container.scrollTop : 0));
         applySnappedPosition(lastClientY);
         card.style.transform = 'scale(1.05)';
 
@@ -2036,8 +2056,8 @@ export class CalendarView {
         // Allow panning again after short cooldown
         setTimeout(() => {
           isDayPanCooldown = false;
-        }, 320);
-      }, 240);
+        }, 450);
+      }, 320);
     };
 
     const handleDragMove = (clientX, clientY) => {
@@ -2049,8 +2069,8 @@ export class CalendarView {
         const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
         if (modalBody && card.parentNode === modalBody) {
           const modalRect = modalBody.getBoundingClientRect();
-          card.style.left = `${clientX - modalRect.left - (card.offsetWidth / 2)}px`;
-          card.style.top = `${clientY - modalRect.top - 20}px`;
+          card.style.left = `${(clientX - grabOffsetX) - modalRect.left}px`;
+          card.style.top = `${(clientY - grabOffsetY) - modalRect.top}px`;
         }
         return;
       }
@@ -2061,8 +2081,8 @@ export class CalendarView {
       // Task floats freely horizontally with the finger
       card.style.transform = `translate3d(${diffX}px, 0, 0) scale(1.05)`;
 
-      // Trigger smooth pan if resistance threshold exceeded
-      if (Math.abs(diffX) > 75) {
+      // Trigger smooth pan if resistance threshold exceeded (105px resistance)
+      if (Math.abs(diffX) > 105) {
         const panDir = diffX < 0 ? -1 : 1;
         panToAdjacentDay(panDir);
       }
@@ -2148,6 +2168,9 @@ export class CalendarView {
         startY = e.touches[0].clientY;
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
+        const cRect = card.getBoundingClientRect();
+        grabOffsetX = e.touches[0].clientX - cRect.left;
+        grabOffsetY = e.touches[0].clientY - cRect.top;
         initialTop = parseInt(card.style.top, 10) || 14;
         isDragging = false;
 
@@ -2207,6 +2230,9 @@ export class CalendarView {
       startY = e.clientY;
       lastClientX = e.clientX;
       lastClientY = e.clientY;
+      const cRect = card.getBoundingClientRect();
+      grabOffsetX = e.clientX - cRect.left;
+      grabOffsetY = e.clientY - cRect.top;
       initialTop = parseInt(card.style.top, 10) || 14;
       isDragging = false;
 
@@ -2252,6 +2278,7 @@ export class CalendarView {
     let startY = 0;
     let lastClientX = 0;
     let lastClientY = 0;
+    let grabOffsetX = 0;
     let grabOffsetY = 0;
     let silhouette = null;
     let autoScrollRaf = null;
@@ -2316,8 +2343,6 @@ export class CalendarView {
             isWeekNavCooldown = true;
             setTimeout(() => { isWeekNavCooldown = false; }, 650);
 
-            // Temporarily move card to modal body so render doesn't delete it
-            const cardRect = card.getBoundingClientRect();
             const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
             const activeContainer = this.elements.weekView;
             const bodyWidth = modalBody ? (modalBody.clientWidth || 360) : 360;
@@ -2325,18 +2350,6 @@ export class CalendarView {
             const targetDate = new Date(this.currentDate);
             targetDate.setDate(targetDate.getDate() + (navDir * 7));
             const adjacentSlide = this._buildAdjacentPreviewSlide(targetDate, navDir, currentScrollTop);
-
-            card.style.position = 'fixed';
-            card.style.left = `${cardRect.left}px`;
-            card.style.top = `${cardRect.top}px`;
-            card.style.width = `${cardRect.width}px`;
-            card.style.zIndex = '99999';
-            card.style.transform = 'scale(1.08)';
-            card.style.pointerEvents = 'none';
-            document.body.appendChild(card);
-
-            startX = clientX;
-            startY = lastClientY;
 
             if (modalBody && adjacentSlide && activeContainer) {
               const startXAdj = navDir > 0 ? bodyWidth : -bodyWidth;
@@ -2348,8 +2361,8 @@ export class CalendarView {
 
               void adjacentSlide.offsetWidth;
 
-              activeContainer.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-              adjacentSlide.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
+              activeContainer.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
+              adjacentSlide.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
               activeContainer.style.transform = `translate3d(${-startXAdj}px, 0, 0)`;
               adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
 
@@ -2364,17 +2377,17 @@ export class CalendarView {
                 }
                 container = this.elements.weekGridScroll;
                 if (container) container.style.overflowY = 'hidden';
-                if (container) container.appendChild(card);
-              }, 240);
+                updateWeekDragPosition(lastClientX, lastClientY);
+              }, 320);
             } else {
               this.navigate(navDir, currentScrollTop);
               container = this.elements.weekGridScroll;
-              if (container) container.appendChild(card);
+              updateWeekDragPosition(lastClientX, lastClientY);
             }
 
             mobileServices.hapticBuzz();
             this._showToast(navDir > 0 ? '📅 Next week' : '📅 Previous week');
-          }, 350);
+          }, 480);
         }
       } else {
         if (weekNavTimer) {
@@ -2414,12 +2427,24 @@ export class CalendarView {
       }
       isDragging = true;
       this.isDraggingEvent = true;
-      if (card.parentElement) {
-        card.parentElement.style.zIndex = '99999';
-      }
+
+      const cRect = card.getBoundingClientRect();
+      const curX = lastClientX || startX;
+      const curY = lastClientY || startY;
+      if (!grabOffsetX) grabOffsetX = curX - cRect.left;
+      if (!grabOffsetY) grabOffsetY = curY - cRect.top;
+
+      card.style.position = 'fixed';
+      card.style.left = `${curX - grabOffsetX}px`;
+      card.style.top = `${curY - grabOffsetY}px`;
+      card.style.width = `${cRect.width}px`;
       card.style.zIndex = '99999';
+      card.style.pointerEvents = 'none';
       card.style.transition = 'none';
       card.classList.add('is-dragging-cal-event');
+      card.style.transform = 'scale(1.05)';
+      document.body.appendChild(card);
+
       mobileServices.hapticBuzz();
       if (container) {
         container.style.overflowY = 'hidden';
@@ -2436,12 +2461,13 @@ export class CalendarView {
     };
 
     const updateWeekDragPosition = (clientX, clientY) => {
-      card.style.transform = `translate3d(${clientX - startX}px, ${clientY - startY}px, 0) scale(1.08)`;
+      card.style.left = `${clientX - grabOffsetX}px`;
+      card.style.top = `${clientY - grabOffsetY}px`;
+      card.style.transform = 'scale(1.05)';
       checkWeekEdgePull(clientX);
 
       card.style.pointerEvents = 'none';
       const targetEl = document.elementFromPoint(clientX, clientY);
-      card.style.pointerEvents = '';
 
       const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
       if (targetCol !== currentOverCol) {
@@ -2471,8 +2497,8 @@ export class CalendarView {
         }
         const snappedTopPx = 14 + (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
         const durHeight = Math.max(20, (dur / 60) * hourHeight);
-        silhouette.style.top = `${snappedTopPx}px`;
-        silhouette.style.height = `${durHeight}px`;
+        silhouette.style.top = `${snappedTopPx - 1}px`;
+        silhouette.style.height = `${durHeight + 2}px`;
         silhouette.style.display = 'block';
 
         let timeEl = card.querySelector('.week-event-time');
@@ -2522,8 +2548,8 @@ export class CalendarView {
       card.style.removeProperty('pointer-events');
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
-      if (card.parentNode === container) {
-        container.removeChild(card);
+      if (card.parentNode) {
+        card.parentNode.removeChild(card);
       }
 
       if (currentOverCol) {
@@ -2577,6 +2603,7 @@ export class CalendarView {
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
         const cRect = card.getBoundingClientRect();
+        grabOffsetX = e.touches[0].clientX - cRect.left;
         grabOffsetY = e.touches[0].clientY - cRect.top;
         isDragging = false;
 
@@ -2636,6 +2663,7 @@ export class CalendarView {
       lastClientX = e.clientX;
       lastClientY = e.clientY;
       const cRect = card.getBoundingClientRect();
+      grabOffsetX = e.clientX - cRect.left;
       grabOffsetY = e.clientY - cRect.top;
       isDragging = false;
 
@@ -2721,8 +2749,8 @@ export class CalendarView {
 
               void adjacentSlide.offsetWidth;
 
-              activeContainer.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
-              adjacentSlide.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
+              activeContainer.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
+              adjacentSlide.style.transition = 'transform 0.32s cubic-bezier(0.16, 1, 0.3, 1)';
               activeContainer.style.transform = `translate3d(${-startXAdj}px, 0, 0)`;
               adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
 
@@ -2735,14 +2763,14 @@ export class CalendarView {
                   activeContainer.style.removeProperty('transform');
                   activeContainer.style.removeProperty('transition');
                 }
-              }, 240);
+              }, 320);
             } else {
               this.navigate(navDir);
             }
 
             mobileServices.hapticBuzz();
             this._showToast(navDir > 0 ? '📅 Next month' : '📅 Previous month');
-          }, 350);
+          }, 480);
         }
       } else {
         if (monthNavTimer) {

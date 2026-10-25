@@ -759,15 +759,10 @@ function setupRotaryWheel() {
 
     scrubStartAngleRad = getAngleFromEvent(e);
 
-    if (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED) {
-      activeTotalSec = runtime.taskDurationMs > 0
-        ? Math.round(runtime.taskDurationMs / 1000)
-        : (((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60);
-      baseRemainingSecAtScrubStart = runtime.getRemainingSeconds();
-    } else {
-      activeTotalSec = ((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60;
-      baseRemainingSecAtScrubStart = activeTotalSec;
-    }
+    activeTotalSec = runtime.taskDurationMs > 0
+      ? Math.round(runtime.taskDurationMs / 1000)
+      : (((activeTask ? activeTask.allocatedDuration : 0) || (activeTask ? activeTask.plannedDuration : 0) || 30) * 60);
+    baseRemainingSecAtScrubStart = runtime.getRemainingSeconds();
 
     // The starting angular position of the bead corresponds to current elapsed progress
     const currentProgress = activeTotalSec > 0
@@ -4635,11 +4630,15 @@ function setupNavigationAndModals() {
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
         const dist = Math.hypot(touch.clientX - cx, touch.clientY - cy);
-        // Dial outer tick radius is ~151px in 320x320 SVG (ratio ~0.95).
-        // Leaving a generous circular boundary of 1.02 * (width/2) guarantees thumb rotation on the bezel never opens the menu,
-        // while touching into the corner spandrels (where distance is 1.05 to 1.41 * radius) allows swiping open the menu!
-        const dialSafeRadius = (rect.width / 2) * 1.02;
-        if (dist <= dialSafeRadius) {
+        const wheelRadius = rect.width / 2;
+        // Outer dial tick radius is ~1.02 * wheelRadius (bezel).
+        // The green track is at ~0.81 * wheelRadius.
+        // We define the protected dial rotation zone between innerGreenBorderRadius (~0.68 * wheelRadius) and dialSafeRadius (1.02 * wheelRadius).
+        // Touching outside in the 4 corner spandrels (dist > dialSafeRadius) OR inside the inner green dial (dist < innerGreenBorderRadius)
+        // allows swiping left-to-right to open the menu drawer, while preventing thumb dragging near the dials from accidentally triggering it!
+        const dialSafeRadius = wheelRadius * 1.02;
+        const innerGreenBorderRadius = wheelRadius * 0.68;
+        if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius) {
           navTouchStartX = null;
           navTouchStartY = null;
           return;

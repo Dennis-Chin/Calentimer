@@ -933,12 +933,12 @@ export class TimerRuntime {
   getRemainingSeconds() {
     if (this.status === TimerStatus.COMPLETED) return 0;
     if (this.status === TimerStatus.IDLE) {
-      if (this.taskDurationMs > 0) {
-        return Math.floor(this.taskDurationMs / 1000);
-      }
       const activeTask = this.getActiveTask();
       const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 30;
-      return allocatedMin * 60;
+      const totalSeconds = this.taskDurationMs > 0
+        ? Math.floor(this.taskDurationMs / 1000)
+        : (allocatedMin * 60);
+      return Math.max(0, totalSeconds - this.getElapsedSeconds());
     }
     const totalSeconds = Math.floor(this.taskDurationMs / 1000);
     return Math.max(0, totalSeconds - this.getElapsedSeconds());

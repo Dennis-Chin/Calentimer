@@ -131,6 +131,22 @@ rt.deleteTask('b');
 assert(rt.currentSchedule.tasks.length === 1, 'Schedule has 1 task after deleting b while running');
 assert(rt.getActiveTask().id === 'a', 'Active task remains Task a');
 
+console.log('\n--- 7. Testing Scrub Elapsed Time in IDLE Mode ---');
+const idleRt = new TimerRuntime({
+  hardStop: '23:00',
+  tasks: [
+    { id: 't1', title: 'Task Scrub', plannedDuration: 20 }
+  ]
+});
+assert(idleRt.status === TimerStatus.IDLE, 'idleRt starts in IDLE');
+assert(idleRt.getRemainingSeconds() === 20 * 60, 'Initial remaining seconds is full duration (1200s)');
+// Simulate scrubbing to 900s remaining while IDLE
+idleRt.seek(900);
+assert(idleRt.getRemainingSeconds() === 15 * 60, 'getRemainingSeconds reflects scrubbed elapsed in IDLE (900s)');
+// Simulate scrubbing further to 600s remaining
+idleRt.seek(600);
+assert(idleRt.getRemainingSeconds() === 10 * 60, 'getRemainingSeconds continues from scrubbed position (600s)');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

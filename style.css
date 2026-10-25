@@ -5063,16 +5063,16 @@ body {
 /* Week View Drop Preview Silhouette: Blue / Cyan Outline Stuck to Grid */
 .week-drop-preview-silhouette {
   position: absolute;
-  left: 2px;
-  right: 2px;
+  left: 0px;
+  right: 0px;
   border-radius: var(--radius-sm);
-  border: 2px dashed var(--accent-cyan);
-  background: rgba(0, 240, 255, 0.16);
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+  border: 2.5px dashed var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.22);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.55), inset 0 0 10px rgba(0, 240, 255, 0.25);
   pointer-events: none;
-  z-index: 6;
+  z-index: 10;
   box-sizing: border-box;
-  transition: top 0.06s ease, height 0.06s ease;
+  transition: none !important;
 }
 
 .month-event-pill .event-title {

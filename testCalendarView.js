@@ -327,13 +327,13 @@ assert(touchmoveError === null, 'Vertical touchmove executes without error');
 let panError = null;
 try {
   dayCard.dispatchSimulatedEvent('touchmove', {
-    touches: [{ clientX: 20, clientY: 240 }], // diffX = 20 - 120 = -100px (< -75)
+    touches: [{ clientX: 5, clientY: 240 }], // diffX = 5 - 120 = -115px (> 105px resistance)
     cancelable: true
   });
 } catch (err) {
   panError = err;
 }
-assert(panError === null, 'Horizontal resistance pan (diffX < -75) initiates smoothly without error');
+assert(panError === null, 'Horizontal resistance pan (diffX < -105) initiates smoothly without error');
 
 // Finish drag
 let finishDragError = null;
@@ -412,6 +412,21 @@ try {
 assert(weekTouchError === null, 'Week card touchstart and touchend execute without error');
 
 console.log('\n--- 7. Testing Month View Touch, Drag & Floating Pill ---');
+const tomorrowDate = new Date();
+tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+const tomorrowStr = calendar._formatDateISO(tomorrowDate);
+
+taskStore.addCalendarEvent({
+  id: 'cal_test_event_month_unlocked',
+  title: 'Month Task',
+  date: tomorrowStr,
+  startTime: '08:00',
+  endTime: '09:00',
+  plannedDuration: 60,
+  category: 'Work',
+  isLocked: false
+});
+
 calendar.switchView('month');
 calendar.render();
 
@@ -423,11 +438,14 @@ let monthPill = null;
 for (let i = 0; i < monthCells.length; i++) {
   const list = monthCells[i].children.find(c => c.classList && c.classList.contains('cell-events-list'));
   if (list && list.children.length > 0) {
-    monthPill = list.children[0];
-    break;
+    const unlockedPill = list.children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_month_unlocked');
+    if (unlockedPill) {
+      monthPill = unlockedPill;
+      break;
+    }
   }
 }
-assert(monthPill !== null, 'Month event pill rendered in month view');
+assert(monthPill !== null, 'Unlocked month event pill rendered in month view');
 
 // Test quick tap
 monthPill.dispatchSimulatedEvent('touchstart', {
@@ -505,6 +523,44 @@ await new Promise(resolve => setTimeout(resolve, 220));
 assert(lockedWeekCard.classList.contains('lock-pulse-glow'), 'Attempting to drag locked week card triggers lock-pulse-glow animation');
 assert(calendar.isDraggingEvent !== true, 'Locked card does not enter drag mode');
 lockedWeekCard.dispatchSimulatedEvent('touchend', { cancelable: true });
+
+console.log('\n--- 10. Testing Week View Unlocked Card Drag & Lift to Body ---');
+taskStore.addCalendarEvent({
+  id: 'cal_test_event_unlocked_week',
+  title: 'Architecture Review',
+  date: todayStr,
+  startTime: '16:00',
+  endTime: '17:00',
+  plannedDuration: 60,
+  category: 'Work',
+  isLocked: false
+});
+
+calendar.switchView('week');
+calendar.render();
+
+const weekColsUnlocked = calendar.elements.weekGridBody.children.filter(c => c.classList && c.classList.contains('week-day-col'));
+let unlockedWeekCard = null;
+for (let i = 0; i < weekColsUnlocked.length; i++) {
+  const card = weekColsUnlocked[i].children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_unlocked_week');
+  if (card) {
+    unlockedWeekCard = card;
+    break;
+  }
+}
+assert(unlockedWeekCard !== null, 'Unlocked week card found in week column');
+
+unlockedWeekCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 160, clientY: 220 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === true, 'Week card enters drag mode after 200ms hold');
+assert(unlockedWeekCard.style.position === 'fixed', 'Week card has position: fixed so it floats smoothly across columns');
+assert(unlockedWeekCard.style.zIndex === '99999', 'Week card has z-index: 99999');
+assert(mockDocBody.children.includes(unlockedWeekCard), 'Week card reparented to document.body to prevent column clipping');
+
+unlockedWeekCard.dispatchSimulatedEvent('touchend', { cancelable: true });
+assert(calendar.isDraggingEvent === false, 'Week drag finishes cleanly on touchend');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
