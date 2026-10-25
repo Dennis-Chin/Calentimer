@@ -431,25 +431,20 @@ taskDrawer.dispatchSimulatedEvent('touchend', {
 });
 assert(!taskDrawer.classList.contains('collapsed'), 'Drawer remains OPEN if user pulls back up before release');
 
-console.log('\n--- 6. Testing Mobile Hardware Back Button Navigation & Exit Confirmation ---');
+console.log('\n--- 6. Testing Mobile Hardware Back Button Navigation & Dismissal ---');
 // Ensure tab/drawer is open
 if (taskDrawer.classList.contains('collapsed')) {
   drawerHeader.dispatchSimulatedEvent('click');
 }
 assert(!taskDrawer.classList.contains('collapsed'), 'Tab/drawer is open before back press');
 
-// 1. First Back Press: Dismisses open tab/drawer and returns to home screen
+// 1. Back Press while Tab is open: Dismisses open tab/drawer and returns to home screen
 window.dispatchSimulatedEvent('popstate', {});
-assert(taskDrawer.classList.contains('collapsed'), '1st back press dismisses open tab/drawer and returns to home screen');
-assert(confirmExitAppModalBackdrop.classList.contains('hidden'), 'Exit modal is NOT shown on 1st back press while tab was open');
+assert(taskDrawer.classList.contains('collapsed'), '1st back press cleanly dismisses open tab/drawer and returns to home screen');
 
-// 2. Second Immediate Back Press (without touching anything on screen): prompts for confirmation
+// 2. Back Press when already on Timer screen: Naturally allows native navigation without trapping
 window.dispatchSimulatedEvent('popstate', {});
-assert(!confirmExitAppModalBackdrop.classList.contains('hidden'), '2nd immediate back press opens Exit App confirmation dialog');
-
-// 3. User taps Cancel -> dismisses confirmation modal
-btnCancelExitApp.dispatchSimulatedEvent('click', {});
-assert(confirmExitAppModalBackdrop.classList.contains('hidden'), 'Tapping Cancel dismisses the Exit App confirmation dialog');
+assert(taskDrawer.classList.contains('collapsed'), 'Timer screen remains steady and ready for native browser back navigation');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
