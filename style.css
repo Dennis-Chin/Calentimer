@@ -5171,39 +5171,51 @@ body {
 /* Event Inspector & Edit Modal: Compact layout to fit on screen without scrolling */
 .calendar-event-modal {
   max-width: 460px;
-  max-height: 92vh;
+  max-height: 94vh;
+  max-height: 94dvh;
   overflow: hidden;
 }
 
 .calendar-event-modal .modal-body {
-  max-height: calc(92vh - 56px);
+  max-height: calc(94vh - 54px);
+  max-height: calc(94dvh - 54px);
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 10px 16px 14px;
-  gap: 5px;
+  padding: 8px 16px 12px;
+  gap: 3px;
 }
 
 .calendar-event-modal .modal-body::-webkit-scrollbar {
   display: none;
 }
 
-.calendar-event-modal .edit-task-form-group {
+.calendar-event-modal .task-type-segment-control {
   margin-bottom: 4px;
+  padding: 2px;
+}
+
+.calendar-event-modal .type-segment-btn {
+  padding: 6px 10px;
+  font-size: 0.84rem;
+}
+
+.calendar-event-modal .edit-task-form-group {
+  margin-bottom: 3px;
 }
 
 .calendar-event-modal .edit-task-label {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   margin-bottom: 2px;
 }
 
 .calendar-event-modal .edit-task-input {
-  padding: 6px 10px;
-  font-size: 0.85rem;
+  padding: 5px 10px;
+  font-size: 0.84rem;
 }
 
 .calendar-event-modal .quick-duration-chips {
-  margin-top: 2px;
-  margin-bottom: 4px;
+  margin-top: 1px;
+  margin-bottom: 3px;
   gap: 4px;
 }
 
@@ -5213,12 +5225,12 @@ body {
 }
 
 .calendar-event-modal .category-chips-list {
-  margin-top: 3px;
+  margin-top: 2px;
   gap: 4px;
 }
 
 .calendar-event-modal .setting-row {
-  padding: 6px 0;
+  padding: 4px 0;
   margin-top: 2px;
 }
 

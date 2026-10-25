@@ -152,6 +152,42 @@ calRequiredDeclarations.forEach(function(token) {
   assert(isFound, `calendarView.js contains required coordinate/state handler '${token}'`);
 });
 
+console.log('\n--- 4. Testing Settings Hierarchy, Sub-Panels & Default Dark Theme ---');
+const htmlContent = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+
+// 1. Default theme mode
+assert(htmlContent.includes('<html lang="en" data-theme="dark">'), 'index.html has data-theme="dark" by default');
+
+const taskStoreContent = fs.readFileSync(path.resolve(process.cwd(), 'taskStore.js'), 'utf8');
+assert(taskStoreContent.includes("safeGetItem('calentimer_theme') || 'dark'"), 'taskStore.getTheme() defaults to "dark"');
+
+// 2. Settings hierarchy order
+const posTheme = htmlContent.indexOf('id="themeSegmented"');
+const posHaptics = htmlContent.indexOf('id="toggleHapticsEnabled"');
+const posTimerRow = htmlContent.indexOf('id="settingRowTimer"');
+const posCalRow = htmlContent.indexOf('id="settingRowCalendar"');
+
+assert(posTheme > 0 && posHaptics > posTheme, 'Settings: Theme mode sits at the very top (1st)');
+assert(posHaptics > 0 && posTimerRow > posHaptics, 'Settings: Haptic feedback toggle is 2nd');
+assert(posTimerRow > 0 && posCalRow > posTimerRow, 'Settings: Timer settings sits 3rd above Calendar settings (4th)');
+
+// 3. Timer Settings sub-panel content
+const posTimerSubPanel = htmlContent.indexOf('id="timerSettingsSubPanel"');
+const posAlertsToggle = htmlContent.indexOf('id="toggleAlertsEnabled"');
+const posAlertVolume = htmlContent.indexOf('id="alertVolumeSlider"');
+const posConfirmAdjust = htmlContent.indexOf('id="toggleConfirmAdjust"');
+
+assert(posTimerSubPanel > 0, '#timerSettingsSubPanel exists in index.html');
+assert(posAlertsToggle > posTimerSubPanel, 'Alerts & Notifications toggle is inside #timerSettingsSubPanel');
+assert(posAlertVolume > posTimerSubPanel, 'Alert Volume slider is inside #timerSettingsSubPanel');
+assert(posConfirmAdjust > posTimerSubPanel, 'Confirm Dial Adjustments toggle is inside #timerSettingsSubPanel');
+
+// 4. Calendar Add Event Work / Break segmented toggle
+assert(htmlContent.includes('id="calEventTypeSegment"'), 'index.html contains #calEventTypeSegment in #calendarEventModal');
+assert(htmlContent.includes('id="calTypeSegmentWork"'), 'index.html contains #calTypeSegmentWork');
+assert(htmlContent.includes('id="calTypeSegmentBreak"'), 'index.html contains #calTypeSegmentBreak');
+assert(calContent.includes('setCalEventType('), 'calendarView.js implements setCalEventType() handler');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

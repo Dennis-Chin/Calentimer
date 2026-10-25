@@ -775,6 +775,57 @@ await new Promise(resolve => setTimeout(resolve, 220));
 assert(calendar.isDraggingEvent === false, 'Month pill does not enter drag mode during multi-touch');
 assert(monthPinchPill.style.position !== 'fixed', 'Month pill is not lifted to fixed during multi-touch');
 
+console.log('\n--- 11. Testing Work / Break Segmented Toggle in Calendar Event Modal ---');
+// Scenario A: Opening new event defaults to Work
+calendar.openEventInspector(null);
+assert(calendar.currentEventType === 'work', 'Default new calendar event is work');
+assert(calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work segment button has active class');
+assert(!calendar.elements.calTypeSegmentBreak.classList.contains('active'), 'Break segment button does not have active class');
+assert(calendar.elements.eventDurationInput.value === '60', 'Default work duration is 60m');
+assert(calendar.elements.calEventTitleLabel.textContent === 'Event Name', 'Title label says Event Name');
+assert(calendar.elements.btnSaveCalEvent.textContent === 'Save Event', 'Save button says Save Event');
+assert(calendar.elements.eventTimeBankToggle.checked === true, 'Time bank toggle is checked for work by default');
+
+// Scenario B: Switching to Break
+calendar.elements.calTypeSegmentBreak.dispatchSimulatedEvent('click');
+assert(calendar.currentEventType === 'break', 'Current event type switched to break');
+assert(calendar.elements.calTypeSegmentBreak.classList.contains('active'), 'Break segment button has active class');
+assert(!calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work segment button does not have active class');
+assert(calendar.elements.eventDurationInput.value === '10', 'Break duration defaults to 10m');
+assert(calendar.currentEmoji === '☕', 'Break emoji is ☕');
+assert(calendar.elements.calEventTitleLabel.textContent === 'Break Name', 'Title label switches to Break Name');
+assert(calendar.elements.btnSaveCalEvent.classList.contains('is-break-btn'), 'Save button has is-break-btn class');
+assert(calendar.elements.btnSaveCalEvent.textContent.includes('Break'), 'Save button text references Break');
+assert(calendar.elements.eventTimeBankToggle.checked === false, 'Time bank toggle is disabled for break by default');
+
+// Scenario C: Switching back to Work
+calendar.elements.calTypeSegmentWork.dispatchSimulatedEvent('click');
+assert(calendar.currentEventType === 'work', 'Current event type switched back to work');
+assert(calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work segment button has active class');
+assert(calendar.elements.eventDurationInput.value === '60', 'Work duration restored to 60m');
+assert(calendar.currentEmoji === '💼', 'Work emoji is 💼');
+assert(!calendar.elements.btnSaveCalEvent.classList.contains('is-break-btn'), 'Save button removes is-break-btn class');
+assert(calendar.elements.eventTimeBankToggle.checked === true, 'Time bank toggle re-enabled for work');
+
+// Scenario D: Opening existing break event loads as break
+const existingBreakEvent = {
+  id: 'evt-break-99',
+  title: 'Afternoon Tea',
+  category: 'Break',
+  plannedDuration: 15,
+  emoji: '☕',
+  startTime: '15:00',
+  endTime: '15:15',
+  date: '2026-10-25'
+};
+calendar.openEventInspector(existingBreakEvent);
+assert(calendar.currentEventType === 'break', 'Existing break event recognized as break');
+assert(calendar.elements.calTypeSegmentBreak.classList.contains('active'), 'Break segment button active for existing break');
+assert(calendar.elements.eventDurationInput.value === '15', 'Existing break duration preserved (15m)');
+assert(calendar.elements.calEventTitleLabel.textContent === 'Break Name', 'Title label set to Break Name');
+assert(calendar.elements.btnSaveCalEvent.textContent === 'Save Break', 'Save button says Save Break');
+calendar.closeEventInspector();
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

@@ -321,40 +321,20 @@
 
       <div class="modal-body">
         <div class="settings-group">
+          <!-- 1. Theme Mode (At top) -->
           <div class="setting-row">
             <div class="setting-info">
               <span class="setting-label">Theme Mode</span>
-              <span class="setting-desc">Choose appearance: Default (system), Light, or Dark</span>
+              <span class="setting-desc">Choose appearance: Dark (default), Light, or System</span>
             </div>
             <div class="theme-segmented-control" id="themeSegmented">
-              <button type="button" class="theme-segment-btn" data-theme-val="system">Default</button>
-              <button type="button" class="theme-segment-btn" data-theme-val="light">Light</button>
               <button type="button" class="theme-segment-btn" data-theme-val="dark">Dark</button>
+              <button type="button" class="theme-segment-btn" data-theme-val="light">Light</button>
+              <button type="button" class="theme-segment-btn" data-theme-val="system">Default</button>
             </div>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <span class="setting-label">Enable Hard Stop</span>
-              <span class="setting-desc">Automatically compresses tasks to finish by deadline. Turn off to run tasks for full planned durations.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="toggleHardStopEnabled" checked>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-info">
-              <span class="setting-label">Alerts & Notifications</span>
-              <span class="setting-desc">Status bar countdown and audio bells for task milestones and transitions.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="toggleAlertsEnabled" checked>
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
+          <!-- 2. Haptic Feedback -->
           <div class="setting-row">
             <div class="setting-info">
               <span class="setting-label">Haptic Feedback</span>
@@ -366,28 +346,18 @@
             </label>
           </div>
 
-          <div class="setting-row">
+          <!-- 3. Timer Settings (Sits above calendar settings) -->
+          <div class="setting-row setting-row-clickable" id="settingRowTimer" title="Configure timer alerts, volume, and dial settings">
             <div class="setting-info">
-              <span class="setting-label">Alert Volume</span>
-              <span class="setting-desc">Master volume for chime sounds and milestone alerts.</span>
+              <span class="setting-label">⏱️ Timer Settings</span>
+              <span class="setting-desc">Alerts, volume, hard stop, and dial confirmation.</span>
             </div>
-            <div class="volume-slider-wrapper">
-              <input type="range" id="alertVolumeSlider" min="0" max="100" value="80" class="volume-range-input">
-              <span class="volume-percent-badge" id="alertVolumeLabel">80%</span>
-            </div>
+            <svg class="setting-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <span class="setting-label">Confirm Dial Adjustments</span>
-              <span class="setting-desc">Prompt to apply or cancel when turning the outer dial. (Turn off to apply immediately without asking)</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="toggleConfirmAdjust">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
+          <!-- 4. Calendar Settings -->
           <div class="setting-row setting-row-clickable" id="settingRowCalendar" title="Configure calendar display options">
             <div class="setting-info">
               <span class="setting-label">📅 Calendar Settings</span>
@@ -396,6 +366,67 @@
             <svg class="setting-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timer Settings Sub-Panel -->
+      <div class="settings-sub-panel hidden" id="timerSettingsSubPanel">
+        <div class="modal-header">
+          <button type="button" class="btn-sub-back" id="btnBackTimerSettings" title="Back to Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>Settings</span>
+          </button>
+          <span class="modal-title">Timer Settings</span>
+          <div style="width: 32px;"></div>
+        </div>
+        <div class="modal-body">
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Alerts & Notifications</span>
+                <span class="setting-desc">Status bar countdown and audio bells for task milestones and transitions.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleAlertsEnabled" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Alert Volume</span>
+                <span class="setting-desc">Master volume for chime sounds and milestone alerts.</span>
+              </div>
+              <div class="volume-slider-wrapper">
+                <input type="range" id="alertVolumeSlider" min="0" max="100" value="80" class="volume-range-input">
+                <span class="volume-percent-badge" id="alertVolumeLabel">80%</span>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Confirm Dial Adjustments</span>
+                <span class="setting-desc">Prompt to apply or cancel when turning the outer dial. (Turn off to apply immediately without asking)</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleConfirmAdjust">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Enable Hard Stop</span>
+                <span class="setting-desc">Automatically compresses tasks to finish by deadline. Turn off to run tasks for full planned durations.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleHardStopEnabled" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -674,9 +705,15 @@
       <form class="modal-body" id="formCalEvent">
         <input type="hidden" id="calEventId" value="">
 
+        <!-- Work / Break Segmented Toggle -->
+        <div class="task-type-segment-control" id="calEventTypeSegment">
+          <button type="button" class="type-segment-btn active" id="calTypeSegmentWork" data-type="work">💼 Work</button>
+          <button type="button" class="type-segment-btn" id="calTypeSegmentBreak" data-type="break">☕ Break</button>
+        </div>
+
         <!-- Event Name -->
         <div class="edit-task-form-group">
-          <label class="edit-task-label">Event Name</label>
+          <label class="edit-task-label" id="calEventTitleLabel">Event Name</label>
           <input type="text" id="calEventTitle" class="edit-task-input" required placeholder="e.g. Project Standup" autocomplete="off">
         </div>
 

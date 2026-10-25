@@ -2483,8 +2483,9 @@ function initTheme() {
 }
 
 function applyTheme(theme) {
-  let resolvedTheme = theme;
-  if (theme === 'system') {
+  let activeTheme = theme || 'dark';
+  let resolvedTheme = activeTheme;
+  if (activeTheme === 'system') {
     resolvedTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
       ? 'light'
       : 'dark';
@@ -2500,7 +2501,7 @@ function applyTheme(theme) {
 
   const segmentBtns = document.querySelectorAll('.theme-segment-btn');
   segmentBtns.forEach(btn => {
-    if (btn.getAttribute('data-theme-val') === theme) {
+    if (btn.getAttribute('data-theme-val') === activeTheme) {
       btn.classList.add('active');
     } else {
       btn.classList.remove('active');
@@ -2995,10 +2996,12 @@ function openSettings() {
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
+  const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
   const settingsModalCard = document.getElementById('settingsModal');
   const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
   const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
+  if (timerSettingsSubPanel) timerSettingsSubPanel.classList.add('hidden');
   if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
   if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
   if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
@@ -3013,10 +3016,12 @@ function closeSettings() {
   if (settingsModalBackdrop) {
     settingsModalBackdrop.classList.add('hidden');
   }
+  const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
   const settingsModalCard = document.getElementById('settingsModal');
   const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
   const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
+  if (timerSettingsSubPanel) timerSettingsSubPanel.classList.add('hidden');
   if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
   if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
   if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
@@ -4911,6 +4916,29 @@ function setupNavigationAndModals() {
     });
   }
 
+  // Timer Settings Sub-Panel setup
+  const settingRowTimer = document.getElementById('settingRowTimer');
+  const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
+  const btnBackTimerSettings = document.getElementById('btnBackTimerSettings');
+
+  if (settingRowTimer && timerSettingsSubPanel) {
+    settingRowTimer.addEventListener('click', () => {
+      if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
+      if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
+      timerSettingsSubPanel.classList.remove('hidden');
+      mobileServices.hapticTap();
+    });
+  }
+
+  if (btnBackTimerSettings && timerSettingsSubPanel) {
+    btnBackTimerSettings.addEventListener('click', () => {
+      timerSettingsSubPanel.classList.add('hidden');
+      if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
+      if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
+      mobileServices.hapticTap();
+    });
+  }
+
   // Calendar Settings Sub-Panel setup
   const settingRowCalendar = document.getElementById('settingRowCalendar');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
@@ -5357,6 +5385,27 @@ function setupNavigationAndModals() {
       if (window.history && typeof window.history.pushState === 'function') {
         window.history.pushState({ appState: 'app' }, '');
       }
+
+      // If in Settings sub-panel, back button navigates back to main settings first
+      if (activeModal.id === 'settingsModalBackdrop') {
+        const timerSub = document.getElementById('timerSettingsSubPanel');
+        const calSub = document.getElementById('calendarSettingsSubPanel');
+        if (timerSub && !timerSub.classList.contains('hidden')) {
+          const btnBackTimer = document.getElementById('btnBackTimerSettings');
+          if (btnBackTimer) {
+            btnBackTimer.click();
+            return;
+          }
+        }
+        if (calSub && !calSub.classList.contains('hidden')) {
+          const btnBackCal = document.getElementById('btnBackCalendarSettings');
+          if (btnBackCal) {
+            btnBackCal.click();
+            return;
+          }
+        }
+      }
+
       const closeBtn = activeModal.querySelector('.btn-close-modal, .btn-confirm-cancel, #btnCloseFullCalendar');
       if (closeBtn) {
         closeBtn.click();

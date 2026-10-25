@@ -67,6 +67,10 @@ export class CalendarView {
       btnCloseEventModal: document.getElementById('btnCloseCalEventModal'),
       btnCancelEvent: document.getElementById('btnCancelCalEvent'),
       formEvent: document.getElementById('formCalEvent'),
+      calEventTypeSegment: document.getElementById('calEventTypeSegment'),
+      calTypeSegmentWork: document.getElementById('calTypeSegmentWork'),
+      calTypeSegmentBreak: document.getElementById('calTypeSegmentBreak'),
+      calEventTitleLabel: document.getElementById('calEventTitleLabel'),
       eventIdInput: document.getElementById('calEventId'),
       eventTitleInput: document.getElementById('calEventTitle'),
       eventDateInput: document.getElementById('calEventDate'),
@@ -89,7 +93,8 @@ export class CalendarView {
       eventToggleLock: document.getElementById('calEventToggleLock'),
       lockIcon: document.getElementById('calEventLockIcon'),
       btnSendToToday: document.getElementById('btnSendCalEventToToday'),
-      btnDeleteEvent: document.getElementById('btnDeleteCalEvent')
+      btnDeleteEvent: document.getElementById('btnDeleteCalEvent'),
+      btnSaveCalEvent: document.getElementById('btnSaveCalEvent')
     };
 
     this._bindEvents();
@@ -188,6 +193,19 @@ export class CalendarView {
     }
 
     // Event Inspector Handlers
+    if (el.calTypeSegmentWork) {
+      el.calTypeSegmentWork.addEventListener('click', () => {
+        this.setCalEventType('work');
+        mobileServices.hapticTap();
+      });
+    }
+    if (el.calTypeSegmentBreak) {
+      el.calTypeSegmentBreak.addEventListener('click', () => {
+        this.setCalEventType('break');
+        mobileServices.hapticTap();
+      });
+    }
+
     if (el.btnCloseEventModal) {
       el.btnCloseEventModal.addEventListener('click', () => this.closeEventInspector());
     }
@@ -3351,36 +3369,134 @@ export class CalendarView {
   // Event Inspector & Edit Modal
   // ==========================================
 
+  setCalEventType(type) {
+    this.currentEventType = type || 'work';
+    const el = this.elements;
+    const isBreak = this.currentEventType === 'break';
+    if (el.calTypeSegmentWork) el.calTypeSegmentWork.classList.toggle('active', !isBreak);
+    if (el.calTypeSegmentBreak) el.calTypeSegmentBreak.classList.toggle('active', isBreak);
+
+    const titleModal = document.getElementById('calEventModalTitle');
+    const isNew = !this.selectedEvent;
+
+    if (isBreak) {
+      if (titleModal && isNew) titleModal.textContent = 'Add Break';
+      this.setEventEmoji('☕');
+      if (el.eventTitleInput) {
+        if (!el.eventTitleInput.value || el.eventTitleInput.value === 'Untitled Task') {
+          el.eventTitleInput.value = 'Break';
+        }
+        el.eventTitleInput.placeholder = 'e.g. Coffee break, walk, stretch';
+      }
+      if (el.calEventTitleLabel) {
+        el.calEventTitleLabel.textContent = 'Break Name';
+      }
+      if (el.eventDurationInput) el.eventDurationInput.value = '10';
+      this.currentCategory = 'Break';
+      if (el.eventCategoryInput) el.eventCategoryInput.value = 'Break';
+      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = false;
+      if (el.piggyIcon) el.piggyIcon.classList.remove('active');
+      if (el.btnSaveCalEvent) {
+        el.btnSaveCalEvent.classList.add('is-break-btn');
+        el.btnSaveCalEvent.textContent = isNew ? '+ Add Break' : 'Save Break';
+      }
+      this.updateEndTimeFromDuration();
+    } else {
+      if (titleModal && isNew) titleModal.textContent = 'Add Event';
+      this.setEventEmoji('💼');
+      if (el.eventTitleInput) {
+        if (el.eventTitleInput.value === 'Break') {
+          el.eventTitleInput.value = '';
+        }
+        el.eventTitleInput.placeholder = 'e.g. Project Standup';
+      }
+      if (el.calEventTitleLabel) {
+        el.calEventTitleLabel.textContent = 'Event Name';
+      }
+      if (el.eventDurationInput) el.eventDurationInput.value = '60';
+      this.currentCategory = 'Work';
+      if (el.eventCategoryInput) el.eventCategoryInput.value = 'Work';
+      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = true;
+      if (el.piggyIcon) el.piggyIcon.classList.add('active');
+      if (el.btnSaveCalEvent) {
+        el.btnSaveCalEvent.classList.remove('is-break-btn');
+        el.btnSaveCalEvent.textContent = isNew ? 'Save Event' : 'Save Event';
+      }
+      this.updateEndTimeFromDuration();
+    }
+    this._highlightActiveDurationChip();
+    if (this.refreshCategoryChips) this.refreshCategoryChips();
+  }
+
   openEventInspector(eventObj, defaultDateStr, defaultStartTime, defaultEndTime) {
     this.selectedEvent = eventObj || null;
     const el = this.elements;
 
     const isNew = !eventObj;
+    const isBreakEvent = eventObj ? (eventObj.category === 'Break' || (eventObj.title && eventObj.title.toLowerCase() === 'break')) : false;
+
     const titleModal = document.getElementById('calEventModalTitle');
     if (titleModal) {
-      titleModal.textContent = isNew ? 'Add Event' : 'Event Details';
+      titleModal.textContent = isNew ? 'Add Event' : (isBreakEvent ? 'Break Details' : 'Event Details');
     }
 
-    if (el.eventIdInput) el.eventIdInput.value = eventObj ? eventObj.id : '';
-    if (el.eventTitleInput) el.eventTitleInput.value = eventObj ? eventObj.title : '';
-    if (el.eventDateInput) {
-      el.eventDateInput.value = eventObj ? eventObj.date : (defaultDateStr || this._formatDateISO(new Date()));
-    }
-    if (el.eventStartTimeInput) {
-      el.eventStartTimeInput.value = eventObj ? eventObj.startTime : (defaultStartTime || '10:00');
-    }
-    if (el.eventEndTimeInput) {
-      el.eventEndTimeInput.value = eventObj ? eventObj.endTime : (defaultEndTime || '11:00');
-    }
+    if (isNew) {
+      this.setCalEventType('work');
+      if (el.eventIdInput) el.eventIdInput.value = '';
+      if (el.eventTitleInput) el.eventTitleInput.value = '';
+      if (el.eventDateInput) {
+        el.eventDateInput.value = defaultDateStr || this._formatDateISO(new Date());
+      }
+      if (el.eventStartTimeInput) {
+        el.eventStartTimeInput.value = defaultStartTime || '10:00';
+      }
+      if (el.eventEndTimeInput) {
+        el.eventEndTimeInput.value = defaultEndTime || '11:00';
+      }
+      if (el.eventDurationInput) el.eventDurationInput.value = '60';
+      this.updateEndTimeFromDuration();
+      if (el.eventToggleLock) el.eventToggleLock.checked = false;
+      if (el.lockIcon) el.lockIcon.classList.remove('active');
+    } else {
+      this.currentEventType = isBreakEvent ? 'break' : 'work';
+      if (el.calTypeSegmentWork) el.calTypeSegmentWork.classList.toggle('active', !isBreakEvent);
+      if (el.calTypeSegmentBreak) el.calTypeSegmentBreak.classList.toggle('active', isBreakEvent);
+      if (el.calEventTitleLabel) {
+        el.calEventTitleLabel.textContent = isBreakEvent ? 'Break Name' : 'Event Name';
+      }
+      if (el.btnSaveCalEvent) {
+        if (isBreakEvent) {
+          el.btnSaveCalEvent.classList.add('is-break-btn');
+          el.btnSaveCalEvent.textContent = 'Save Break';
+        } else {
+          el.btnSaveCalEvent.classList.remove('is-break-btn');
+          el.btnSaveCalEvent.textContent = 'Save Event';
+        }
+      }
 
-    const dur = eventObj && eventObj.plannedDuration ? eventObj.plannedDuration : 60;
-    if (el.eventDurationInput) el.eventDurationInput.value = String(dur);
+      if (el.eventIdInput) el.eventIdInput.value = eventObj.id || '';
+      if (el.eventTitleInput) el.eventTitleInput.value = eventObj.title || '';
+      if (el.eventDateInput) el.eventDateInput.value = eventObj.date || (defaultDateStr || this._formatDateISO(new Date()));
+      if (el.eventStartTimeInput) el.eventStartTimeInput.value = eventObj.startTime || (defaultStartTime || '10:00');
+      if (el.eventEndTimeInput) el.eventEndTimeInput.value = eventObj.endTime || (defaultEndTime || '11:00');
 
-    this.currentEmoji = eventObj ? (eventObj.emoji || '💼') : '💼';
-    if (el.eventHeaderEmoji) el.eventHeaderEmoji.textContent = this.currentEmoji;
+      const dur = eventObj.plannedDuration || 60;
+      if (el.eventDurationInput) el.eventDurationInput.value = String(dur);
 
-    this.currentCategory = eventObj ? (eventObj.category || 'Work') : 'Work';
-    if (el.eventCategoryInput) el.eventCategoryInput.value = this.currentCategory;
+      this.currentEmoji = eventObj.emoji || (isBreakEvent ? '☕' : '💼');
+      if (el.eventHeaderEmoji) el.eventHeaderEmoji.textContent = this.currentEmoji;
+
+      this.currentCategory = eventObj.category || (isBreakEvent ? 'Break' : 'Work');
+      if (el.eventCategoryInput) el.eventCategoryInput.value = this.currentCategory;
+
+      const isLocked = Boolean(eventObj.isLocked);
+      if (el.eventToggleLock) el.eventToggleLock.checked = isLocked;
+      if (el.lockIcon) el.lockIcon.classList.toggle('active', isLocked);
+
+      const useTimeBank = eventObj.useTimeBank !== undefined ? Boolean(eventObj.useTimeBank) : (!isBreakEvent);
+      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = useTimeBank;
+      if (el.piggyIcon) el.piggyIcon.classList.toggle('active', useTimeBank);
+    }
 
     // Refresh Category Chips
     if (this.refreshCategoryChips) {
@@ -3392,14 +3508,6 @@ export class CalendarView {
       window.renderAllDurationPresetChips();
     }
     this._highlightActiveDurationChip();
-
-    const isLocked = eventObj ? Boolean(eventObj.isLocked) : false;
-    if (el.eventToggleLock) el.eventToggleLock.checked = isLocked;
-    if (el.lockIcon) el.lockIcon.classList.toggle('active', isLocked);
-
-    const useTimeBank = eventObj && eventObj.useTimeBank !== undefined ? Boolean(eventObj.useTimeBank) : true;
-    if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = useTimeBank;
-    if (el.piggyIcon) el.piggyIcon.classList.toggle('active', useTimeBank);
 
     if (el.btnDeleteEvent) {
       el.btnDeleteEvent.style.display = isNew ? 'none' : 'block';
