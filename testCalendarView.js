@@ -697,6 +697,84 @@ assert(targetCellMock.classList.contains('drag-target-over') === false, 'drag-ta
 
 global.document.elementFromPoint = origElementFromPoint;
 
+console.log('\n--- 14. Testing Pinch-to-Zoom Multi-Touch Conflict Suppression ---');
+// Switch to Day view
+calendar.switchView('day');
+calendar.render();
+
+const dayPinchCard = calendar.elements.dayTimelineBody.children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_1');
+assert(dayPinchCard !== null && dayPinchCard !== undefined, 'Day pinch card found');
+
+// Scenario A: User touches event card with 2 fingers at once (initiating pinch on event)
+dayPinchCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 120, clientY: 200 }, { clientX: 200, clientY: 260 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === false, 'Day card does not enter drag mode when touched with 2 fingers');
+assert(dayPinchCard.style.position !== 'fixed', 'Day card is not lifted to fixed position during 2-finger touch');
+const dayPinchSilhouette = calendar.elements.dayTimelineBody.children.find(c => c.classList && c.classList.contains('day-drop-preview-silhouette'));
+assert(!dayPinchSilhouette, 'Day drop preview silhouette is not created during 2-finger touch');
+
+// Scenario B: User touches card with 1 finger, but a 2nd finger touches window immediately (pinch gesture starts)
+dayPinchCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 120, clientY: 200 }]
+});
+// 30ms later, 2nd touch appears on window/modal
+window.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 120, clientY: 200 }, { clientX: 220, clientY: 300 }]
+});
+assert(calendar.isPinching === true, 'calendar.isPinching is set to true on multi-touch');
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === false, 'Day card drag mode aborted when 2nd finger lands');
+assert(dayPinchCard.style.position !== 'fixed', 'Day card does not lift after multi-touch cancel');
+
+// Scenario C: Week View - 2 fingers touching week event card
+calendar.switchView('week');
+calendar.render();
+
+const weekColsList = calendar.elements.weekGridBody.children.filter(c => c.classList && c.classList.contains('week-day-col'));
+let weekPinchCard = null;
+for (let i = 0; i < weekColsList.length; i++) {
+  const events = weekColsList[i].children.filter(c => c.classList && c.classList.contains('week-event-card'));
+  if (events.length > 0) {
+    weekPinchCard = events[0];
+    break;
+  }
+}
+assert(weekPinchCard !== null, 'Week pinch card found');
+
+// 2-finger touchstart on week card
+weekPinchCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 140, clientY: 210 }, { clientX: 210, clientY: 280 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === false, 'Week card does not enter drag mode when multi-touch on card');
+assert(weekPinchCard.style.position !== 'fixed', 'Week card not lifted to fixed during pinch');
+const weekPinchSilhouette = calendar.elements.weekGridBody.querySelector ? calendar.elements.weekGridBody.querySelector('.week-drop-preview-silhouette') : null;
+assert(!weekPinchSilhouette, 'Week drop preview silhouette is not created during pinch');
+
+// Scenario D: Month View - 2 fingers touching month event pill
+calendar.switchView('month');
+calendar.render();
+
+let monthPinchPill = null;
+const mCells = calendar.elements.monthGrid.children.filter(c => c.classList && c.classList.contains('month-day-cell'));
+for (let i = 0; i < mCells.length; i++) {
+  const list = mCells[i].children.find(c => c.classList && c.classList.contains('cell-events-list'));
+  if (list && list.children.length > 0) {
+    monthPinchPill = list.children[0];
+    break;
+  }
+}
+assert(monthPinchPill !== null, 'Month pinch pill found');
+
+monthPinchPill.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 100, clientY: 150 }, { clientX: 180, clientY: 200 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === false, 'Month pill does not enter drag mode during multi-touch');
+assert(monthPinchPill.style.position !== 'fixed', 'Month pill is not lifted to fixed during multi-touch');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

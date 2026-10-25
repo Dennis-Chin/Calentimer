@@ -25,6 +25,9 @@ export class CalendarView {
     this.currentTimeTimer = null;
     this.refreshCategoryChips = null;
     this.isDraggingEvent = false; // Prevents page swipe when holding/dragging an event
+    this.isPinching = false;
+    this.pinchCooldownUntil = 0;
+    this._activeDragCancelHandler = null;
 
     // DOM Elements (bound on init)
     this.elements = {};
@@ -94,6 +97,31 @@ export class CalendarView {
     this._setupHorizontalSwipeNavigation();
     this._setupPinchZoom(this.elements.dayTimelineScroll, true);
     this._setupPinchZoom(this.elements.weekGridScroll, false);
+
+    // Cancel any active or pending event drag if multi-touch gesture starts anywhere
+    const cancelOnMultiTouch = (e) => {
+      if (e.touches && e.touches.length >= 2) {
+        this.isPinching = true;
+        this.pinchCooldownUntil = Date.now() + 400;
+        this._cancelActiveEventDrag();
+      }
+    };
+    if (this.elements.modal) {
+      this.elements.modal.addEventListener('touchstart', cancelOnMultiTouch, { passive: true });
+      this.elements.modal.addEventListener('touchmove', cancelOnMultiTouch, { passive: true });
+    }
+    window.addEventListener('touchstart', cancelOnMultiTouch, { passive: true });
+    window.addEventListener('touchmove', cancelOnMultiTouch, { passive: true });
+  }
+
+  _cancelActiveEventDrag() {
+    if (typeof this._activeDragCancelHandler === 'function') {
+      try {
+        this._activeDragCancelHandler();
+      } catch (_) {}
+    }
+    this._activeDragCancelHandler = null;
+    this.isDraggingEvent = false;
   }
 
   _bindEvents() {
@@ -925,7 +953,10 @@ export class CalendarView {
     let centerMinutes = 0;
 
     container.addEventListener('touchstart', (e) => {
-      if (e.touches && e.touches.length === 2) {
+      if (e.touches && e.touches.length >= 2) {
+        this.isPinching = true;
+        this.pinchCooldownUntil = Date.now() + 400;
+        this._cancelActiveEventDrag();
         isPinching = true;
         initialDist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -942,6 +973,11 @@ export class CalendarView {
     }, { passive: true });
 
     container.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length >= 2) {
+        this.isPinching = true;
+        this.pinchCooldownUntil = Date.now() + 400;
+        this._cancelActiveEventDrag();
+      }
       if (!isPinching || !(e.touches && e.touches.length === 2)) return;
       const currentDist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
@@ -977,6 +1013,8 @@ export class CalendarView {
     const endPinch = () => {
       if (isPinching) {
         isPinching = false;
+        this.isPinching = false;
+        this.pinchCooldownUntil = Date.now() + 350;
         mobileServices.hapticTick();
       }
     };
@@ -2106,7 +2144,59 @@ export class CalendarView {
       finishDrag();
     };
 
+    const cancelDrag = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      this._activeDragCancelHandler = null;
+      if (!isDragging) return;
+      isDragging = false;
+      this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
+
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
+      isDayPanCooldown = false;
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
+
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+      card.classList.remove('is-dragging-cal-event');
+      card.style.removeProperty('transform');
+      card.style.removeProperty('position');
+      card.style.removeProperty('left');
+      card.style.removeProperty('top');
+      card.style.removeProperty('width');
+      card.style.removeProperty('z-index');
+      card.style.removeProperty('pointer-events');
+      card.style.removeProperty('transition');
+
+      if (card.parentNode === document.body) {
+        document.body.removeChild(card);
+      }
+      if (silhouette && silhouette.parentNode) {
+        silhouette.parentNode.removeChild(silhouette);
+        silhouette = null;
+      }
+      this.render();
+    };
+
     const startDragMode = () => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
         this._showToast('🔒 Disable padlock to move this event');
@@ -2124,6 +2214,7 @@ export class CalendarView {
       }
       isDragging = true;
       this.isDraggingEvent = true;
+      this._activeDragCancelHandler = cancelDrag;
 
       const cRect = card.getBoundingClientRect();
       const curX = lastClientX || startX;
@@ -2162,6 +2253,8 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
+      this._activeDragCancelHandler = null;
 
       if (dayNavTimer) {
         clearTimeout(dayNavTimer);
@@ -2228,6 +2321,11 @@ export class CalendarView {
     // Touch events for mobile dragging
     card.addEventListener('touchstart', (e) => {
       if (e.target.closest('[data-action="toggle-lock"]')) return;
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (e.touches && e.touches.length === 1) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
@@ -2238,6 +2336,7 @@ export class CalendarView {
         grabOffsetY = e.touches[0].clientY - cRect.top;
         initialTop = parseInt(card.style.top, 10) || 14;
         isDragging = false;
+        this._activeDragCancelHandler = cancelDrag;
 
         holdTimer = setTimeout(() => {
           holdTimer = null;
@@ -2247,6 +2346,10 @@ export class CalendarView {
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        cancelDrag();
+        return;
+      }
       if (!isDragging) {
         if (holdTimer && e.touches && e.touches.length === 1) {
           const diffX = e.touches[0].clientX - startX;
@@ -2254,6 +2357,7 @@ export class CalendarView {
           if (Math.hypot(diffX, diffY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            this._activeDragCancelHandler = null;
           }
         }
         return;
@@ -2267,10 +2371,16 @@ export class CalendarView {
     }, { passive: false });
 
     card.addEventListener('touchend', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        cancelDrag();
+        if (e && e.cancelable) e.preventDefault();
+        return;
+      }
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
-        if (e.cancelable) e.preventDefault();
+        this._activeDragCancelHandler = null;
+        if (e && e.cancelable) e.preventDefault();
         this.openEventInspector(ev);
         return;
       }
@@ -2278,13 +2388,7 @@ export class CalendarView {
     }, { passive: false });
 
     card.addEventListener('touchcancel', () => {
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      if (isDragging) {
-        finishDrag();
-      }
+      cancelDrag();
     }, { passive: true });
 
     // Mouse events for desktop dragging
@@ -2473,6 +2577,10 @@ export class CalendarView {
     };
 
     const onWindowTouchMove = (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        cancelDrag();
+        return;
+      }
       if (!isDragging || !(e.touches && e.touches.length === 1)) return;
       if (e.cancelable) e.preventDefault();
       lastClientX = e.touches[0].clientX;
@@ -2485,10 +2593,68 @@ export class CalendarView {
     };
 
     const onWindowTouchCancel = () => {
-      finishDrag(lastClientX, lastClientY);
+      cancelDrag();
+    };
+
+    const cancelDrag = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      this._activeDragCancelHandler = null;
+      currentSnappedTarget = null;
+      if (!isDragging) return;
+      isDragging = false;
+      this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
+
+      if (silhouette && silhouette.parentNode) {
+        silhouette.parentNode.removeChild(silhouette);
+        silhouette = null;
+      }
+      if (weekNavTimer) {
+        clearTimeout(weekNavTimer);
+        weekNavTimer = null;
+      }
+      isWeekNavCooldown = false;
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+      if (card.parentElement) {
+        card.parentElement.style.removeProperty('z-index');
+      }
+      card.style.removeProperty('position');
+      card.style.removeProperty('left');
+      card.style.removeProperty('top');
+      card.style.removeProperty('width');
+      card.style.removeProperty('z-index');
+      card.style.removeProperty('transition');
+      card.style.removeProperty('pointer-events');
+      card.classList.remove('is-dragging-cal-event');
+      card.style.removeProperty('transform');
+      if (card.parentNode === document.body) {
+        document.body.removeChild(card);
+      }
+      if (currentOverCol) {
+        currentOverCol.classList.remove('drag-target-over');
+      }
+      currentOverCol = null;
+      this.render();
     };
 
     const startDragMode = () => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
         this._showToast('🔒 Disable padlock to move this event');
@@ -2502,6 +2668,7 @@ export class CalendarView {
       }
       isDragging = true;
       this.isDraggingEvent = true;
+      this._activeDragCancelHandler = cancelDrag;
 
       const cRect = card.getBoundingClientRect();
       const curX = lastClientX || startX;
@@ -2607,6 +2774,7 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
 
       const dropTarget = currentSnappedTarget;
       currentSnappedTarget = null;
@@ -2669,6 +2837,11 @@ export class CalendarView {
 
     // Touch events for mobile
     card.addEventListener('touchstart', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (e.touches && e.touches.length === 1) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
@@ -2678,6 +2851,7 @@ export class CalendarView {
         grabOffsetX = e.touches[0].clientX - cRect.left;
         grabOffsetY = e.touches[0].clientY - cRect.top;
         isDragging = false;
+        this._activeDragCancelHandler = cancelDrag;
 
         holdTimer = setTimeout(() => {
           holdTimer = null;
@@ -2687,6 +2861,10 @@ export class CalendarView {
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        cancelDrag();
+        return;
+      }
       if (!isDragging) {
         if (holdTimer && e.touches && e.touches.length === 1) {
           const diffX = e.touches[0].clientX - startX;
@@ -2694,6 +2872,7 @@ export class CalendarView {
           if (Math.hypot(diffX, diffY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            this._activeDragCancelHandler = null;
           }
         }
         return;
@@ -2707,10 +2886,16 @@ export class CalendarView {
     }, { passive: false });
 
     card.addEventListener('touchend', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        cancelDrag();
+        if (e && e.cancelable) e.preventDefault();
+        return;
+      }
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
-        if (e.cancelable) e.preventDefault();
+        this._activeDragCancelHandler = null;
+        if (e && e.cancelable) e.preventDefault();
         this.openEventInspector(ev);
         return;
       }
@@ -2718,13 +2903,7 @@ export class CalendarView {
     }, { passive: false });
 
     card.addEventListener('touchcancel', () => {
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      if (isDragging) {
-        finishDrag(lastClientX, lastClientY);
-      }
+      cancelDrag();
     }, { passive: true });
 
     // Mouse events for desktop
@@ -2860,6 +3039,10 @@ export class CalendarView {
     };
 
     const onWindowTouchMove = (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        cancelDrag();
+        return;
+      }
       if (!isDragging || !(e.touches && e.touches.length === 1)) return;
       if (e.cancelable) e.preventDefault();
       lastClientX = e.touches[0].clientX;
@@ -2872,10 +3055,58 @@ export class CalendarView {
     };
 
     const onWindowTouchCancel = () => {
-      finishDrag(lastClientX, lastClientY);
+      cancelDrag();
+    };
+
+    const cancelDrag = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      this._activeDragCancelHandler = null;
+      if (!isDragging) return;
+      isDragging = false;
+      this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
+
+      if (monthNavTimer) {
+        clearTimeout(monthNavTimer);
+        monthNavTimer = null;
+      }
+      isMonthNavCooldown = false;
+
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchCancel);
+
+      pill.classList.remove('is-dragging-cal-event');
+      pill.style.removeProperty('position');
+      pill.style.removeProperty('left');
+      pill.style.removeProperty('top');
+      pill.style.removeProperty('width');
+      pill.style.removeProperty('z-index');
+      pill.style.removeProperty('pointer-events');
+      pill.style.removeProperty('transition');
+      pill.style.removeProperty('transform');
+      pill.style.removeProperty('margin');
+
+      if (pill.parentNode === document.body) {
+        document.body.removeChild(pill);
+      }
+
+      if (currentOverCell) {
+        currentOverCell.classList.remove('drag-target-over');
+      }
+      currentOverCell = null;
+      this.render();
     };
 
     const startDragMode = () => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
         this._showToast('🔒 Disable padlock to move this event');
@@ -2889,6 +3120,7 @@ export class CalendarView {
       }
       isDragging = true;
       this.isDraggingEvent = true;
+      this._activeDragCancelHandler = cancelDrag;
 
       const pRect = pill.getBoundingClientRect();
       pillWidth = pRect.width || 80;
@@ -2943,6 +3175,7 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._activeDragCancelHandler = null;
 
       if (monthNavTimer) {
         clearTimeout(monthNavTimer);
@@ -3003,12 +3236,18 @@ export class CalendarView {
 
     // Touch events for mobile
     pill.addEventListener('touchstart', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        return;
+      }
       if (e.touches && e.touches.length === 1) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
         isDragging = false;
+        this._activeDragCancelHandler = cancelDrag;
 
         holdTimer = setTimeout(() => {
           holdTimer = null;
@@ -3018,6 +3257,10 @@ export class CalendarView {
     }, { passive: true });
 
     pill.addEventListener('touchmove', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
+        cancelDrag();
+        return;
+      }
       if (!isDragging) {
         if (holdTimer && e.touches && e.touches.length === 1) {
           const diffX = e.touches[0].clientX - startX;
@@ -3025,6 +3268,7 @@ export class CalendarView {
           if (Math.hypot(diffX, diffY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            this._activeDragCancelHandler = null;
           }
         }
         return;
@@ -3038,9 +3282,15 @@ export class CalendarView {
     }, { passive: false });
 
     pill.addEventListener('touchend', (e) => {
+      if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
+        cancelDrag();
+        if (e && e.cancelable) e.preventDefault();
+        return;
+      }
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
+        this._activeDragCancelHandler = null;
         if (e && e.cancelable) e.preventDefault();
         this.openEventInspector(ev);
         return;
@@ -3049,13 +3299,7 @@ export class CalendarView {
     }, { passive: false });
 
     pill.addEventListener('touchcancel', () => {
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      if (isDragging) {
-        finishDrag(lastClientX, lastClientY);
-      }
+      cancelDrag();
     }, { passive: true });
 
     // Mouse events for desktop
