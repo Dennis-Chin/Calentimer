@@ -127,7 +127,9 @@ const appRequiredTopLevelDeclarations = [
   'isDrawerPullingUp',
   'isDraggingTask',
   'isScrubbingGreenLine',
-  'isDraggingOuterDial'
+  'isDraggingOuterDial',
+  'openTaskDrawer',
+  'closeTaskDrawer'
 ];
 
 appRequiredTopLevelDeclarations.forEach(function(varName) {

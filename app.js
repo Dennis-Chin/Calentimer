@@ -99,6 +99,11 @@ let isDrawerTouching = false;
 let isDrawerPullingDown = false;
 let isDrawerPullingUp = false;
 
+// Today's Tasks Drawer Actions (Shared across setupControls, navigation, and mobile back button)
+let openTaskDrawer = null;
+let closeTaskDrawer = null;
+let toggleTaskDrawer = null;
+
 // Initialize Timer Runtime
 let runtime = null;
 
@@ -1628,28 +1633,33 @@ function setupControls() {
   const taskDrawerBackdrop = document.getElementById('taskDrawerBackdrop');
   const btnDrawerToggle = document.getElementById('btnDrawerToggle');
 
-  function openTaskDrawer() {
+  openTaskDrawer = function() {
+    ensureHistoryBuffer();
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.remove('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
-  }
+  };
 
-  function closeTaskDrawer() {
+  closeTaskDrawer = function() {
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.add('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.add('hidden');
-  }
+  };
 
-  function toggleTaskDrawer() {
+  toggleTaskDrawer = function() {
     if (taskDrawer.classList.contains('collapsed')) {
       openTaskDrawer();
     } else {
       closeTaskDrawer();
     }
-  }
+  };
+
+  window.openTaskDrawer = openTaskDrawer;
+  window.closeTaskDrawer = closeTaskDrawer;
+  window.toggleTaskDrawer = toggleTaskDrawer;
 
   if (drawerHeader) drawerHeader.addEventListener('click', toggleTaskDrawer);
   if (btnDrawerToggle) {
@@ -2386,16 +2396,22 @@ function renderTaskList(tasks) {
     });
 
     // Emoji click
-    card.querySelector('[data-action="pick-emoji"]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openEmojiPicker(task.id);
-    });
+    const _emojiBtn = card.querySelector('[data-action="pick-emoji"]');
+    if (_emojiBtn) {
+      _emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openEmojiPicker(task.id);
+      });
+    }
 
     // Edit task click
-    card.querySelector('[data-action="edit-task"]').addEventListener('click', (e) => {
-      if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]')) return;
-      openTaskEditModal(task.id);
-    });
+    const _editBtn = card.querySelector('[data-action="edit-task"]');
+    if (_editBtn) {
+      _editBtn.addEventListener('click', (e) => {
+        if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]')) return;
+        openTaskEditModal(task.id);
+      });
+    }
 
     // Locked drag handle tap notification
     const lockedDrag = card.querySelector('[data-action="locked-drag-attempt"]');
@@ -2423,39 +2439,45 @@ function renderTaskList(tasks) {
     }
 
     // Lock toggle event (can be toggled on/off freely whether timer is running, paused, or idle)
-    card.querySelector('[data-action="toggle-lock"]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const currentLocked = Boolean(task.isLocked);
-      const nextLocked = !currentLocked;
+    const _lockToggle = card.querySelector('[data-action="toggle-lock"]');
+    if (_lockToggle) {
+      _lockToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentLocked = Boolean(task.isLocked);
+        const nextLocked = !currentLocked;
 
-      taskStore.updateTask(task.id, { isLocked: nextLocked });
-      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
-      if (initTask) initTask.isLocked = nextLocked;
+        taskStore.updateTask(task.id, { isLocked: nextLocked });
+        const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
+        if (initTask) initTask.isLocked = nextLocked;
 
-      const activeTask = runtime ? runtime.getActiveTask() : null;
-      if (activeTask && activeTask.id === task.id) {
-        activeTask.isLocked = nextLocked;
-      }
+        const activeTask = runtime ? runtime.getActiveTask() : null;
+        if (activeTask && activeTask.id === task.id) {
+          activeTask.isLocked = nextLocked;
+        }
 
-      if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
-        const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
-        if (schedTask) schedTask.isLocked = nextLocked;
-      }
+        if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+          const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+          if (schedTask) schedTask.isLocked = nextLocked;
+        }
 
-      runtime.recalculate();
-      updateTimerQuickToggles();
-      updateActiveTaskDisplay();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
-      renderCalendarModal();
-      mobileServices.hapticTap();
-      showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
-    });
+        runtime.recalculate();
+        updateTimerQuickToggles();
+        updateActiveTaskDisplay();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+        renderCalendarModal();
+        mobileServices.hapticTap();
+        showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
+      });
+    }
 
     // Delete event
-    card.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      executeDeleteTask(task.id, task.title);
-    });
+    const _delBtn = card.querySelector('[data-action="delete"]');
+    if (_delBtn) {
+      _delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeDeleteTask(task.id, task.title);
+      });
+    }
 
     taskListContainer.appendChild(card);
   });
@@ -3253,33 +3275,36 @@ function renderCalendarModal() {
     }
 
     // Lock toggle inside calendar
-    item.querySelector('[data-action="toggle-calendar-lock"]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      const currentLocked = Boolean(task.isLocked);
-      const nextLocked = !currentLocked;
+    const calLockBtn = item.querySelector('[data-action="toggle-calendar-lock"]');
+    if (calLockBtn) {
+      calLockBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentLocked = Boolean(task.isLocked);
+        const nextLocked = !currentLocked;
 
-      taskStore.updateTask(task.id, { isLocked: nextLocked });
-      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
-      if (initTask) initTask.isLocked = nextLocked;
+        taskStore.updateTask(task.id, { isLocked: nextLocked });
+        const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
+        if (initTask) initTask.isLocked = nextLocked;
 
-      const activeTask = runtime ? runtime.getActiveTask() : null;
-      if (activeTask && activeTask.id === task.id) {
-        activeTask.isLocked = nextLocked;
-      }
+        const activeTask = runtime ? runtime.getActiveTask() : null;
+        if (activeTask && activeTask.id === task.id) {
+          activeTask.isLocked = nextLocked;
+        }
 
-      if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
-        const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
-        if (schedTask) schedTask.isLocked = nextLocked;
-      }
+        if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+          const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+          if (schedTask) schedTask.isLocked = nextLocked;
+        }
 
-      runtime.recalculate();
-      updateTimerQuickToggles();
-      updateActiveTaskDisplay();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
-      renderCalendarModal();
-      mobileServices.hapticTap();
-      showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
-    });
+        runtime.recalculate();
+        updateTimerQuickToggles();
+        updateActiveTaskDisplay();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+        renderCalendarModal();
+        mobileServices.hapticTap();
+        showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
+      });
+    }
 
     // Emoji click inside calendar
     const calEmojiBtn = item.querySelector('[data-action="pick-calendar-emoji"]');
@@ -4938,6 +4963,7 @@ function setupNavigationAndModals() {
 
   if (settingRowTimer && timerSettingsSubPanel) {
     settingRowTimer.addEventListener('click', () => {
+      ensureHistoryBuffer();
       if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
       timerSettingsSubPanel.classList.remove('hidden');
@@ -4980,6 +5006,7 @@ function setupNavigationAndModals() {
 
   if (settingRowCalendar && calendarSettingsSubPanel) {
     settingRowCalendar.addEventListener('click', () => {
+      ensureHistoryBuffer();
       syncCalendarSettingsUI();
       if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
@@ -5344,6 +5371,7 @@ function setupNavigationAndModals() {
     btnCancelExitApp.addEventListener('click', () => {
       closeConfirmExitAppModal();
       mobileServices.hapticTap();
+      ensureHistoryBuffer();
     });
   }
 
@@ -5351,6 +5379,7 @@ function setupNavigationAndModals() {
     confirmExitAppModalBackdrop.addEventListener('click', (e) => {
       if (e.target === confirmExitAppModalBackdrop) {
         closeConfirmExitAppModal();
+        ensureHistoryBuffer();
       }
     });
   }
@@ -5364,23 +5393,47 @@ function setupNavigationAndModals() {
         try {
           window.close();
         } catch (_) {}
+        try {
+          window.history.back();
+        } catch (_) {}
       }
     });
   }
 
-  // Initialize browser history entry so back button can be intercepted
+  // Prime browser history entry on the first user interaction so Chrome recognizes user activation
+  // (Prevents Chrome's History Manipulation Intervention from skipping history entries on back button)
+  let isHistoryPrimed = false;
+  function primeHistoryStack() {
+    if (isHistoryPrimed) return;
+    isHistoryPrimed = true;
+    try {
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.replaceState({ appState: 'root' }, '');
+        window.history.pushState({ appState: 'app' }, '');
+      }
+    } catch (_) {}
+  }
+
+  window.addEventListener('pointerdown', primeHistoryStack, { capture: true, once: true });
+  window.addEventListener('touchstart', primeHistoryStack, { capture: true, once: true });
+  window.addEventListener('click', primeHistoryStack, { capture: true, once: true });
+
   try {
-    if (window.history && typeof window.history.pushState === 'function') {
+    if (window.history && typeof window.history.replaceState === 'function') {
       window.history.replaceState({ appState: 'root' }, '');
-      window.history.pushState({ appState: 'app' }, '');
     }
   } catch (_) {}
 
   function handleMobileBackButton() {
-    // 1. If Exit modal is already open, back button dismisses it
+    // 1. If Exit modal is already open, pressing back again confirms exit
     if (confirmExitAppModalBackdrop && !confirmExitAppModalBackdrop.classList.contains('hidden')) {
       closeConfirmExitAppModal();
-      ensureHistoryBuffer();
+      if (window.navigator && window.navigator.app && typeof window.navigator.app.exitApp === 'function') {
+        window.navigator.app.exitApp();
+      } else {
+        try { window.close(); } catch (_) {}
+        try { window.history.back(); } catch (_) {}
+      }
       return;
     }
 
@@ -5408,8 +5461,8 @@ function setupNavigationAndModals() {
         } else {
           el.classList.add('hidden');
         }
+        setTimeout(() => { ensureHistoryBuffer(); }, 0);
         mobileServices.hapticTap();
-        ensureHistoryBuffer();
         return;
       }
     }
@@ -5423,7 +5476,7 @@ function setupNavigationAndModals() {
         const btnBackTimer = document.getElementById('btnBackTimerSettings');
         if (btnBackTimer) {
           btnBackTimer.click();
-          ensureHistoryBuffer();
+          setTimeout(() => { ensureHistoryBuffer(); }, 0);
           return;
         }
       }
@@ -5431,15 +5484,15 @@ function setupNavigationAndModals() {
         const btnBackCal = document.getElementById('btnBackCalendarSettings');
         if (btnBackCal) {
           btnBackCal.click();
-          ensureHistoryBuffer();
+          setTimeout(() => { ensureHistoryBuffer(); }, 0);
           return;
         }
       }
 
       // If at main Settings level -> close Settings and go back to Timer screen
       closeSettings();
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
@@ -5451,8 +5504,8 @@ function setupNavigationAndModals() {
       } else {
         fullCalendarModalBackdrop.classList.add('hidden');
       }
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
@@ -5460,8 +5513,8 @@ function setupNavigationAndModals() {
     const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
     if (calendarModalBackdrop && !calendarModalBackdrop.classList.contains('hidden')) {
       closeCalendar();
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
@@ -5469,30 +5522,36 @@ function setupNavigationAndModals() {
     const todoModalBackdrop = document.getElementById('todoModalBackdrop');
     if (todoModalBackdrop && !todoModalBackdrop.classList.contains('hidden')) {
       closeTodo();
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
     // 7. Today's Tasks Bottom Drawer -> collapse and stay on Timer screen
     if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
-      closeTaskDrawer();
+      if (typeof closeTaskDrawer === 'function') {
+        closeTaskDrawer();
+      } else {
+        taskDrawer.classList.add('collapsed');
+        taskDrawer.classList.remove('will-minimise', 'will-open');
+        taskDrawer.style.removeProperty('transform');
+        if (taskDrawerBackdrop) taskDrawerBackdrop.classList.add('hidden');
+      }
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
     // 8. Navigation Drawer Menu -> close and stay on Timer screen
     if (navDrawer && navDrawer.classList.contains('open')) {
       closeDrawer();
+      setTimeout(() => { ensureHistoryBuffer(); }, 0);
       mobileServices.hapticTap();
-      ensureHistoryBuffer();
       return;
     }
 
     // 9. Root Timer Screen with nothing else open:
-    // Prompt the user with the confirmation dialog ("Close App?")
-    ensureHistoryBuffer();
+    // Prompt the user with the confirmation dialog ("Close Calentimer?")
     openConfirmExitAppModal();
   }
 

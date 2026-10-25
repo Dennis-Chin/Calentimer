@@ -286,6 +286,33 @@ const drawerContent = getOrCreateMockElement('drawerContent');
 drawerContent.className = 'drawer-content';
 taskDrawer.appendChild(drawerContent);
 
+const confirmExitAppModalBackdrop = getOrCreateMockElement('confirmExitAppModalBackdrop');
+confirmExitAppModalBackdrop.className = 'modal-backdrop hidden';
+const btnCancelExitApp = getOrCreateMockElement('btnCancelExitApp');
+const btnConfirmExitApp = getOrCreateMockElement('btnConfirmExitApp');
+
+const seedHiddenModals = [
+  'settingsModalBackdrop',
+  'fullCalendarModalBackdrop',
+  'calendarModalBackdrop',
+  'todoModalBackdrop',
+  'confirmDeleteTodoModalBackdrop',
+  'confirmClearTodoModalBackdrop',
+  'durationDialModalBackdrop',
+  'emojiPickerModalBackdrop',
+  'timeBankInfoModalBackdrop',
+  'alertsModalBackdrop',
+  'hardStopModalBackdrop',
+  'selectTodoModalBackdrop',
+  'calendarEventModalBackdrop',
+  'addTodoModalBackdrop',
+  'addTaskModalBackdrop',
+  'taskEditModalBackdrop'
+];
+seedHiddenModals.forEach(id => {
+  getOrCreateMockElement(id).className = 'modal-backdrop hidden';
+});
+
 console.log('--- 1. Importing app.js & Initializing Application ---');
 let appImportError = null;
 try {
@@ -403,6 +430,26 @@ taskDrawer.dispatchSimulatedEvent('touchend', {
   changedTouches: [{ clientX: 190, clientY: 230 }]
 });
 assert(!taskDrawer.classList.contains('collapsed'), 'Drawer remains OPEN if user pulls back up before release');
+
+console.log('\n--- 6. Testing Mobile Hardware Back Button Navigation & Exit Confirmation ---');
+// Ensure tab/drawer is open
+if (taskDrawer.classList.contains('collapsed')) {
+  drawerHeader.dispatchSimulatedEvent('click');
+}
+assert(!taskDrawer.classList.contains('collapsed'), 'Tab/drawer is open before back press');
+
+// 1. First Back Press: Dismisses open tab/drawer and returns to home screen
+window.dispatchSimulatedEvent('popstate', {});
+assert(taskDrawer.classList.contains('collapsed'), '1st back press dismisses open tab/drawer and returns to home screen');
+assert(confirmExitAppModalBackdrop.classList.contains('hidden'), 'Exit modal is NOT shown on 1st back press while tab was open');
+
+// 2. Second Immediate Back Press (without touching anything on screen): prompts for confirmation
+window.dispatchSimulatedEvent('popstate', {});
+assert(!confirmExitAppModalBackdrop.classList.contains('hidden'), '2nd immediate back press opens Exit App confirmation dialog');
+
+// 3. User taps Cancel -> dismisses confirmation modal
+btnCancelExitApp.dispatchSimulatedEvent('click', {});
+assert(confirmExitAppModalBackdrop.classList.contains('hidden'), 'Tapping Cancel dismisses the Exit App confirmation dialog');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
