@@ -422,18 +422,6 @@ export class CalendarView {
         }
       }
     }, { passive: true });
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        swipeStartTime = Date.now();
-        isSwipingHorizontal = false;
-        activeContainer = getActiveContainer();
-        currentSlideDirection = 0;
-        if (adjacentSlide && adjacentSlide.parentNode) {
-          adjacentSlide.parentNode.removeChild(adjacentSlide);
-          adjacentSlide = null;
-        }
-      }
-    }, { passive: true });
 
     modalBody.addEventListener('touchmove', (e) => {
       if (!touchStartX || !touchStartY || !activeContainer) return;

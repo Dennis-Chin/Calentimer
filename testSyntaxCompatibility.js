@@ -10,6 +10,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 
 let passed = 0;
 let failed = 0;
@@ -86,6 +87,33 @@ targetFiles.forEach(function(fileName) {
     });
   }
   assert(nullishOk, `${fileName} has zero nullish coalescing (??) operators`);
+});
+
+console.log('\n--- 2. Testing V8 AST JavaScript Syntax Validity (node --check) ---');
+
+targetFiles.forEach(function(fileName) {
+  const filePath = path.resolve(process.cwd(), fileName);
+  if (!fs.existsSync(filePath)) {
+    assert(false, `File exists: ${fileName}`);
+    return;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const result = spawnSync(process.execPath, ['--input-type=module', '--check'], {
+    input: content,
+    encoding: 'utf8'
+  });
+  const isSyntaxValid = result.status === 0;
+
+  if (!isSyntaxValid) {
+    console.error(`    V8 SyntaxError detected in ${fileName}:`);
+    const errMsg = (result.stderr || result.stdout || '').trim();
+    errMsg.split('\n').forEach(function(line) {
+      console.error(`      ${line}`);
+    });
+  }
+
+  assert(isSyntaxValid, `${fileName} passes V8 syntax validation (node --check)`);
 });
 
 console.log(`\n========================================`);
