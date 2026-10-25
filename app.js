@@ -1860,8 +1860,10 @@ function setupInteractiveTaskDrag(container) {
     const drawer = container.closest('#taskDrawer');
     if (drawer && drawer.classList.contains('collapsed')) return;
 
-    // STRICT CHECK: Drag can ONLY begin if pointer is directly on the 3x2 dots drag handle!
-    const handle = e.target.closest('[data-action="drag-handle"]');
+    // Drag can begin on the 3x2 dots drag handle OR the left gutter area of the card!
+    const isEmoji = e.target.closest('.task-emoji-btn, .calendar-emoji-btn, [data-action="pick-emoji"], [data-action="pick-calendar-emoji"]');
+    if (isEmoji) return;
+    const handle = e.target.closest('[data-action="drag-handle"], .calendar-block-left');
     if (!handle) return;
 
     const card = e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block');
@@ -2199,8 +2201,8 @@ function renderTaskList(tasks) {
     const card = document.createElement('div');
     const isImmovable = Boolean(task.fixedStartTime);
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
-    // When timer is RUNNING, the active in-progress task is locked. When PAUSED, user can toggle lock!
-    const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
+    // Task padlock stays strictly in the user-selected state (never forced locked just because timer is running)
+    const isLocked = Boolean(task.isLocked || isImmovable);
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
 
     let statusClass = 'task-pending';
@@ -2404,16 +2406,17 @@ function renderTaskList(tasks) {
       });
     }
 
-    // Lock toggle event
+    // Lock toggle event (can be toggled on/off freely whether timer is running, paused, or idle)
     card.querySelector('[data-action="toggle-lock"]').addEventListener('click', (e) => {
       e.stopPropagation();
-      if (runtime && runtime.status === TimerStatus.RUNNING && isCurrentActive) {
-        mobileServices.hapticWarning();
-        showToastNotification('Pause timer first to unlock the current task.');
-        return;
-      }
       taskStore.toggleLock(task.id);
       runtime.initialTasks = taskStore.getTasks();
+      const updated = runtime.initialTasks.find(t => t.id === task.id);
+      const activeTask = runtime.getActiveTask();
+      if (activeTask && activeTask.id === task.id && updated) {
+        activeTask.isLocked = Boolean(updated.isLocked);
+        updateTimerQuickToggles();
+      }
       runtime.recalculate();
       updateActiveTaskDisplay();
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -2904,6 +2907,11 @@ function saveCurrentTaskEdit() {
   });
 
   runtime.initialTasks = taskStore.getTasks();
+  const activeTask = runtime.getActiveTask();
+  if (activeTask && activeTask.id === currentEditTaskId) {
+    activeTask.isLocked = isLocked;
+    updateTimerQuickToggles();
+  }
   runtime.recalculate();
   updateActiveTaskDisplay();
   renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -3087,8 +3095,8 @@ function renderCalendarModal() {
   tasks.forEach((task, idx) => {
     const isImmovable = Boolean(task.fixedStartTime);
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
-    // When timer is RUNNING, the active task is locked. When PAUSED, user can toggle lock!
-    const isLocked = Boolean(task.isLocked || isImmovable || (isRunning && isCurrentActive));
+    // Task padlock stays strictly in user-selected state (never forced active merely because timer is running)
+    const isLocked = Boolean(task.isLocked || isImmovable);
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
     const catColor = getCategoryColor(task.category);
@@ -3196,13 +3204,14 @@ function renderCalendarModal() {
     // Lock toggle inside calendar
     item.querySelector('[data-action="toggle-calendar-lock"]').addEventListener('click', (e) => {
       e.stopPropagation();
-      if (runtime && runtime.status === TimerStatus.RUNNING && isCurrentActive) {
-        mobileServices.hapticWarning();
-        showToastNotification('Pause timer first to unlock the current task.');
-        return;
-      }
       taskStore.toggleLock(task.id);
       runtime.initialTasks = taskStore.getTasks();
+      const updated = runtime.initialTasks.find(t => t.id === task.id);
+      const activeTask = runtime.getActiveTask();
+      if (activeTask && activeTask.id === task.id && updated) {
+        activeTask.isLocked = Boolean(updated.isLocked);
+        updateTimerQuickToggles();
+      }
       runtime.recalculate();
       updateActiveTaskDisplay();
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -3229,7 +3238,7 @@ function renderCalendarModal() {
       });
     }
 
-    // Swipe & Gesture Zone: The full task block (except drag handle and emoji button)
+    // Swipe & Gesture Zone: The full task block (except drag handle, left gutter, and emoji button)
     let touchStartX = 0;
     let touchStartY = 0;
     let hasMoved = false;
@@ -3246,8 +3255,8 @@ function renderCalendarModal() {
     };
 
     const handleTaskTouchStart = (e) => {
-      // Ignore interactions originating directly from the drag handle or emoji button
-      if (e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="pick-calendar-emoji"]')) {
+      // Ignore interactions originating directly from the drag handle, left gutter area, or emoji button
+      if (e.target.closest('[data-action="drag-handle"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
         return;
       }
 
@@ -3271,7 +3280,7 @@ function renderCalendarModal() {
     };
 
     const handleTaskTouchMove = (e) => {
-      if (e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="pick-calendar-emoji"]')) {
+      if (e.target.closest('[data-action="drag-handle"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
         return;
       }
 

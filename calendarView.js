@@ -296,7 +296,7 @@ export class CalendarView {
     let isPullingDown = false;
 
     const onTouchStart = (e) => {
-      if (e.target.closest('button, select, input, .day-event-card, .week-event-card, .month-event-pill')) return;
+      if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn')) return;
       if (!e.touches || e.touches.length !== 1) return;
 
       const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
@@ -321,7 +321,7 @@ export class CalendarView {
       const deltaY = currentY - touchStartY;
       const deltaX = currentX - touchStartX;
 
-      if (deltaY > 8 && deltaY > Math.abs(deltaX) * 1.2) {
+      if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
         const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
           ? this.elements.dayTimelineScroll
           : ((this.activeView === 'week' && this.elements.weekGridScroll) ? this.elements.weekGridScroll : null);
@@ -331,13 +331,10 @@ export class CalendarView {
 
         if (isAtTop || isHeaderTouch) {
           isPullingDown = true;
-          // Apply 0.45 resistance damping
-          const rubberbandY = Math.min(deltaY * 0.45, 140);
+          // Apply 0.35 resistance damping for firm pull feeling
+          const rubberbandY = Math.min(deltaY * 0.35, 180);
           modal.style.transition = 'none';
           modal.style.transform = `translate3d(0, ${rubberbandY}px, 0)`;
-          backdrop.style.transition = 'none';
-          const progress = Math.max(0, 1 - (deltaY / 260));
-          backdrop.style.opacity = String(progress);
         }
       }
     };
@@ -357,30 +354,25 @@ export class CalendarView {
       touchStartY = 0;
       touchStartX = 0;
 
-      if (deltaY > 65 || (deltaY > 30 && velocity > 0.35)) {
-        modal.style.transition = 'transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)';
+      // Higher resistance: requires a deliberate pull (deltaY > 140px or fast flick deltaY > 90px with high velocity)
+      if (deltaY > 140 || (deltaY > 90 && velocity > 0.65)) {
+        // Pure slide down animation (identical to Today's Schedule swipe down - no fading)
+        modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
         modal.style.transform = 'translate3d(0, 100vh, 0)';
-        backdrop.style.transition = 'opacity 0.22s ease';
-        backdrop.style.opacity = '0';
         mobileServices.hapticBuzz();
         setTimeout(() => {
           modal.style.removeProperty('transform');
           modal.style.removeProperty('transition');
-          backdrop.style.removeProperty('opacity');
-          backdrop.style.removeProperty('transition');
           this.close();
-        }, 230);
+        }, 270);
       } else {
+        // Did not pull far enough: smoothly springs back up
         modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
         modal.style.transform = 'translate3d(0, 0, 0)';
-        backdrop.style.transition = 'opacity 0.2s ease';
-        backdrop.style.opacity = '1';
         setTimeout(() => {
           modal.style.removeProperty('transform');
           modal.style.removeProperty('transition');
-          backdrop.style.removeProperty('opacity');
-          backdrop.style.removeProperty('transition');
-        }, 240);
+        }, 250);
       }
     };
 
@@ -414,10 +406,22 @@ export class CalendarView {
 
     modalBody.addEventListener('touchstart', (e) => {
       if (e.touches && e.touches.length === 1) {
-        // Ignore touches on dragging cards or buttons
-        if (e.target.closest('.day-event-card, .week-event-card, .month-event-pill, button, select, input')) {
+        // Allow touches on event cards so swiping over tasks changes days; ignore only clickable buttons/inputs
+        if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn')) {
           return;
         }
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        swipeStartTime = Date.now();
+        isSwipingHorizontal = false;
+        activeContainer = getActiveContainer();
+        currentSlideDirection = 0;
+        if (adjacentSlide && adjacentSlide.parentNode) {
+          adjacentSlide.parentNode.removeChild(adjacentSlide);
+          adjacentSlide = null;
+        }
+      }
+    }, { passive: true });
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         swipeStartTime = Date.now();
@@ -581,6 +585,8 @@ export class CalendarView {
     slide.style.zIndex = '12';
     slide.style.background = 'var(--bg-surface)';
 
+    const allEvents = taskStore.getCalendarEvents();
+
     if (this.activeView === 'day') {
       const dayContainer = document.createElement('div');
       dayContainer.className = 'calendar-view-container';
@@ -593,7 +599,6 @@ export class CalendarView {
       slide.appendChild(dayContainer);
 
       const targetStr = this._formatDateISO(targetDate);
-      const allEvents = taskStore.getCalendarEvents();
       const eventsForDay = allEvents.filter(e => e.date === targetStr);
 
       const isCustom = taskStore.getCalendarCustomRangeEnabled();
@@ -646,18 +651,207 @@ export class CalendarView {
             <div class="day-event-meta-line">
               <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
               <span class="event-duration-pill">(${dur}m)</span>
+              <span class="event-cat-pill">${this._escapeHtml(ev.category || 'Work')}</span>
             </div>
           </div>
+          ${ev.isLocked ? `
+            <div class="cal-event-lock-btn is-locked" style="pointer-events:none;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+              </svg>
+            </div>
+          ` : ''}
         `;
         body.appendChild(card);
       }
-    } else {
-      const orig = this.elements[this.activeView === 'week' ? 'weekView' : 'monthView'];
-      if (orig) {
-        const clone = orig.cloneNode(true);
-        clone.classList.remove('hidden');
-        slide.appendChild(clone);
+    } else if (this.activeView === 'week') {
+      const weekContainer = document.createElement('div');
+      weekContainer.className = 'calendar-view-container';
+
+      const headerRow = document.createElement('div');
+      headerRow.className = 'week-header-row';
+      const corner = document.createElement('div');
+      headerRow.appendChild(corner);
+
+      const monday = this._getMondayOfWeek(targetDate);
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const todayStr = this._formatDateISO(new Date());
+      const weekDates = [];
+
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        weekDates.push(d);
+        const dStr = this._formatDateISO(d);
+
+        const colHeader = document.createElement('div');
+        colHeader.className = `week-col-header ${dStr === todayStr ? 'today' : ''}`;
+        colHeader.innerHTML = `
+          <span class="week-col-day-name">${dayNames[i]}</span>
+          <span class="week-col-day-num">${d.getDate()}</span>
+        `;
+        headerRow.appendChild(colHeader);
       }
+      weekContainer.appendChild(headerRow);
+
+      const scrollEl = document.createElement('div');
+      scrollEl.className = 'week-grid-scroll';
+      const body = document.createElement('div');
+      body.className = 'week-grid-body';
+
+      const isCustom = taskStore.getCalendarCustomRangeEnabled();
+      let startHour = 7;
+      let endHour = 22;
+      if (isCustom) {
+        const startStr = taskStore.getCalendarStartTime() || '08:00';
+        const endStr = taskStore.getCalendarEndTime() || '22:00';
+        startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+        endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+      }
+      const hourHeight = this.weekHourHeight || 50;
+      scrollEl.style.setProperty('--cal-week-hour-height', `${hourHeight}px`);
+
+      const timeCol = document.createElement('div');
+      timeCol.className = 'week-time-col';
+      for (let h = startHour; h < endHour; h++) {
+        const lbl = document.createElement('div');
+        lbl.className = 'week-hour-label';
+        lbl.textContent = `${String(h).padStart(2, '0')}:00`;
+        lbl.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
+        timeCol.appendChild(lbl);
+      }
+      body.appendChild(timeCol);
+
+      const padlockSvg = `<svg class="cal-mini-lock-svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
+
+      for (let i = 0; i < 7; i++) {
+        const d = weekDates[i];
+        const dStr = this._formatDateISO(d);
+        const dayCol = document.createElement('div');
+        dayCol.className = 'week-day-col';
+        dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
+
+        for (let h = startHour; h < endHour; h++) {
+          const line = document.createElement('div');
+          line.className = 'week-hour-line';
+          line.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
+          dayCol.appendChild(line);
+        }
+
+        const eventsForDate = allEvents.filter(e => e.date === dStr);
+        for (let j = 0; j < eventsForDate.length; j++) {
+          const ev = eventsForDate[j];
+          const startMin = this._parseTimeToMinutes(ev.startTime);
+          const endMin = this._parseTimeToMinutes(ev.endTime);
+          const cardStartHour = startMin / 60;
+          const cardEndHour = endMin / 60;
+
+          if (cardEndHour > startHour && cardStartHour < endHour) {
+            const top = 14 + Math.max(0, (cardStartHour - startHour) * hourHeight);
+            const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
+            const height = durationHrs * hourHeight;
+            const card = document.createElement('div');
+            card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+            card.style.top = `${top}px`;
+            card.style.height = `${height}px`;
+            card.style.backgroundColor = this._getCategoryColor(ev.category);
+            const isShort = height < 44;
+            card.innerHTML = `
+              <div class="week-event-title">${this._escapeHtml(ev.title)} ${isShort && ev.isLocked ? padlockSvg : ''}</div>
+              ${!isShort ? `<div class="week-event-time">${ev.startTime} ${ev.isLocked ? padlockSvg : ''}</div>` : ''}
+            `;
+            dayCol.appendChild(card);
+          }
+        }
+        body.appendChild(dayCol);
+      }
+
+      scrollEl.appendChild(body);
+      weekContainer.appendChild(scrollEl);
+      slide.appendChild(weekContainer);
+    } else {
+      // Month View Preview Slide
+      const monthContainer = document.createElement('div');
+      monthContainer.className = 'calendar-view-container';
+
+      const weekdayHeader = document.createElement('div');
+      weekdayHeader.className = 'month-weekday-header';
+      weekdayHeader.innerHTML = '<span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>';
+      monthContainer.appendChild(weekdayHeader);
+
+      const gridCells = document.createElement('div');
+      gridCells.className = 'month-grid-cells';
+
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth();
+      const todayStr = this._formatDateISO(new Date());
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const totalDays = lastDay.getDate();
+
+      let startDayOfWeek = firstDay.getDay() - 1;
+      if (startDayOfWeek === -1) startDayOfWeek = 6;
+      const prevMonthLastDay = new Date(year, month, 0).getDate();
+      const totalCells = (startDayOfWeek + totalDays > 35) ? 42 : 35;
+      const padlockSvg = `<svg class="cal-mini-lock-svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
+
+      for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'month-day-cell';
+        let cellDate = null;
+        let dayNumber = 0;
+
+        if (i < startDayOfWeek) {
+          dayNumber = prevMonthLastDay - (startDayOfWeek - i - 1);
+          cellDate = new Date(year, month - 1, dayNumber);
+          cell.classList.add('other-month');
+        } else if (i >= startDayOfWeek + totalDays) {
+          dayNumber = i - (startDayOfWeek + totalDays) + 1;
+          cellDate = new Date(year, month + 1, dayNumber);
+          cell.classList.add('other-month');
+        } else {
+          dayNumber = i - startDayOfWeek + 1;
+          cellDate = new Date(year, month, dayNumber);
+        }
+
+        const dateStr = this._formatDateISO(cellDate);
+        if (dateStr === todayStr) cell.classList.add('today');
+
+        cell.innerHTML = `
+          <div class="cell-header">
+            <span class="cell-day-num">${dayNumber}</span>
+          </div>
+          <div class="cell-events-list"></div>
+        `;
+
+        const eventsList = cell.querySelector('.cell-events-list');
+        const eventsForDate = allEvents.filter(e => e.date === dateStr);
+        const displayCount = Math.min(eventsForDate.length, 3);
+
+        for (let j = 0; j < displayCount; j++) {
+          const ev = eventsForDate[j];
+          const pill = document.createElement('div');
+          pill.className = `month-event-pill ${ev.isLocked ? 'is-locked' : ''}`;
+          pill.style.backgroundColor = this._getCategoryColor(ev.category);
+          pill.innerHTML = `
+            <span class="event-title">${this._escapeHtml(ev.title)}</span>
+            ${ev.isLocked && ev.title && ev.title.length <= 5 ? `<span>${padlockSvg}</span>` : ''}
+          `;
+          eventsList.appendChild(pill);
+        }
+
+        if (eventsForDate.length > 3) {
+          const more = document.createElement('div');
+          more.className = 'month-more-pill';
+          more.textContent = `+${eventsForDate.length - 3} more`;
+          eventsList.appendChild(more);
+        }
+
+        gridCells.appendChild(cell);
+      }
+
+      monthContainer.appendChild(gridCells);
+      slide.appendChild(monthContainer);
     }
 
     return slide;
@@ -847,16 +1041,16 @@ export class CalendarView {
     // Update hour labels in time column
     const labels = body.querySelectorAll('.week-hour-label');
     for (let i = 0; i < labels.length; i++) {
-      labels[i].style.top = `${i * hourHeight}px`;
+      labels[i].style.top = `${14 + (i * hourHeight)}px`;
     }
 
     // Update day columns height and horizontal lines
     const dayCols = body.querySelectorAll('.week-day-col');
     for (let i = 0; i < dayCols.length; i++) {
-      dayCols[i].style.height = `${(endHour - startHour + 1) * hourHeight}px`;
+      dayCols[i].style.height = `${(endHour - startHour) * hourHeight}px`;
       const lines = dayCols[i].querySelectorAll('.week-hour-line');
       for (let j = 0; j < lines.length; j++) {
-        lines[j].style.top = `${j * hourHeight}px`;
+        lines[j].style.top = `${14 + (j * hourHeight)}px`;
       }
     }
 
@@ -875,7 +1069,7 @@ export class CalendarView {
           dur = endMin - startMin;
           if (dur <= 0) dur = 60;
         }
-        const topPx = ((startMin - (startHour * 60)) / 60) * hourHeight;
+        const topPx = 14 + (((startMin - (startHour * 60)) / 60) * hourHeight);
         const hPx = Math.max(20, (dur / 60) * hourHeight);
         card.style.top = `${topPx}px`;
         card.style.height = `${hPx}px`;
@@ -937,6 +1131,10 @@ export class CalendarView {
     const el = this.elements;
     if (el.viewSelect) {
       el.viewSelect.value = viewName;
+    }
+    const viewValEl = document.getElementById('calViewVal');
+    if (viewValEl) {
+      viewValEl.textContent = viewName.charAt(0).toUpperCase() + viewName.slice(1);
     }
 
     if (el.dayView) el.dayView.classList.toggle('hidden', viewName !== 'day');
@@ -1313,7 +1511,7 @@ export class CalendarView {
       const lbl = document.createElement('div');
       lbl.className = 'week-hour-label';
       lbl.textContent = `${String(h).padStart(2, '0')}:00`;
-      lbl.style.top = `${(h - startHour) * hourHeight}px`;
+      lbl.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
       timeCol.appendChild(lbl);
     }
     body.appendChild(timeCol);
@@ -1333,7 +1531,7 @@ export class CalendarView {
       for (let h = startHour; h < endHour; h++) {
         const line = document.createElement('div');
         line.className = 'week-hour-line';
-        line.style.top = `${(h - startHour) * hourHeight}px`;
+        line.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
         dayCol.appendChild(line);
       }
 
@@ -1348,7 +1546,7 @@ export class CalendarView {
         const cardEndHour = endMin / 60;
 
         if (cardEndHour > startHour && cardStartHour < endHour) {
-          const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
+          const top = 14 + Math.max(0, (cardStartHour - startHour) * hourHeight);
           const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
           const height = durationHrs * hourHeight;
 
@@ -1377,7 +1575,7 @@ export class CalendarView {
       dayCol.addEventListener('click', (e) => {
         if (e.target.closest('.week-event-card')) return;
         const rect = dayCol.getBoundingClientRect();
-        const clickY = e.clientY - rect.top;
+        const clickY = e.clientY - rect.top - 14;
         const clickedHour = Math.floor(startHour + (clickY / hourHeight));
         const safeStartHour = Math.min(endHour - 1, Math.max(startHour, clickedHour));
         const startTimeStr = `${String(safeStartHour).padStart(2, '0')}:00`;
@@ -1613,6 +1811,7 @@ export class CalendarView {
     let holdTimer = null;
     let isDragging = false;
     let startY = 0;
+    let startX = 0;
     let initialTop = 0;
     let lastClientY = 0;
     let autoScrollRaf = null;
@@ -1655,7 +1854,7 @@ export class CalendarView {
       const step = () => {
         if (!isDragging || !container) return;
         const rect = container.getBoundingClientRect();
-        const edgeThreshold = 55; // 55px from visible top or bottom
+        const edgeThreshold = 55;
         let scrollDelta = 0;
 
         if (lastClientY < rect.top + edgeThreshold) {
@@ -1681,10 +1880,128 @@ export class CalendarView {
       autoScrollRaf = requestAnimationFrame(step);
     };
 
-    const onPointerDown = (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
-      if (e.target.closest('[data-action="toggle-lock"]')) return;
+    const startDragMode = () => {
+      if (ev.isLocked) {
+        mobileServices.hapticWarning();
+        this._showToast('🔒 Disable padlock to move this event');
+        const lockBtn = card.querySelector('.cal-event-lock-btn');
+        if (lockBtn) {
+          lockBtn.classList.remove('pulse-glow');
+          void lockBtn.offsetWidth;
+          lockBtn.classList.add('pulse-glow');
+          setTimeout(() => {
+            if (lockBtn) lockBtn.classList.remove('pulse-glow');
+          }, 1100);
+        }
+        return;
+      }
+      isDragging = true;
+      card.classList.add('is-dragging-cal-event');
+      mobileServices.hapticBuzz();
+      if (container) {
+        container.style.overflowY = 'hidden';
+      }
+      startAutoScrollLoop();
+    };
 
+    const finishDrag = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+      card.classList.remove('is-dragging-cal-event');
+
+      const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
+      const hourHeight = this.dayHourHeight || 56;
+      const rawMinutes = (startHour * 60) + ((currentTop / hourHeight) * 60);
+      const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+
+      const newStartH = Math.floor(newStartMin / 60);
+      const newStartM = newStartMin % 60;
+      const newEndTotal = newStartMin + durMin;
+      const newEndH = Math.min(23, Math.floor(newEndTotal / 60));
+      const newEndM = newEndTotal % 60;
+
+      const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
+      const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
+
+      taskStore.updateCalendarEvent(ev.id, {
+        startTime: newStartTime,
+        endTime: newEndTime,
+        plannedDuration: durMin
+      });
+
+      mobileServices.hapticTap();
+      this._showToast(`✓ Rescheduled to ${newStartTime} - ${newEndTime}`);
+      this.render();
+    };
+
+    // Touch events for mobile dragging
+    card.addEventListener('touchstart', (e) => {
+      if (e.target.closest('[data-action="toggle-lock"]')) return;
+      if (e.touches && e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        lastClientY = e.touches[0].clientY;
+        initialTop = parseInt(card.style.top, 10) || 14;
+        isDragging = false;
+
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          startDragMode();
+        }, 200);
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!isDragging) {
+        if (holdTimer && e.touches && e.touches.length === 1) {
+          const diffX = e.touches[0].clientX - startX;
+          const diffY = e.touches[0].clientY - startY;
+          if (Math.hypot(diffX, diffY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+        }
+        return;
+      }
+      if (e.touches && e.touches.length === 1) {
+        if (e.cancelable) e.preventDefault();
+        lastClientY = e.touches[0].clientY;
+        applySnappedPosition(e.touches[0].clientY);
+      }
+    }, { passive: false });
+
+    card.addEventListener('touchend', (e) => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        this.openEventInspector(ev);
+        return;
+      }
+      finishDrag();
+    }, { passive: true });
+
+    card.addEventListener('touchcancel', () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      if (isDragging) {
+        finishDrag();
+      }
+    }, { passive: true });
+
+    // Mouse events for desktop dragging
+    card.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('[data-action="toggle-lock"]')) return;
+      startX = e.clientX;
       startY = e.clientY;
       lastClientY = e.clientY;
       initialTop = parseInt(card.style.top, 10) || 14;
@@ -1692,105 +2009,46 @@ export class CalendarView {
 
       holdTimer = setTimeout(() => {
         holdTimer = null;
-        if (ev.isLocked) {
-          mobileServices.hapticWarning();
-          this._showToast('🔒 Disable padlock to move this event');
-          const lockBtn = card.querySelector('.cal-event-lock-btn');
-          if (lockBtn) {
-            lockBtn.classList.remove('pulse-glow');
-            void lockBtn.offsetWidth;
-            lockBtn.classList.add('pulse-glow');
-            setTimeout(() => {
-              if (lockBtn) lockBtn.classList.remove('pulse-glow');
-            }, 1100);
+        startDragMode();
+      }, 200);
+
+      const onMouseMove = (me) => {
+        if (!isDragging) {
+          if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
           }
           return;
         }
-        isDragging = true;
-        card.classList.add('is-dragging-cal-event');
-        mobileServices.hapticBuzz();
-        if (container) {
-          container.style.overflowY = 'hidden'; // Lock native timeline scrolling while dragging!
-        }
-        try {
-          card.setPointerCapture(e.pointerId);
-        } catch (_) {}
-        startAutoScrollLoop();
-      }, 200);
-    };
+        me.preventDefault();
+        lastClientY = me.clientY;
+        applySnappedPosition(me.clientY);
+      };
 
-    const onPointerMove = (e) => {
-      if (!isDragging) {
-        const delta = Math.hypot(e.clientY - startY);
-        if (delta > 8 && holdTimer) {
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
+          this.openEventInspector(ev);
+          return;
         }
-        return;
-      }
+        finishDrag();
+      };
 
-      if (e.cancelable) e.preventDefault();
-      lastClientY = e.clientY;
-      applySnappedPosition(e.clientY);
-    };
-
-    const onPointerUp = (e) => {
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-        this.openEventInspector(ev);
-        return;
-      }
-
-      if (isDragging) {
-        isDragging = false;
-        if (autoScrollRaf) {
-          cancelAnimationFrame(autoScrollRaf);
-          autoScrollRaf = null;
-        }
-        if (container) {
-          container.style.removeProperty('overflow-y'); // Restore scrollable state
-        }
-        card.classList.remove('is-dragging-cal-event');
-
-        const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
-        const hourHeight = this.dayHourHeight || 56;
-        const rawMinutes = (startHour * 60) + ((currentTop / hourHeight) * 60);
-        const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
-
-        const newStartH = Math.floor(newStartMin / 60);
-        const newStartM = newStartMin % 60;
-        const newEndTotal = newStartMin + durMin;
-        const newEndH = Math.min(23, Math.floor(newEndTotal / 60));
-        const newEndM = newEndTotal % 60;
-
-        const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
-        const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
-
-        taskStore.updateCalendarEvent(ev.id, {
-          startTime: newStartTime,
-          endTime: newEndTime,
-          plannedDuration: durMin
-        });
-
-        mobileServices.hapticTap();
-        this._showToast(`✓ Rescheduled to ${newStartTime} - ${newEndTime}`);
-        this.render();
-      }
-    };
-
-    card.addEventListener('pointerdown', onPointerDown);
-    card.addEventListener('pointermove', onPointerMove);
-    card.addEventListener('pointerup', onPointerUp);
-    card.addEventListener('pointercancel', onPointerUp);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
   }
 
-  // Week View: hold 200ms to drag between days and hours
+  // Week View: hold 200ms to drag between days and hours (with lift effect & auto-scroll)
   _setupWeekEventDrag(card, ev) {
     let holdTimer = null;
     let isDragging = false;
     let startX = 0;
     let startY = 0;
+    let lastClientX = 0;
     let lastClientY = 0;
     let autoScrollRaf = null;
     const container = this.elements.weekGridScroll;
@@ -1834,161 +2092,204 @@ export class CalendarView {
       autoScrollRaf = requestAnimationFrame(step);
     };
 
-    const onPointerDown = (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
-      startX = e.clientX;
-      startY = e.clientY;
-      lastClientY = e.clientY;
-      isDragging = false;
-
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        if (ev.isLocked) {
-          mobileServices.hapticWarning();
-          this._showToast('🔒 Disable padlock to move this event');
-          const lockEl = card.querySelector('.cal-mini-lock-svg') || card;
-          lockEl.classList.remove('pulse-glow');
-          void lockEl.offsetWidth;
-          lockEl.classList.add('pulse-glow');
-          setTimeout(() => {
-            if (lockEl) lockEl.classList.remove('pulse-glow');
-          }, 1100);
-          return;
-        }
-        isDragging = true;
-        card.classList.add('is-dragging-cal-event');
-        mobileServices.hapticBuzz();
-        if (container) {
-          container.style.overflowY = 'hidden'; // Lock native timeline scrolling while dragging
-        }
-        try {
-          card.setPointerCapture(e.pointerId);
-        } catch (_) {}
-        startAutoScrollLoop();
-      }, 200);
+    const startDragMode = () => {
+      if (ev.isLocked) {
+        mobileServices.hapticWarning();
+        this._showToast('🔒 Disable padlock to move this event');
+        const lockEl = card.querySelector('.cal-mini-lock-svg') || card;
+        lockEl.classList.remove('pulse-glow');
+        void lockEl.offsetWidth;
+        lockEl.classList.add('pulse-glow');
+        setTimeout(() => {
+          if (lockEl) lockEl.classList.remove('pulse-glow');
+        }, 1100);
+        return;
+      }
+      isDragging = true;
+      card.classList.add('is-dragging-cal-event');
+      mobileServices.hapticBuzz();
+      if (container) {
+        container.style.overflowY = 'hidden';
+      }
+      startAutoScrollLoop();
     };
 
-    const onPointerMove = (e) => {
-      if (!isDragging) {
-        const delta = Math.hypot(e.clientX - startX, e.clientY - startY);
-        if (delta > 8 && holdTimer) {
-          clearTimeout(holdTimer);
+    const finishDrag = (clientX, clientY) => {
+      if (!isDragging) return;
+      isDragging = false;
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+      card.classList.remove('is-dragging-cal-event');
+      card.style.removeProperty('transform');
+
+      card.style.display = 'none';
+      const targetEl = document.elementFromPoint(clientX, clientY);
+      card.style.display = '';
+
+      const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
+      if (targetCol) {
+        const targetDateStr = targetCol.getAttribute('data-date');
+        const colRect = targetCol.getBoundingClientRect();
+        const clickY = clientY - colRect.top - 14;
+        const hourHeight = this.weekHourHeight || 50;
+        const resolution = this.weekResolution || 15;
+        const rawMinutes = (startHour * 60) + ((clickY / hourHeight) * 60);
+        const dur = ev.plannedDuration || 60;
+        const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - dur, Math.round(rawMinutes / resolution) * resolution));
+        const newStartH = Math.floor(snappedStartMin / 60);
+        const newStartM = snappedStartMin % 60;
+        const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
+        const newEndTotal = snappedStartMin + dur;
+        const endH = Math.min(23, Math.floor(newEndTotal / 60));
+        const endM = newEndTotal % 60;
+        const newEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+        taskStore.updateCalendarEvent(ev.id, {
+          date: targetDateStr || ev.date,
+          startTime: newStartTime,
+          endTime: newEndTime
+        });
+
+        mobileServices.hapticTap();
+        this._showToast(`✓ Moved to ${targetDateStr} at ${newStartTime}`);
+        this.render();
+      } else {
+        this.render();
+      }
+    };
+
+    // Touch events for mobile
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        lastClientX = e.touches[0].clientX;
+        lastClientY = e.touches[0].clientY;
+        isDragging = false;
+
+        holdTimer = setTimeout(() => {
           holdTimer = null;
+          startDragMode();
+        }, 200);
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!isDragging) {
+        if (holdTimer && e.touches && e.touches.length === 1) {
+          const diffX = e.touches[0].clientX - startX;
+          const diffY = e.touches[0].clientY - startY;
+          if (Math.hypot(diffX, diffY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
         }
         return;
       }
-      if (e.cancelable) e.preventDefault();
-      lastClientY = e.clientY;
-      card.style.transform = `translate3d(${e.clientX - startX}px, ${e.clientY - startY}px, 0)`;
-    };
+      if (e.touches && e.touches.length === 1) {
+        if (e.cancelable) e.preventDefault();
+        lastClientX = e.touches[0].clientX;
+        lastClientY = e.touches[0].clientY;
+        card.style.transform = `translate3d(${lastClientX - startX}px, ${lastClientY - startY}px, 0)`;
+      }
+    }, { passive: false });
 
-    const onPointerUp = (e) => {
+    card.addEventListener('touchend', (e) => {
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
         this.openEventInspector(ev);
         return;
       }
+      finishDrag(lastClientX, lastClientY);
+    }, { passive: true });
 
-      if (isDragging) {
-        isDragging = false;
-        if (autoScrollRaf) {
-          cancelAnimationFrame(autoScrollRaf);
-          autoScrollRaf = null;
-        }
-        if (container) {
-          container.style.removeProperty('overflow-y'); // Restore scrolling
-        }
-        card.classList.remove('is-dragging-cal-event');
-        card.style.removeProperty('transform');
-
-        card.style.display = 'none';
-        const targetEl = document.elementFromPoint(e.clientX, e.clientY);
-        card.style.display = '';
-
-        const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
-        if (targetCol) {
-          const targetDateStr = targetCol.getAttribute('data-date');
-          const colRect = targetCol.getBoundingClientRect();
-          const clickY = e.clientY - colRect.top;
-          const hourHeight = this.weekHourHeight || 50;
-          const resolution = this.weekResolution || 15;
-          const rawMinutes = (startHour * 60) + ((clickY / hourHeight) * 60);
-          const dur = ev.plannedDuration || 60;
-          const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - dur, Math.round(rawMinutes / resolution) * resolution));
-          const newStartH = Math.floor(snappedStartMin / 60);
-          const newStartM = snappedStartMin % 60;
-          const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
-          const newEndTotal = snappedStartMin + dur;
-          const endH = Math.min(23, Math.floor(newEndTotal / 60));
-          const endM = newEndTotal % 60;
-          const newEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-
-          taskStore.updateCalendarEvent(ev.id, {
-            date: targetDateStr || ev.date,
-            startTime: newStartTime,
-            endTime: newEndTime
-          });
-
-          mobileServices.hapticTap();
-          this._showToast(`✓ Moved to ${targetDateStr} at ${newStartTime}`);
-          this.render();
-        } else {
-          this.render();
-        }
+    card.addEventListener('touchcancel', () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
       }
-    };
+      if (isDragging) {
+        finishDrag(lastClientX, lastClientY);
+      }
+    }, { passive: true });
 
-    card.addEventListener('pointerdown', onPointerDown);
-    card.addEventListener('pointermove', onPointerMove);
-    card.addEventListener('pointerup', onPointerUp);
-    card.addEventListener('pointercancel', onPointerUp);
+    // Mouse events for desktop
+    card.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+      isDragging = false;
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        startDragMode();
+      }, 200);
+
+      const onMouseMove = (me) => {
+        if (!isDragging) {
+          if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          return;
+        }
+        me.preventDefault();
+        lastClientX = me.clientX;
+        lastClientY = me.clientY;
+        card.style.transform = `translate3d(${me.clientX - startX}px, ${me.clientY - startY}px, 0)`;
+      };
+
+      const onMouseUp = (me) => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+          this.openEventInspector(ev);
+          return;
+        }
+        finishDrag(me.clientX, me.clientY);
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
   }
 
-  // Month View: hold 200ms to drag between day cells
+  // Month View: hold 200ms to drag between day cells (lifts pill & highlights target)
   _setupMonthEventDrag(pill, ev) {
     let holdTimer = null;
     let isDragging = false;
     let startX = 0;
     let startY = 0;
+    let lastClientX = 0;
+    let lastClientY = 0;
     let currentOverCell = null;
 
-    const onPointerDown = (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
-      startX = e.clientX;
-      startY = e.clientY;
-      isDragging = false;
-
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        if (ev.isLocked) {
-          mobileServices.hapticWarning();
-          this._showToast('🔒 Disable padlock to move this event');
-          return;
-        }
-        isDragging = true;
-        pill.classList.add('is-dragging-cal-event');
-        mobileServices.hapticBuzz();
-        try {
-          pill.setPointerCapture(e.pointerId);
-        } catch (_) {}
-      }, 200);
-    };
-
-    const onPointerMove = (e) => {
-      if (!isDragging) {
-        const delta = Math.hypot(e.clientX - startX, e.clientY - startY);
-        if (delta > 8 && holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
+    const startDragMode = () => {
+      if (ev.isLocked) {
+        mobileServices.hapticWarning();
+        this._showToast('🔒 Disable padlock to move this event');
         return;
       }
-      if (e.cancelable) e.preventDefault();
-      pill.style.transform = `translate3d(${e.clientX - startX}px, ${e.clientY - startY}px, 0)`;
+      isDragging = true;
+      pill.classList.add('is-dragging-cal-event');
+      mobileServices.hapticBuzz();
+    };
+
+    const updateDragPosition = (clientX, clientY) => {
+      pill.style.transform = `translate3d(${clientX - startX}px, ${clientY - startY}px, 0) scale(1.12)`;
 
       pill.style.display = 'none';
-      const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+      const targetEl = document.elementFromPoint(clientX, clientY);
       pill.style.display = '';
 
       const targetCell = targetEl ? targetEl.closest('.month-day-cell') : null;
@@ -1999,40 +2300,127 @@ export class CalendarView {
       }
     };
 
-    const onPointerUp = (e) => {
+    const finishDrag = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      pill.classList.remove('is-dragging-cal-event');
+      pill.style.removeProperty('transform');
+
+      if (currentOverCell) {
+        currentOverCell.classList.remove('drag-target-over');
+        const targetDateStr = currentOverCell.getAttribute('data-date');
+        currentOverCell = null;
+
+        if (targetDateStr && targetDateStr !== ev.date) {
+          taskStore.updateCalendarEvent(ev.id, { date: targetDateStr });
+          mobileServices.hapticTap();
+          this._showToast(`✓ Moved to ${targetDateStr}`);
+          this.render();
+          return;
+        }
+      }
+      this.render();
+    };
+
+    // Touch events for mobile
+    pill.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        lastClientX = e.touches[0].clientX;
+        lastClientY = e.touches[0].clientY;
+        isDragging = false;
+
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          startDragMode();
+        }, 200);
+      }
+    }, { passive: true });
+
+    pill.addEventListener('touchmove', (e) => {
+      if (!isDragging) {
+        if (holdTimer && e.touches && e.touches.length === 1) {
+          const diffX = e.touches[0].clientX - startX;
+          const diffY = e.touches[0].clientY - startY;
+          if (Math.hypot(diffX, diffY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+        }
+        return;
+      }
+      if (e.touches && e.touches.length === 1) {
+        if (e.cancelable) e.preventDefault();
+        lastClientX = e.touches[0].clientX;
+        lastClientY = e.touches[0].clientY;
+        updateDragPosition(lastClientX, lastClientY);
+      }
+    }, { passive: false });
+
+    pill.addEventListener('touchend', () => {
       if (holdTimer) {
         clearTimeout(holdTimer);
         holdTimer = null;
         this.openEventInspector(ev);
         return;
       }
+      finishDrag();
+    }, { passive: true });
 
-      if (isDragging) {
-        isDragging = false;
-        pill.classList.remove('is-dragging-cal-event');
-        pill.style.removeProperty('transform');
-
-        if (currentOverCell) {
-          currentOverCell.classList.remove('drag-target-over');
-          const targetDateStr = currentOverCell.getAttribute('data-date');
-          currentOverCell = null;
-
-          if (targetDateStr && targetDateStr !== ev.date) {
-            taskStore.updateCalendarEvent(ev.id, { date: targetDateStr });
-            mobileServices.hapticTap();
-            this._showToast(`✓ Moved to ${targetDateStr}`);
-            this.render();
-            return;
-          }
-        }
-        this.render();
+    pill.addEventListener('touchcancel', () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
       }
-    };
+      if (isDragging) {
+        finishDrag();
+      }
+    }, { passive: true });
 
-    pill.addEventListener('pointerdown', onPointerDown);
-    pill.addEventListener('pointermove', onPointerMove);
-    pill.addEventListener('pointerup', onPointerUp);
-    pill.addEventListener('pointercancel', onPointerUp);
+    // Mouse events for desktop
+    pill.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      lastClientX = e.clientX;
+      lastClientY = e.clientY;
+      isDragging = false;
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        startDragMode();
+      }, 200);
+
+      const onMouseMove = (me) => {
+        if (!isDragging) {
+          if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          return;
+        }
+        me.preventDefault();
+        lastClientX = me.clientX;
+        lastClientY = me.clientY;
+        updateDragPosition(me.clientX, me.clientY);
+      };
+
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+          this.openEventInspector(ev);
+          return;
+        }
+        finishDrag();
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
   }
 
   // ==========================================

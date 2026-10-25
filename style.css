@@ -4088,7 +4088,7 @@ body {
   justify-content: space-between;
   align-items: center;
   position: relative;
-  padding: 6px 12px;
+  padding: 6px 6px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -4312,8 +4312,8 @@ body {
 /* Floating Green Add Event Button (Far Bottom Right of calendar box) */
 .btn-float-add-event {
   position: absolute;
-  bottom: 14px;
-  right: 14px;
+  bottom: 8px;
+  right: 10px;
   width: 50px;
   height: 50px;
   border-radius: 50%;
@@ -4375,7 +4375,7 @@ body {
   display: flex;
   flex-direction: column;
   padding-top: 14px; /* Move first line down so 00:00 label is completely visible */
-  padding-bottom: 72px; /* Extended to use all grey space without truncation */
+  padding-bottom: 120px; /* Extended to use all grey space without truncation */
 }
 
 /* Day timeline hour slot */
@@ -4794,6 +4794,8 @@ body {
   grid-template-columns: 50px repeat(7, 1fr);
   gap: 4px;
   position: relative;
+  padding-top: 14px; /* Move top down so start time label is completely visible */
+  padding-bottom: 120px; /* Extended to prevent bottom truncation */
 }
 
 .week-time-col {
@@ -4816,24 +4818,28 @@ body {
 }
 
 .week-day-col {
-  border-left: 1px dashed var(--border-subtle);
+  border-left: 1px solid var(--border-subtle); /* Solid vertical lines */
   position: relative;
   height: calc(16 * var(--cal-week-hour-height, 52px));
 }
 
-/* Horizontal Hour Lines in Week View */
+.week-day-col:last-child {
+  border-right: 1px solid var(--border-subtle);
+}
+
+/* Horizontal Hour Lines in Week View (Dashed & Bolder/Thicker at every hour) */
 .week-hour-line {
   position: absolute;
   left: 0;
   right: 0;
   height: 1px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.22);
   pointer-events: none;
   z-index: 1;
 }
 
 [data-theme="light"] .week-hour-line {
-  border-top-color: rgba(0, 0, 0, 0.08);
+  border-top: 1.5px dashed rgba(0, 0, 0, 0.22);
 }
 
 .cal-mini-lock-svg {
@@ -5010,11 +5016,12 @@ body {
 
 /* Dragging States */
 .is-dragging-cal-event {
-  opacity: 0.7 !important;
+  opacity: 0.85 !important;
   transform: scale(1.04) !important;
-  z-index: 100 !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+  z-index: 9999 !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 2px var(--accent-cyan) !important;
   cursor: grabbing !important;
+  touch-action: none !important;
 }
 
 .month-day-cell.drag-target-over {
