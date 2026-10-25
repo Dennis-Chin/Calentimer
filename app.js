@@ -1294,11 +1294,17 @@ function setupControls() {
     }
   }
 
+  let lastLockToggleTimestamp = 0;
+
   function handleTimerLockToggle(e) {
     if (e) {
       e.stopPropagation();
       if (e.preventDefault) e.preventDefault();
     }
+    const now = Date.now();
+    if (now - lastLockToggleTimestamp < 350) return;
+    lastLockToggleTimestamp = now;
+
     const activeTask = runtime ? runtime.getActiveTask() : null;
     if (!activeTask) {
       showToastNotification('Add a task first to toggle Lock.');
@@ -1312,25 +1318,26 @@ function setupControls() {
     const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
     if (initTask) initTask.isLocked = nextLock;
 
+    if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+      const schedTask = runtime.currentSchedule.tasks.find(t => t.id === activeTask.id);
+      if (schedTask) schedTask.isLocked = nextLock;
+    }
+
+    runtime.recalculate();
     showToastNotification(nextLock ? 'Task duration locked' : 'Task duration unlocked');
     updateTimerQuickToggles();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
-    const calBackdrop = document.getElementById('calendarModalBackdrop');
-    if (calBackdrop && !calBackdrop.classList.contains('hidden')) {
-      renderCalendarModal();
-    }
+    renderCalendarModal();
   }
 
   const timerScreenPiggyBtn = document.getElementById('timerScreenPiggyBtn');
   if (timerScreenPiggyBtn) {
     timerScreenPiggyBtn.addEventListener('click', handleTimerPiggyToggle);
-    timerScreenPiggyBtn.addEventListener('touchend', handleTimerPiggyToggle, { passive: false });
   }
 
   const timerScreenLockIcon = document.getElementById('timerScreenLockIcon');
   if (timerScreenLockIcon) {
     timerScreenLockIcon.addEventListener('click', handleTimerLockToggle);
-    timerScreenLockIcon.addEventListener('touchend', handleTimerLockToggle, { passive: false });
   }
 
   function triggerTimePicker(inputEl) {
@@ -2409,19 +2416,30 @@ function renderTaskList(tasks) {
     // Lock toggle event (can be toggled on/off freely whether timer is running, paused, or idle)
     card.querySelector('[data-action="toggle-lock"]').addEventListener('click', (e) => {
       e.stopPropagation();
-      taskStore.toggleLock(task.id);
-      runtime.initialTasks = taskStore.getTasks();
-      const updated = runtime.initialTasks.find(t => t.id === task.id);
-      const activeTask = runtime.getActiveTask();
-      if (activeTask && activeTask.id === task.id && updated) {
-        activeTask.isLocked = Boolean(updated.isLocked);
-        updateTimerQuickToggles();
+      const currentLocked = Boolean(task.isLocked);
+      const nextLocked = !currentLocked;
+
+      taskStore.updateTask(task.id, { isLocked: nextLocked });
+      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
+      if (initTask) initTask.isLocked = nextLocked;
+
+      const activeTask = runtime ? runtime.getActiveTask() : null;
+      if (activeTask && activeTask.id === task.id) {
+        activeTask.isLocked = nextLocked;
       }
+
+      if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+        const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+        if (schedTask) schedTask.isLocked = nextLocked;
+      }
+
       runtime.recalculate();
+      updateTimerQuickToggles();
       updateActiveTaskDisplay();
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       renderCalendarModal();
       mobileServices.hapticTap();
+      showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
     });
 
     // Delete event
@@ -2907,12 +2925,16 @@ function saveCurrentTaskEdit() {
   });
 
   runtime.initialTasks = taskStore.getTasks();
-  const activeTask = runtime.getActiveTask();
+  const activeTask = runtime ? runtime.getActiveTask() : null;
   if (activeTask && activeTask.id === currentEditTaskId) {
     activeTask.isLocked = isLocked;
-    updateTimerQuickToggles();
+  }
+  if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+    const schedTask = runtime.currentSchedule.tasks.find(t => t.id === currentEditTaskId);
+    if (schedTask) schedTask.isLocked = isLocked;
   }
   runtime.recalculate();
+  updateTimerQuickToggles();
   updateActiveTaskDisplay();
   renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
   renderCalendarModal();
@@ -3204,19 +3226,30 @@ function renderCalendarModal() {
     // Lock toggle inside calendar
     item.querySelector('[data-action="toggle-calendar-lock"]').addEventListener('click', (e) => {
       e.stopPropagation();
-      taskStore.toggleLock(task.id);
-      runtime.initialTasks = taskStore.getTasks();
-      const updated = runtime.initialTasks.find(t => t.id === task.id);
-      const activeTask = runtime.getActiveTask();
-      if (activeTask && activeTask.id === task.id && updated) {
-        activeTask.isLocked = Boolean(updated.isLocked);
-        updateTimerQuickToggles();
+      const currentLocked = Boolean(task.isLocked);
+      const nextLocked = !currentLocked;
+
+      taskStore.updateTask(task.id, { isLocked: nextLocked });
+      const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
+      if (initTask) initTask.isLocked = nextLocked;
+
+      const activeTask = runtime ? runtime.getActiveTask() : null;
+      if (activeTask && activeTask.id === task.id) {
+        activeTask.isLocked = nextLocked;
       }
+
+      if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+        const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+        if (schedTask) schedTask.isLocked = nextLocked;
+      }
+
       runtime.recalculate();
+      updateTimerQuickToggles();
       updateActiveTaskDisplay();
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
       renderCalendarModal();
       mobileServices.hapticTap();
+      showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
     });
 
     // Emoji click inside calendar
@@ -4592,12 +4625,30 @@ function setupNavigationAndModals() {
       return;
     }
 
-    // Guard: If touch starts inside or on the timer wheel/dial elements, ignore for nav menu
-    // This directly prevents thumb interactions on the dial from accidentally triggering the menu bar
-    if (target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
-      navTouchStartX = null;
-      navTouchStartY = null;
-      return;
+    // Guard: If touch starts inside or on the timer wheel/dial elements, check if inside dial circle.
+    // If touch starts at the 4 outer corner spandrels of the dial container, allow swiping right to open the menu!
+    const wheelEl = document.getElementById('wheelContainer');
+    if (wheelEl && target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
+      const touch = e.touches && e.touches[0];
+      if (touch) {
+        const rect = wheelEl.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dist = Math.hypot(touch.clientX - cx, touch.clientY - cy);
+        // Dial outer tick radius is ~151px in 320x320 SVG (ratio ~0.95).
+        // Leaving a generous circular boundary of 1.02 * (width/2) guarantees thumb rotation on the bezel never opens the menu,
+        // while touching into the corner spandrels (where distance is 1.05 to 1.41 * radius) allows swiping open the menu!
+        const dialSafeRadius = (rect.width / 2) * 1.02;
+        if (dist <= dialSafeRadius) {
+          navTouchStartX = null;
+          navTouchStartY = null;
+          return;
+        }
+      } else {
+        navTouchStartX = null;
+        navTouchStartY = null;
+        return;
+      }
     }
 
     const touch = e.touches[0];

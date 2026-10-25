@@ -2257,19 +2257,24 @@ body {
   color: #b45309 !important;
 }
 
-.calendar-block.is-break-task {
+.calendar-block.is-break-task:not(.completed) {
   border-left: 3.5px solid #f59e0b !important;
   background: #221f1c !important;
 }
 
-[data-theme="light"] .calendar-block.is-break-task {
+[data-theme="light"] .calendar-block.is-break-task:not(.completed) {
   border-left: 3.5px solid #f59e0b !important;
   background: #fffbeb !important;
 }
 
-.task-card.is-break-task {
+.task-card.is-break-task:not(.task-completed) {
   border-left: 5px solid #f59e0b !important;
   background: #221f1c !important;
+}
+
+[data-theme="light"] .task-card.is-break-task:not(.task-completed) {
+  border-left: 5px solid #f59e0b !important;
+  background: #fffbeb !important;
 }
 
 .calendar-block-actions {
@@ -4523,8 +4528,9 @@ body {
 
 .day-event-card.is-dragging-cal-event,
 .week-event-card.is-dragging-cal-event {
-  z-index: 9999 !important;
+  z-index: 99999 !important;
   opacity: 0.92 !important;
+  transition: none !important;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 2px var(--accent-cyan) !important;
 }
 
