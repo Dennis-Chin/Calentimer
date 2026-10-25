@@ -4932,6 +4932,11 @@ body {
   z-index: 10;
 }
 
+/* Inner orange border for locked week cards (does not overflow shape) */
+.week-event-card.is-locked {
+  box-shadow: inset 0 0 0 1.5px #f59e0b !important;
+}
+
 /* 3. Month View Grid */
 .month-weekday-header {
   display: grid;
@@ -5033,6 +5038,41 @@ body {
 
 .month-event-pill:hover {
   transform: translateY(-1px);
+}
+
+/* Inner orange border for locked month pills (does not overflow shape) */
+.month-event-pill.is-locked {
+  box-shadow: inset 0 0 0 1.5px #f59e0b !important;
+}
+
+/* Pulsing Glow Animation for Locked Event Cards / Pills when Dragging is Prevented */
+@keyframes cardLockPulseGlow {
+  0% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 0px rgba(245, 158, 11, 0); }
+  25% { box-shadow: inset 0 0 0 2px #f59e0b, 0 0 14px rgba(245, 158, 11, 0.8); }
+  50% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 4px rgba(245, 158, 11, 0.4); }
+  75% { box-shadow: inset 0 0 0 2px #f59e0b, 0 0 12px rgba(245, 158, 11, 0.7); }
+  100% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 0px rgba(245, 158, 11, 0); }
+}
+
+.week-event-card.lock-pulse-glow,
+.month-event-pill.lock-pulse-glow,
+.day-event-card.lock-pulse-glow {
+  animation: cardLockPulseGlow 0.9s ease-in-out !important;
+}
+
+/* Week View Drop Preview Silhouette: Blue / Cyan Outline Stuck to Grid */
+.week-drop-preview-silhouette {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: var(--radius-sm);
+  border: 2px dashed var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.16);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+  pointer-events: none;
+  z-index: 6;
+  box-sizing: border-box;
+  transition: top 0.06s ease, height 0.06s ease;
 }
 
 .month-event-pill .event-title {

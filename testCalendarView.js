@@ -343,6 +343,8 @@ try {
   finishDragError = err;
 }
 assert(finishDragError === null, 'Day drag finishDrag completes without error');
+await new Promise(resolve => setTimeout(resolve, 350));
+calendar.goToToday();
 
 console.log('\n--- 5. Testing Day View Desktop Mouse Drag Lifecycle ---');
 let mousedownError = null;
@@ -409,7 +411,7 @@ try {
 }
 assert(weekTouchError === null, 'Week card touchstart and touchend execute without error');
 
-console.log('\n--- 7. Testing Month View Touch & Drag Interaction ---');
+console.log('\n--- 7. Testing Month View Touch, Drag & Floating Pill ---');
 calendar.switchView('month');
 calendar.render();
 
@@ -427,18 +429,27 @@ for (let i = 0; i < monthCells.length; i++) {
 }
 assert(monthPill !== null, 'Month event pill rendered in month view');
 
-let monthTouchError = null;
-try {
-  monthPill.dispatchSimulatedEvent('touchstart', {
-    touches: [{ clientX: 80, clientY: 100 }]
-  });
-  monthPill.dispatchSimulatedEvent('touchend', { cancelable: true });
-} catch (err) {
-  monthTouchError = err;
-}
-assert(monthTouchError === null, 'Month pill touchstart and touchend execute without error');
+// Test quick tap
+monthPill.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 80, clientY: 100 }]
+});
+monthPill.dispatchSimulatedEvent('touchend', { cancelable: true });
 
-console.log('\n--- 8. Testing Event Inspector Ghost-Click Protection ---');
+// Test hold-to-drag & floating behavior on top of everything
+monthPill.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 80, clientY: 100 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(calendar.isDraggingEvent === true, 'Unlocked month pill enters drag mode after 200ms hold');
+assert(monthPill.style.position === 'fixed', 'Month pill has position: fixed so it floats above all cells');
+assert(monthPill.style.zIndex === '99999', 'Month pill has z-index: 99999 so it never clips behind adjacent cells');
+assert(mockDocBody.children.includes(monthPill), 'Month pill is reparented to document.body to break stacking context');
+
+// Finish drag
+monthPill.dispatchSimulatedEvent('touchend', { cancelable: true });
+assert(calendar.isDraggingEvent === false, 'Month drag mode finishes cleanly');
+
+console.log('\n--- 8. Testing Event Inspector Defaults & Ghost-Click Protection ---');
 const backdropEl = calendar.elements.eventModalBackdrop;
 calendar.openEventInspector({
   id: 'cal_test_event_1',
@@ -453,6 +464,47 @@ calendar.openEventInspector({
 
 const hasPointerEventsNone = (backdropEl.style.pointerEvents === 'none') || (backdropEl.style['pointer-events'] === 'none');
 assert(hasPointerEventsNone, 'Modal backdrop applies pointer-events: none for 250ms on open to prevent synthesized ghost clicks');
+
+// Test that creating a new event defaults isLocked to false (Flexible schedule by default)
+calendar.openEventInspector(null);
+assert(calendar.elements.eventToggleLock.checked === false, 'New event defaults isLocked to false (flexible schedule)');
+
+console.log('\n--- 9. Testing Locked Event Visuals & Lock-Pulse-Glow on Drag Attempt ---');
+taskStore.addCalendarEvent({
+  id: 'cal_test_event_locked',
+  title: 'Focus Meeting',
+  date: todayStr,
+  startTime: '14:00',
+  endTime: '15:00',
+  plannedDuration: 60,
+  category: 'Work',
+  isLocked: true,
+  emoji: '🔒'
+});
+
+calendar.switchView('week');
+calendar.render();
+
+const weekColsLocked = calendar.elements.weekGridBody.children.filter(c => c.classList && c.classList.contains('week-day-col'));
+let lockedWeekCard = null;
+for (let i = 0; i < weekColsLocked.length; i++) {
+  const card = weekColsLocked[i].children.find(c => c.getAttribute && c.getAttribute('data-event-id') === 'cal_test_event_locked');
+  if (card) {
+    lockedWeekCard = card;
+    break;
+  }
+}
+assert(lockedWeekCard !== null, 'Locked week card rendered');
+assert(lockedWeekCard.classList.contains('is-locked'), 'Locked week card has .is-locked class for inner orange border');
+
+// Attempt to drag locked card
+lockedWeekCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 150, clientY: 200 }]
+});
+await new Promise(resolve => setTimeout(resolve, 220));
+assert(lockedWeekCard.classList.contains('lock-pulse-glow'), 'Attempting to drag locked week card triggers lock-pulse-glow animation');
+assert(calendar.isDraggingEvent !== true, 'Locked card does not enter drag mode');
+lockedWeekCard.dispatchSimulatedEvent('touchend', { cancelable: true });
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
