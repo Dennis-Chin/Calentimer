@@ -4732,15 +4732,15 @@ body {
   }
   25% {
     box-shadow: 0 0 14px rgba(245, 158, 11, 0.85), inset 0 0 8px rgba(245, 158, 11, 0.4);
-    border-color: #f59e0b !important;
+    border-color: #f59e0b;
   }
   50% {
     box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
-    border-color: #f59e0b !important;
+    border-color: #f59e0b;
   }
   75% {
     box-shadow: 0 0 12px rgba(245, 158, 11, 0.8), inset 0 0 6px rgba(245, 158, 11, 0.35);
-    border-color: #f59e0b !important;
+    border-color: #f59e0b;
   }
   100% {
     box-shadow: 0 0 0px transparent;
@@ -4753,10 +4753,9 @@ body {
   color: #f59e0b !important;
 }
 
-.day-event-card.lock-pulse-glow,
-.week-event-card.lock-pulse-glow,
-.month-event-pill.lock-pulse-glow {
+.day-event-card.lock-pulse-glow {
   animation: eventBorderLockPulse 0.95s ease-in-out !important;
+  z-index: 50 !important;
 }
 
 .day-event-card.is-compact {
@@ -4979,11 +4978,6 @@ body {
   z-index: 10;
 }
 
-/* Inner orange border for locked week cards (does not overflow shape) */
-.week-event-card.is-locked {
-  box-shadow: inset 0 0 0 1.5px #f59e0b !important;
-}
-
 /* 3. Month View Grid */
 .month-weekday-header {
   display: grid;
@@ -5105,24 +5099,44 @@ body {
   transform: translateY(-1px);
 }
 
-/* Inner orange border for locked cards & pills in week and month views (does not overflow shape) */
-.month-event-pill.is-locked,
-.week-event-card.is-locked {
-  box-shadow: inset 0 0 0 1.5px #f59e0b !important;
-}
-
 /* Pulsing Glow Animation for Locked Event Cards / Pills when Dragging is Prevented */
 @keyframes cardLockPulseGlow {
-  0% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 0px rgba(245, 158, 11, 0); }
-  25% { box-shadow: inset 0 0 0 2px #f59e0b, 0 0 14px rgba(245, 158, 11, 0.8); }
-  50% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 4px rgba(245, 158, 11, 0.4); }
-  75% { box-shadow: inset 0 0 0 2px #f59e0b, 0 0 12px rgba(245, 158, 11, 0.7); }
-  100% { box-shadow: inset 0 0 0 1.5px #f59e0b, 0 0 0px rgba(245, 158, 11, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0), inset 0 0 0 0 rgba(245, 158, 11, 0);
+    outline: 2px solid transparent;
+    filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0));
+    transform: scale(1);
+  }
+  25% {
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.95), inset 0 0 0 2px #f59e0b;
+    outline: 2px solid #f59e0b;
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.9));
+    transform: scale(1.04);
+  }
+  50% {
+    box-shadow: 0 0 5px rgba(245, 158, 11, 0.5), inset 0 0 0 1.5px #f59e0b;
+    outline: 1.5px solid #f59e0b;
+    filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.4));
+    transform: scale(1.02);
+  }
+  75% {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.9), inset 0 0 0 2px #f59e0b;
+    outline: 2px solid #f59e0b;
+    filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.8));
+    transform: scale(1.04);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0), inset 0 0 0 0 rgba(245, 158, 11, 0);
+    outline: 2px solid transparent;
+    filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0));
+    transform: scale(1);
+  }
 }
 
 .week-event-card.lock-pulse-glow,
 .month-event-pill.lock-pulse-glow {
   animation: cardLockPulseGlow 0.95s ease-in-out !important;
+  z-index: 50 !important;
 }
 
 .day-event-card.lock-pulse-glow .cal-event-lock-btn,

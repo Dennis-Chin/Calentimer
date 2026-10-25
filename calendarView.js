@@ -2527,6 +2527,11 @@ export class CalendarView {
         this.openEventInspector(ev);
         return;
       }
+      if (ev.isLocked) {
+        if (e && e.cancelable) e.preventDefault();
+        this._activeDragCancelHandler = null;
+        return;
+      }
       finishDrag();
     }, { passive: false });
 
@@ -2575,6 +2580,10 @@ export class CalendarView {
           clearTimeout(holdTimer);
           holdTimer = null;
           this.openEventInspector(ev);
+          return;
+        }
+        if (ev.isLocked) {
+          this._activeDragCancelHandler = null;
           return;
         }
         finishDrag();
@@ -3056,6 +3065,11 @@ export class CalendarView {
         this.openEventInspector(ev);
         return;
       }
+      if (ev.isLocked) {
+        if (e && e.cancelable) e.preventDefault();
+        this._activeDragCancelHandler = null;
+        return;
+      }
       finishDrag(lastClientX, lastClientY);
     }, { passive: false });
 
@@ -3104,6 +3118,10 @@ export class CalendarView {
           clearTimeout(holdTimer);
           holdTimer = null;
           this.openEventInspector(ev);
+          return;
+        }
+        if (ev.isLocked) {
+          this._activeDragCancelHandler = null;
           return;
         }
         finishDrag(me.clientX, me.clientY);
@@ -3466,6 +3484,11 @@ export class CalendarView {
         this.openEventInspector(ev);
         return;
       }
+      if (ev.isLocked) {
+        if (e && e.cancelable) e.preventDefault();
+        this._activeDragCancelHandler = null;
+        return;
+      }
       finishDrag(lastClientX, lastClientY);
     }, { passive: false });
 
@@ -3511,6 +3534,10 @@ export class CalendarView {
           clearTimeout(holdTimer);
           holdTimer = null;
           this.openEventInspector(ev);
+          return;
+        }
+        if (ev.isLocked) {
+          this._activeDragCancelHandler = null;
           return;
         }
         finishDrag(me.clientX, me.clientY);
