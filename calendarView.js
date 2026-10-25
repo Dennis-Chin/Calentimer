@@ -65,6 +65,7 @@ export class CalendarView {
       dayView: document.getElementById('calendarDayView'),
       dayTimelineScroll: document.getElementById('dayTimelineScroll'),
       dayTimelineBody: document.getElementById('dayTimelineBody'),
+      bottomFade: document.querySelector('.calendar-bottom-fade'),
 
       // Event Inspector Modal
       eventModalBackdrop: document.getElementById('calendarEventModalBackdrop'),
@@ -711,6 +712,25 @@ export class CalendarView {
         body.appendChild(slot);
       }
 
+      // Render final end-time boundary line and label (00:00 or custom end time) on slide
+      const endSlot = document.createElement('div');
+      endSlot.className = 'day-timeline-hour-slot day-timeline-end-slot';
+      endSlot.style.height = '0px';
+      endSlot.style.minHeight = '0px';
+
+      const endTimeLabel = document.createElement('div');
+      endTimeLabel.className = 'day-time-label day-end-time-label';
+      const endHDisplay = String(endHour % 24).padStart(2, '0');
+      endTimeLabel.textContent = `${endHDisplay}:00`;
+      endSlot.appendChild(endTimeLabel);
+
+      const endLine = document.createElement('div');
+      endLine.className = 'day-slot-content day-end-boundary-line';
+      endLine.style.height = '0px';
+      endSlot.appendChild(endLine);
+
+      body.appendChild(endSlot);
+
       // Render Dynamic Light-Blue Current Time Line on slide if target day is today
       const todayStr = this._formatDateISO(new Date());
       if (targetStr === todayStr) {
@@ -795,8 +815,8 @@ export class CalendarView {
       body.className = 'week-grid-body';
 
       const isCustom = taskStore.getCalendarCustomRangeEnabled();
-      let startHour = 7;
-      let endHour = 22;
+      let startHour = 0;
+      let endHour = 24;
       if (isCustom) {
         const startStr = taskStore.getCalendarStartTime() || '08:00';
         const endStr = taskStore.getCalendarEndTime() || '22:00';
@@ -808,39 +828,38 @@ export class CalendarView {
 
       const timeCol = document.createElement('div');
       timeCol.className = 'week-time-col';
-      for (let h = startHour; h < endHour; h++) {
+      for (let h = startHour; h <= endHour; h++) {
         const lbl = document.createElement('div');
         lbl.className = 'week-hour-label';
-        lbl.textContent = `${String(h).padStart(2, '0')}:00`;
-        lbl.style.top = `calc(14px + ${(h - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+        const hDisplay = String(h % 24).padStart(2, '0');
+        lbl.textContent = `${hDisplay}:00`;
+        lbl.style.top = `${(h - startHour) * hourHeight}px`;
         timeCol.appendChild(lbl);
       }
       body.appendChild(timeCol);
-
-      const padlockSvg = `<svg class="cal-mini-lock-svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
 
       for (let i = 0; i < 7; i++) {
         const d = weekDates[i];
         const dStr = this._formatDateISO(d);
         const dayCol = document.createElement('div');
         dayCol.className = 'week-day-col';
-        dayCol.style.height = `calc(${(endHour - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+        dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
 
         const resolution = this.weekResolution || 15;
-        for (let h = startHour; h < endHour; h++) {
+        for (let h = startHour; h <= endHour; h++) {
           const line = document.createElement('div');
           line.className = 'week-hour-line';
-          line.style.top = `calc(14px + ${(h - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+          line.style.top = `${(h - startHour) * hourHeight}px`;
           dayCol.appendChild(line);
 
-          if (resolution < 60) {
+          if (h < endHour && resolution < 60) {
             const stepCount = 60 / resolution;
             for (let s = 1; s < stepCount; s++) {
               const subLine = document.createElement('div');
               subLine.className = 'week-sub-interval-line';
               subLine.setAttribute('data-h-idx', String(h - startHour));
               subLine.setAttribute('data-s-ratio', String(s / stepCount));
-              subLine.style.top = `calc(14px + ${(h - startHour) + (s / stepCount)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+              subLine.style.top = `${((h - startHour) + (s / stepCount)) * hourHeight}px`;
               dayCol.appendChild(subLine);
             }
           }
@@ -855,7 +874,7 @@ export class CalendarView {
           const cardEndHour = endMin / 60;
 
           if (cardEndHour > startHour && cardStartHour < endHour) {
-            const top = 14 + Math.max(0, (cardStartHour - startHour) * hourHeight);
+            const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
             const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
             const height = durationHrs * hourHeight;
             const card = document.createElement('div');
@@ -863,10 +882,13 @@ export class CalendarView {
             card.style.top = `${top}px`;
             card.style.height = `${height}px`;
             card.style.backgroundColor = this._getCategoryColor(ev.category);
-            const isShort = height < 44;
+            const isCompact = height < 44;
+            if (isCompact) {
+              card.classList.add('is-compact-short');
+            }
             card.innerHTML = `
-              <div class="week-event-title">${this._escapeHtml(ev.title)} ${isShort && ev.isLocked ? padlockSvg : ''}</div>
-              ${!isShort ? `<div class="week-event-time">${ev.startTime} ${ev.isLocked ? padlockSvg : ''}</div>` : ''}
+              <div class="week-event-title">${this._escapeHtml(ev.title)}</div>
+              <div class="week-event-time">${ev.startTime} - ${ev.endTime}</div>
             `;
             dayCol.appendChild(card);
           }
@@ -1142,8 +1164,8 @@ export class CalendarView {
 
     const hourHeight = this.weekHourHeight || 50;
     const isCustom = taskStore.getCalendarCustomRangeEnabled();
-    let startHour = 7;
-    let endHour = 22;
+    let startHour = 0;
+    let endHour = 24;
     if (isCustom) {
       const startStr = taskStore.getCalendarStartTime() || '08:00';
       const endStr = taskStore.getCalendarEndTime() || '22:00';
@@ -1156,7 +1178,7 @@ export class CalendarView {
     // Update hour labels in time column
     const labels = body.querySelectorAll('.week-hour-label');
     for (let i = 0; i < labels.length; i++) {
-      labels[i].style.top = `${14 + (i * hourHeight)}px`;
+      labels[i].style.top = `${i * hourHeight}px`;
     }
 
     // Update day columns height and horizontal lines
@@ -1165,14 +1187,14 @@ export class CalendarView {
       dayCols[i].style.height = `${(endHour - startHour) * hourHeight}px`;
       const lines = dayCols[i].querySelectorAll('.week-hour-line');
       for (let j = 0; j < lines.length; j++) {
-        lines[j].style.top = `${14 + (j * hourHeight)}px`;
+        lines[j].style.top = `${j * hourHeight}px`;
       }
       const subLines = dayCols[i].querySelectorAll('.week-sub-interval-line');
       for (let s = 0; s < subLines.length; s++) {
         const sub = subLines[s];
         const hIdx = parseFloat(sub.getAttribute('data-h-idx') || '0');
         const ratio = parseFloat(sub.getAttribute('data-s-ratio') || '0');
-        sub.style.top = `${14 + (hIdx * hourHeight) + (ratio * hourHeight)}px`;
+        sub.style.top = `${(hIdx * hourHeight) + (ratio * hourHeight)}px`;
       }
     }
 
@@ -1191,7 +1213,7 @@ export class CalendarView {
           dur = endMin - startMin;
           if (dur <= 0) dur = 60;
         }
-        const topPx = 14 + (((startMin - (startHour * 60)) / 60) * hourHeight);
+        const topPx = Math.max(0, ((startMin - (startHour * 60)) / 60) * hourHeight);
         const hPx = Math.max(20, (dur / 60) * hourHeight);
         card.style.top = `${topPx}px`;
         card.style.height = `${hPx}px`;
@@ -1277,6 +1299,14 @@ export class CalendarView {
     if (el.dayView) el.dayView.classList.toggle('hidden', viewName !== 'day');
     if (el.weekView) el.weekView.classList.toggle('hidden', viewName !== 'week');
     if (el.monthView) el.monthView.classList.toggle('hidden', viewName !== 'month');
+
+    // Remove bottom fade in month view since scrolling is unnecessary
+    if (el.modalBody) {
+      el.modalBody.classList.toggle('is-month-view', viewName === 'month');
+    }
+    if (el.bottomFade) {
+      el.bottomFade.style.display = (viewName === 'month') ? 'none' : 'block';
+    }
 
     // Interval selector in Day & Week views; hidden in Month view
     if (el.resolutionWrapper) {
@@ -1573,6 +1603,25 @@ export class CalendarView {
       body.appendChild(slot);
     }
 
+    // Render final end-time boundary line and label (00:00 or custom end time)
+    const endSlot = document.createElement('div');
+    endSlot.className = 'day-timeline-hour-slot day-timeline-end-slot';
+    endSlot.style.height = '0px';
+    endSlot.style.minHeight = '0px';
+
+    const endTimeLabel = document.createElement('div');
+    endTimeLabel.className = 'day-time-label day-end-time-label';
+    const endHDisplay = String(endHour % 24).padStart(2, '0');
+    endTimeLabel.textContent = `${endHDisplay}:00`;
+    endSlot.appendChild(endTimeLabel);
+
+    const endLine = document.createElement('div');
+    endLine.className = 'day-slot-content day-end-boundary-line';
+    endLine.style.height = '0px';
+    endSlot.appendChild(endLine);
+
+    body.appendChild(endSlot);
+
     // Render Dynamic Light-Blue Current Time Line
     if (isToday) {
       this._renderCurrentTimeLine();
@@ -1654,14 +1703,19 @@ export class CalendarView {
       // Padlock button toggle listener
       const lockBtn = card.querySelector('[data-action="toggle-lock"]');
       if (lockBtn) {
-        lockBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
+        const toggleLock = (e) => {
+          if (e) {
+            e.stopPropagation();
+            if (e.cancelable) e.preventDefault();
+          }
           const newLocked = !ev.isLocked;
           taskStore.updateCalendarEvent(ev.id, { isLocked: newLocked });
           mobileServices.hapticTap();
           this.render();
           this._showToast(newLocked ? '🔒 Event locked to fixed schedule' : '🔓 Event unlocked (flexible)');
-        });
+        };
+        lockBtn.addEventListener('click', toggleLock);
+        lockBtn.addEventListener('touchend', toggleLock, { passive: false });
       }
 
       // Hold-to-drag and tap-to-inspect setup
@@ -1721,8 +1775,8 @@ export class CalendarView {
     const allEvents = taskStore.getCalendarEvents();
 
     const isCustom = taskStore.getCalendarCustomRangeEnabled();
-    let startHour = 7;
-    let endHour = 22;
+    let startHour = 0;
+    let endHour = 24;
     if (isCustom) {
       const startStr = taskStore.getCalendarStartTime() || '08:00';
       const endStr = taskStore.getCalendarEndTime() || '22:00';
@@ -1735,19 +1789,18 @@ export class CalendarView {
       this.elements.weekGridScroll.style.setProperty('--cal-week-hour-height', `${hourHeight}px`);
     }
 
-    // Time labels column
+    // Time labels column (includes final boundary endHour marker e.g. 00:00 or custom end time)
     const timeCol = document.createElement('div');
     timeCol.className = 'week-time-col';
-    for (let h = startHour; h < endHour; h++) {
+    for (let h = startHour; h <= endHour; h++) {
       const lbl = document.createElement('div');
       lbl.className = 'week-hour-label';
-      lbl.textContent = `${String(h).padStart(2, '0')}:00`;
-      lbl.style.top = `calc(14px + ${(h - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+      const hDisplay = String(h % 24).padStart(2, '0');
+      lbl.textContent = `${hDisplay}:00`;
+      lbl.style.top = `${(h - startHour) * hourHeight}px`;
       timeCol.appendChild(lbl);
     }
     body.appendChild(timeCol);
-
-    const padlockSvg = `<svg class="cal-mini-lock-svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
 
     // 7 day columns
     for (let i = 0; i < 7; i++) {
@@ -1756,25 +1809,25 @@ export class CalendarView {
       const dayCol = document.createElement('div');
       dayCol.className = 'week-day-col';
       dayCol.setAttribute('data-date', dStr);
-      dayCol.style.height = `calc(${(endHour - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+      dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
 
-      // Render bold solid hour lines and subtle dashed interval lines matching Day view
+      // Render bold solid hour lines from startHour to endHour
       const resolution = this.weekResolution || 15;
-      for (let h = startHour; h < endHour; h++) {
+      for (let h = startHour; h <= endHour; h++) {
         const line = document.createElement('div');
         line.className = 'week-hour-line';
-        line.style.top = `calc(14px + ${(h - startHour)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+        line.style.top = `${(h - startHour) * hourHeight}px`;
         dayCol.appendChild(line);
 
-        // Sub-interval dashed lines (only intervals have dashed lines)
-        if (resolution < 60) {
+        // Sub-interval dashed lines only within hours (h < endHour)
+        if (h < endHour && resolution < 60) {
           const stepCount = 60 / resolution;
           for (let s = 1; s < stepCount; s++) {
             const subLine = document.createElement('div');
             subLine.className = 'week-sub-interval-line';
             subLine.setAttribute('data-h-idx', String(h - startHour));
             subLine.setAttribute('data-s-ratio', String(s / stepCount));
-            subLine.style.top = `calc(14px + ${(h - startHour) + (s / stepCount)} * var(--cal-week-hour-height, ${hourHeight}px))`;
+            subLine.style.top = `${((h - startHour) + (s / stepCount)) * hourHeight}px`;
             dayCol.appendChild(subLine);
           }
         }
@@ -1791,7 +1844,7 @@ export class CalendarView {
         const cardEndHour = endMin / 60;
 
         if (cardEndHour > startHour && cardStartHour < endHour) {
-          const top = 14 + Math.max(0, (cardStartHour - startHour) * hourHeight);
+          const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
           const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
           const height = durationHrs * hourHeight;
 
@@ -1802,12 +1855,15 @@ export class CalendarView {
           card.style.backgroundColor = this._getCategoryColor(ev.category);
           card.setAttribute('data-event-id', ev.id);
 
-          const isShort = height < 44;
+          const isCompact = height < 44;
+          if (isCompact) {
+            card.classList.add('is-compact-short');
+          }
 
-          // If short height, show only title (and lock icon). If taller, show time span too.
+          // Always render timespan below task title for all durations (15m, 30m, 45m, etc.)
           card.innerHTML = `
-            <div class="week-event-title">${this._escapeHtml(ev.title)} ${isShort && ev.isLocked ? padlockSvg : ''}</div>
-            ${!isShort ? `<div class="week-event-time">${ev.startTime} ${ev.isLocked ? padlockSvg : ''}</div>` : ''}
+            <div class="week-event-title">${this._escapeHtml(ev.title)}</div>
+            <div class="week-event-time">${ev.startTime} - ${ev.endTime}</div>
           `;
 
           this._setupWeekEventDrag(card, ev);
@@ -1820,7 +1876,7 @@ export class CalendarView {
       dayCol.addEventListener('click', (e) => {
         if (e.target.closest('.week-event-card')) return;
         const rect = dayCol.getBoundingClientRect();
-        const clickY = e.clientY - rect.top - 14;
+        const clickY = e.clientY - rect.top;
         const clickedHour = Math.floor(startHour + (clickY / hourHeight));
         const safeStartHour = Math.min(endHour - 1, Math.max(startHour, clickedHour));
         const startTimeStr = `${String(safeStartHour).padStart(2, '0')}:00`;
@@ -2486,6 +2542,7 @@ export class CalendarView {
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"]')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
         cancelDrag();
         return;
@@ -2514,6 +2571,7 @@ export class CalendarView {
     }, { passive: false });
 
     card.addEventListener('touchend', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"]')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         cancelDrag();
         if (e && e.cancelable) e.preventDefault();
@@ -2559,6 +2617,7 @@ export class CalendarView {
       }, 200);
 
       const onMouseMove = (me) => {
+        if (me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"]')) return;
         if (!isDragging) {
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
             clearTimeout(holdTimer);
@@ -2573,9 +2632,10 @@ export class CalendarView {
         updateDayDragPosition(me.clientX, me.clientY);
       };
 
-      const onMouseUp = () => {
+      const onMouseUp = (me) => {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
+        if (me && me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"]')) return;
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
@@ -2610,8 +2670,8 @@ export class CalendarView {
     let container = this.elements.weekGridScroll;
 
     const isCustom = taskStore.getCalendarCustomRangeEnabled();
-    let startHour = 7;
-    let endHour = 22;
+    let startHour = 0;
+    let endHour = 24;
     if (isCustom) {
       const startStr = taskStore.getCalendarStartTime() || '08:00';
       const endStr = taskStore.getCalendarEndTime() || '22:00';
@@ -2889,7 +2949,7 @@ export class CalendarView {
 
       if (targetCol) {
         const colRect = targetCol.getBoundingClientRect();
-        const cardTopY = (clientY - grabOffsetY) - colRect.top - 14;
+        const cardTopY = (clientY - grabOffsetY) - colRect.top;
         const hourHeight = this.weekHourHeight || 50;
         const resolution = this.weekResolution || 15;
         const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
@@ -2906,7 +2966,7 @@ export class CalendarView {
         if (silhouette.parentNode !== targetCol) {
           targetCol.appendChild(silhouette);
         }
-        const snappedTopPx = 14 + (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
+        const snappedTopPx = (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
         const durHeight = Math.max(20, (dur / 60) * hourHeight);
         silhouette.style.top = `${snappedTopPx - 1}px`;
         silhouette.style.height = `${durHeight + 2}px`;

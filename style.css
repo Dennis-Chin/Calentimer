@@ -4375,12 +4375,23 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
-  background: linear-gradient(to bottom, transparent 0%, var(--bg-surface) 92%);
+  width: 100%;
+  height: 72px;
+  background: linear-gradient(to bottom, transparent 0%, rgba(20, 24, 34, 0.5) 30%, var(--bg-surface) 75%, var(--bg-surface) 100%);
   pointer-events: none;
   z-index: 10 !important; /* Below floating controls (z-index: 50) */
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+[data-theme="light"] .calendar-bottom-fade {
+  background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.5) 30%, var(--bg-surface) 75%, var(--bg-surface) 100%);
+}
+
+/* Month view: no scroll needed, remove bottom fade overlay */
+.full-calendar-body.is-month-view .calendar-bottom-fade,
+.calendar-view-container:not(.hidden)#calendarMonthView ~ .calendar-bottom-fade {
+  display: none !important;
 }
 
 /* 1. Day View Timeline with Hidden Scrollbar */
@@ -4882,7 +4893,7 @@ body {
 .week-day-col {
   border-left: 1px solid var(--border-subtle); /* Solid vertical lines */
   position: relative;
-  height: calc(16 * var(--cal-week-hour-height, 52px));
+  box-sizing: border-box;
 }
 
 .week-day-col:last-child {
@@ -4971,6 +4982,24 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: clip;
+}
+
+/* Squeeze styling for 15m, 30m, 45m cards in week view so timespan fits below title */
+.week-event-card.is-compact-short {
+  padding: 1px 3px !important;
+  justify-content: center;
+}
+
+.week-event-card.is-compact-short .week-event-title {
+  font-size: 0.65rem !important;
+  line-height: 1.05 !important;
+}
+
+.week-event-card.is-compact-short .week-event-time {
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+  margin-top: 0 !important;
+  color: rgba(255, 255, 255, 0.92) !important;
 }
 
 .week-event-card:hover {
