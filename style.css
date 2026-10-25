@@ -4139,13 +4139,30 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.cal-nav-btn:hover, .cal-nav-btn:active {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--primary);
-  color: var(--primary);
+@media (hover: hover) {
+  .cal-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+}
+
+.cal-nav-btn:active,
+.cal-nav-btn.is-active-nav {
+  background: rgba(0, 255, 136, 0.15) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.35) !important;
+}
+
+.cal-nav-btn:focus,
+.cal-nav-btn:focus-visible {
+  outline: none;
 }
 
 .cal-nav-today-btn {
@@ -4539,8 +4556,9 @@ body {
   border-color: rgba(255, 255, 255, 0.22);
 }
 
+/* Day view locked cards retain standard category border; padlock icon indicates lock state */
 .day-event-card.is-locked {
-  border-left-color: #f59e0b;
+  /* No static orange border - padlock icon is sufficient */
 }
 
 .day-event-card .day-event-content {
@@ -4698,7 +4716,7 @@ body {
   gap: 3px;
 }
 
-/* Pulsing Glow Animation for Padlock when Dragging is Prevented */
+/* Pulsing Glow Animation for Padlock and Event Border when Dragging is Prevented */
 @keyframes lockPulseGlow {
   0% { transform: scale(1); filter: drop-shadow(0 0 0px #f59e0b); }
   25% { transform: scale(1.35); filter: drop-shadow(0 0 10px #f59e0b); }
@@ -4707,9 +4725,38 @@ body {
   100% { transform: scale(1); filter: drop-shadow(0 0 0px #f59e0b); }
 }
 
+@keyframes eventBorderLockPulse {
+  0% {
+    box-shadow: 0 0 0px transparent;
+    border-color: inherit;
+  }
+  25% {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.85), inset 0 0 8px rgba(245, 158, 11, 0.4);
+    border-color: #f59e0b !important;
+  }
+  50% {
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+    border-color: #f59e0b !important;
+  }
+  75% {
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.8), inset 0 0 6px rgba(245, 158, 11, 0.35);
+    border-color: #f59e0b !important;
+  }
+  100% {
+    box-shadow: 0 0 0px transparent;
+    border-color: inherit;
+  }
+}
+
 .cal-event-lock-btn.pulse-glow {
   animation: lockPulseGlow 1s ease-in-out;
   color: #f59e0b !important;
+}
+
+.day-event-card.lock-pulse-glow,
+.week-event-card.lock-pulse-glow,
+.month-event-pill.lock-pulse-glow {
+  animation: eventBorderLockPulse 0.95s ease-in-out !important;
 }
 
 .day-event-card.is-compact {

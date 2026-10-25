@@ -2818,6 +2818,7 @@ function setAddTaskType(type) {
 // Add Task Modal Logic (Unified Planning UI)
 // ==========================================
 function openAddTaskModal(defaultType = 'work', prefillData = null) {
+  ensureHistoryBuffer();
   const modal = document.getElementById('addTaskModalBackdrop');
   if (!modal) return;
   const inputTitle = document.getElementById('addModalTitle');
@@ -2907,6 +2908,7 @@ function openTaskEditModal(taskId) {
   if (typeof renderAllDurationPresetChips === 'function') renderAllDurationPresetChips();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
 
+  ensureHistoryBuffer();
   (() => { const _el = document.getElementById("taskEditModalBackdrop"); if (_el) _el.classList.remove("hidden"); })();
   mobileServices.hapticTap();
 }
@@ -2959,8 +2961,18 @@ function closeTaskEditModal() {
 // ==========================================
 // Navigation Drawer, Settings & Calendar Modals (Module Scope)
 // ==========================================
+function ensureHistoryBuffer() {
+  try {
+    if (typeof window !== 'undefined' && window.history && typeof window.history.pushState === 'function') {
+      window.history.pushState({ appState: 'app' }, '');
+    }
+  } catch (_) {}
+}
+window.ensureHistoryBuffer = ensureHistoryBuffer;
+
 function openDrawer() {
   if (navDrawer && navDrawerBackdrop) {
+    ensureHistoryBuffer();
     navDrawer.style.removeProperty('transform');
     navDrawer.style.removeProperty('transition');
     navDrawer.style.removeProperty('visibility');
@@ -2987,6 +2999,7 @@ function closeDrawer() {
 }
 
 function openSettings() {
+  ensureHistoryBuffer();
   closeDrawer();
   closeCalendar();
   closeTodo();
@@ -3028,6 +3041,7 @@ function closeSettings() {
 }
 
 function openCalendar() {
+  ensureHistoryBuffer();
   closeDrawer();
   closeSettings();
   closeTodo();
@@ -3053,6 +3067,7 @@ function closeCalendar() {
 }
 
 function openTodo() {
+  ensureHistoryBuffer();
   closeDrawer();
   closeSettings();
   closeCalendar();
@@ -5365,81 +5380,119 @@ function setupNavigationAndModals() {
     // 1. If Exit modal is already open, back button dismisses it
     if (confirmExitAppModalBackdrop && !confirmExitAppModalBackdrop.classList.contains('hidden')) {
       closeConfirmExitAppModal();
-      if (window.history && typeof window.history.pushState === 'function') {
-        window.history.pushState({ appState: 'app' }, '');
-      }
+      ensureHistoryBuffer();
       return;
     }
 
-    // 2. If any other modal is open, back button closes it
-    const openModals = document.querySelectorAll('.modal-backdrop:not(.hidden)');
-    let activeModal = null;
-    for (let i = 0; i < openModals.length; i++) {
-      if (openModals[i] !== confirmExitAppModalBackdrop) {
-        activeModal = openModals[i];
-        break;
+    // 2. Innermost Dialogs & Pickers (close the child modal first before closing any parent tab)
+    const subModals = [
+      'confirmDeleteTodoModalBackdrop',
+      'durationDialModalBackdrop',
+      'emojiPickerModalBackdrop',
+      'timeBankInfoModalBackdrop',
+      'alertsModalBackdrop',
+      'hardStopModalBackdrop',
+      'selectTodoModalBackdrop',
+      'calendarEventModalBackdrop',
+      'addTodoModalBackdrop',
+      'addTaskModalBackdrop',
+      'taskEditModalBackdrop'
+    ];
+
+    for (let s = 0; s < subModals.length; s++) {
+      const el = document.getElementById(subModals[s]);
+      if (el && !el.classList.contains('hidden')) {
+        const closeBtn = el.querySelector('.btn-close-modal, .btn-confirm-cancel, .btn-modal-cancel-danger, #btnCloseCalEventModal, #btnCloseTaskEdit, #btnCloseAddTaskModal, #btnCloseAddTodoModal');
+        if (closeBtn) {
+          closeBtn.click();
+        } else {
+          el.classList.add('hidden');
+        }
+        mobileServices.hapticTap();
+        ensureHistoryBuffer();
+        return;
       }
     }
 
-    if (activeModal) {
-      if (window.history && typeof window.history.pushState === 'function') {
-        window.history.pushState({ appState: 'app' }, '');
-      }
-
-      // If in Settings sub-panel, back button navigates back to main settings first
-      if (activeModal.id === 'settingsModalBackdrop') {
-        const timerSub = document.getElementById('timerSettingsSubPanel');
-        const calSub = document.getElementById('calendarSettingsSubPanel');
-        if (timerSub && !timerSub.classList.contains('hidden')) {
-          const btnBackTimer = document.getElementById('btnBackTimerSettings');
-          if (btnBackTimer) {
-            btnBackTimer.click();
-            return;
-          }
+    // 3. Settings Sub-Panels (Timer Settings & Calendar Settings -> go back to main Settings)
+    const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+    if (settingsModalBackdrop && !settingsModalBackdrop.classList.contains('hidden')) {
+      const timerSub = document.getElementById('timerSettingsSubPanel');
+      const calSub = document.getElementById('calendarSettingsSubPanel');
+      if (timerSub && !timerSub.classList.contains('hidden')) {
+        const btnBackTimer = document.getElementById('btnBackTimerSettings');
+        if (btnBackTimer) {
+          btnBackTimer.click();
+          ensureHistoryBuffer();
+          return;
         }
-        if (calSub && !calSub.classList.contains('hidden')) {
-          const btnBackCal = document.getElementById('btnBackCalendarSettings');
-          if (btnBackCal) {
-            btnBackCal.click();
-            return;
-          }
+      }
+      if (calSub && !calSub.classList.contains('hidden')) {
+        const btnBackCal = document.getElementById('btnBackCalendarSettings');
+        if (btnBackCal) {
+          btnBackCal.click();
+          ensureHistoryBuffer();
+          return;
         }
       }
 
-      const closeBtn = activeModal.querySelector('.btn-close-modal, .btn-confirm-cancel, #btnCloseFullCalendar');
-      if (closeBtn) {
-        closeBtn.click();
+      // If at main Settings level -> close Settings and go back to Timer screen
+      closeSettings();
+      mobileServices.hapticTap();
+      ensureHistoryBuffer();
+      return;
+    }
+
+    // 4. Calendar Tab (Full Calendar View) -> close calendar and return to Timer screen
+    const fullCalendarModalBackdrop = document.getElementById('fullCalendarModalBackdrop');
+    if (fullCalendarModalBackdrop && !fullCalendarModalBackdrop.classList.contains('hidden')) {
+      if (calendarView && typeof calendarView.close === 'function') {
+        calendarView.close();
       } else {
-        activeModal.classList.add('hidden');
+        fullCalendarModalBackdrop.classList.add('hidden');
       }
       mobileServices.hapticTap();
+      ensureHistoryBuffer();
       return;
     }
 
-    // 3. If Today's Tasks drawer is expanded, back button closes it
+    // 5. Today's Schedule Modal Tab -> close and return to Timer screen
+    const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
+    if (calendarModalBackdrop && !calendarModalBackdrop.classList.contains('hidden')) {
+      closeCalendar();
+      mobileServices.hapticTap();
+      ensureHistoryBuffer();
+      return;
+    }
+
+    // 6. To-Do Tab -> close and return to Timer screen
+    const todoModalBackdrop = document.getElementById('todoModalBackdrop');
+    if (todoModalBackdrop && !todoModalBackdrop.classList.contains('hidden')) {
+      closeTodo();
+      mobileServices.hapticTap();
+      ensureHistoryBuffer();
+      return;
+    }
+
+    // 7. Today's Tasks Bottom Drawer -> collapse and stay on Timer screen
     if (taskDrawer && !taskDrawer.classList.contains('collapsed')) {
-      if (window.history && typeof window.history.pushState === 'function') {
-        window.history.pushState({ page: 'calentimer' }, '');
-      }
       closeTaskDrawer();
       mobileServices.hapticTap();
+      ensureHistoryBuffer();
       return;
     }
 
-    // 4. If Nav Drawer is open, back button closes it
+    // 8. Navigation Drawer Menu -> close and stay on Timer screen
     if (navDrawer && navDrawer.classList.contains('open')) {
-      if (window.history && typeof window.history.pushState === 'function') {
-        window.history.pushState({ page: 'calentimer' }, '');
-      }
       closeDrawer();
       mobileServices.hapticTap();
+      ensureHistoryBuffer();
       return;
     }
 
-    // 5. On the main timer screen! Re-push state so user doesn't leave unexpectedly and show confirmation popup!
-    if (window.history && typeof window.history.pushState === 'function') {
-      window.history.pushState({ appState: 'app' }, '');
-    }
+    // 9. Root Timer Screen with nothing else open:
+    // Prompt the user with the confirmation dialog ("Close App?")
+    ensureHistoryBuffer();
     openConfirmExitAppModal();
   }
 

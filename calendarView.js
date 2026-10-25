@@ -27,6 +27,7 @@ export class CalendarView {
     this.isDraggingEvent = false; // Prevents page swipe when holding/dragging an event
     this.isPinching = false;
     this.pinchCooldownUntil = 0;
+    this.isNavigating = false; // Prevents overlapping arrow transitions
     this._activeDragCancelHandler = null;
 
     // DOM Elements (bound on init)
@@ -34,6 +35,10 @@ export class CalendarView {
   }
 
   init() {
+    this.activeView = (typeof taskStore !== 'undefined' && typeof taskStore.getCalendarView === 'function')
+      ? (taskStore.getCalendarView() || 'day')
+      : 'day';
+
     // Cache DOM Elements
     this.elements = {
       backdrop: document.getElementById('fullCalendarModalBackdrop'),
@@ -175,12 +180,12 @@ export class CalendarView {
       });
     }
 
-    // Navigation Buttons
+    // Navigation Buttons (Smooth swipe transition on left/right arrow click)
     if (el.btnPrev) {
-      el.btnPrev.addEventListener('click', () => this.navigate(-1));
+      el.btnPrev.addEventListener('click', () => this.slideNavigate(-1, el.btnPrev));
     }
     if (el.btnNext) {
-      el.btnNext.addEventListener('click', () => this.navigate(1));
+      el.btnNext.addEventListener('click', () => this.slideNavigate(1, el.btnNext));
     }
     if (el.btnToday) {
       el.btnToday.addEventListener('click', () => this.goToToday());
@@ -1195,12 +1200,24 @@ export class CalendarView {
   // ==========================================
 
   open() {
+    if (typeof window !== 'undefined' && typeof window.ensureHistoryBuffer === 'function') {
+      window.ensureHistoryBuffer();
+    }
     if (this.elements.backdrop) {
       this.elements.backdrop.classList.remove('hidden');
     }
     analytics.trackInteraction('tab_switch', 'full_calendar');
     mobileServices.hapticTap();
-    this.render();
+
+    // Reset date to today so it defaults to this day, this week, or this month
+    const today = new Date();
+    this.currentDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    this.selectedDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const savedView = (typeof taskStore !== 'undefined' && typeof taskStore.getCalendarView === 'function')
+      ? taskStore.getCalendarView()
+      : 'day';
+    this.switchView(savedView || 'day');
 
     // Start dynamic current time ticker
     this._startTimeTicker();
@@ -1240,6 +1257,9 @@ export class CalendarView {
   switchView(viewName) {
     if (!viewName) return;
     this.activeView = viewName;
+    if (typeof taskStore !== 'undefined' && typeof taskStore.setCalendarView === 'function') {
+      taskStore.setCalendarView(viewName);
+    }
 
     const el = this.elements;
     if (el.viewSelect) {
@@ -1277,6 +1297,100 @@ export class CalendarView {
     if (viewName === 'day' && this._isViewingToday()) {
       setTimeout(() => this._scrollToCurrentTime(), 60);
     }
+  }
+
+  // Smooth swipe transition when tapping left/right arrow buttons
+  slideNavigate(direction, btn) {
+    if (this.isNavigating) return;
+    this.isNavigating = true;
+
+    if (btn) {
+      btn.classList.add('is-active-nav');
+    }
+
+    const dir = direction > 0 ? 1 : -1;
+    const modalBody = document.querySelector('.full-calendar-body');
+    const activeContainer = (this.activeView === 'day')
+      ? this.elements.dayView
+      : ((this.activeView === 'week') ? this.elements.weekView : this.elements.monthView);
+
+    if (!modalBody || !activeContainer) {
+      this.navigate(dir);
+      this.isNavigating = false;
+      if (btn) {
+        btn.classList.remove('is-active-nav');
+        if (typeof btn.blur === 'function') btn.blur();
+      }
+      return;
+    }
+
+    const bodyWidth = modalBody.clientWidth || 360;
+    const targetDate = new Date(this.currentDate);
+    if (this.activeView === 'day') {
+      targetDate.setDate(targetDate.getDate() + dir);
+    } else if (this.activeView === 'week') {
+      targetDate.setDate(targetDate.getDate() + (dir * 7));
+    } else if (this.activeView === 'month') {
+      targetDate.setMonth(targetDate.getMonth() + dir);
+    }
+
+    const currentScrollEl = activeContainer.querySelector('.day-timeline-scroll, .week-grid-scroll');
+    const currentScrollTop = currentScrollEl ? currentScrollEl.scrollTop : 0;
+
+    let adjacentSlide = null;
+    if (typeof this._buildAdjacentPreviewSlide === 'function') {
+      adjacentSlide = this._buildAdjacentPreviewSlide(targetDate, dir, currentScrollTop);
+    }
+
+    if (!adjacentSlide) {
+      this.navigate(dir, currentScrollTop);
+      this.isNavigating = false;
+      if (btn) {
+        btn.classList.remove('is-active-nav');
+        if (typeof btn.blur === 'function') btn.blur();
+      }
+      return;
+    }
+
+    const startXAdj = dir > 0 ? bodyWidth : -bodyWidth;
+    adjacentSlide.style.transition = 'none';
+    adjacentSlide.style.transform = `translate3d(${startXAdj}px, 0, 0)`;
+    modalBody.appendChild(adjacentSlide);
+
+    const adjScroll = adjacentSlide.querySelector('.day-timeline-scroll, .week-grid-scroll');
+    if (adjScroll) {
+      adjScroll.scrollTop = currentScrollTop;
+    }
+
+    // Force reflow for smooth animation
+    void adjacentSlide.offsetWidth;
+
+    activeContainer.style.transition = 'transform 0.30s cubic-bezier(0.16, 1, 0.3, 1)';
+    adjacentSlide.style.transition = 'transform 0.30s cubic-bezier(0.16, 1, 0.3, 1)';
+
+    activeContainer.style.transform = `translate3d(${-startXAdj}px, 0, 0)`;
+    adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
+
+    mobileServices.hapticTap();
+
+    setTimeout(() => {
+      this.navigate(dir, currentScrollTop);
+      if (adjacentSlide && adjacentSlide.parentNode) {
+        adjacentSlide.parentNode.removeChild(adjacentSlide);
+      }
+      const updatedContainer = (this.activeView === 'day')
+        ? this.elements.dayView
+        : ((this.activeView === 'week') ? this.elements.weekView : this.elements.monthView);
+      if (updatedContainer) {
+        updatedContainer.style.removeProperty('transform');
+        updatedContainer.style.removeProperty('transition');
+      }
+      this.isNavigating = false;
+      if (btn) {
+        btn.classList.remove('is-active-nav');
+        if (typeof btn.blur === 'function') btn.blur();
+      }
+    }, 310);
   }
 
   navigate(direction, preserveScrollTop) {
@@ -2217,7 +2331,7 @@ export class CalendarView {
       }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
-        this._showToast('🔒 Disable padlock to move this event');
+        this._showToast('🔒 Unlock event before moving');
         card.classList.remove('lock-pulse-glow');
         const lockBtn = card.querySelector('.cal-event-lock-btn');
         if (lockBtn) lockBtn.classList.remove('pulse-glow');
@@ -2675,7 +2789,7 @@ export class CalendarView {
       }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
-        this._showToast('🔒 Disable padlock to move this event');
+        this._showToast('🔒 Unlock event before moving');
         card.classList.remove('lock-pulse-glow');
         void card.offsetWidth;
         card.classList.add('lock-pulse-glow');
@@ -3127,7 +3241,7 @@ export class CalendarView {
       }
       if (ev.isLocked) {
         mobileServices.hapticWarning();
-        this._showToast('🔒 Disable padlock to move this event');
+        this._showToast('🔒 Unlock event before moving');
         pill.classList.remove('lock-pulse-glow');
         void pill.offsetWidth;
         pill.classList.add('lock-pulse-glow');
@@ -3429,6 +3543,9 @@ export class CalendarView {
   }
 
   openEventInspector(eventObj, defaultDateStr, defaultStartTime, defaultEndTime) {
+    if (typeof window !== 'undefined' && typeof window.ensureHistoryBuffer === 'function') {
+      window.ensureHistoryBuffer();
+    }
     this.selectedEvent = eventObj || null;
     const el = this.elements;
 

@@ -42,8 +42,24 @@ function createMockElement(tagName = 'div', id = '') {
     get innerHTML() { return rawInnerHtml; },
     set innerHTML(val) {
       rawInnerHtml = val;
-      if (val === '') {
-        children.length = 0;
+      children.length = 0;
+      if (val && typeof val === 'string') {
+        const tagRegex = /<([a-z0-9]+)([^>]*)>/gi;
+        let match;
+        while ((match = tagRegex.exec(val)) !== null) {
+          const tagName = match[1];
+          const attrs = match[2];
+          const childEl = createMockElement(tagName);
+          const classMatch = attrs.match(/class=["']([^"']+)["']/i);
+          if (classMatch) childEl.className = classMatch[1];
+          const idMatch = attrs.match(/id=["']([^"']+)["']/i);
+          if (idMatch) childEl.id = idMatch[1];
+          const actionMatch = attrs.match(/data-action=["']([^"']+)["']/i);
+          if (actionMatch) childEl.setAttribute('data-action', actionMatch[1]);
+          childEl.parentNode = el;
+          childEl.parentElement = el;
+          children.push(childEl);
+        }
       }
     },
     clientWidth: 360,
@@ -101,6 +117,20 @@ function createMockElement(tagName = 'div', id = '') {
         const targetId = selector.substring(1);
         for (let i = 0; i < children.length; i++) {
           if (children[i].id === targetId) return children[i];
+          const found = children[i].querySelector ? children[i].querySelector(selector) : null;
+          if (found) return found;
+        }
+      } else if (selector.startsWith('[') && selector.endsWith(']')) {
+        const attrExpr = selector.substring(1, selector.length - 1);
+        const eqIdx = attrExpr.indexOf('=');
+        const attrName = eqIdx !== -1 ? attrExpr.substring(0, eqIdx) : attrExpr;
+        let attrVal = eqIdx !== -1 ? attrExpr.substring(eqIdx + 1) : null;
+        if (attrVal) attrVal = attrVal.replace(/^["']|["']$/g, '');
+        for (let i = 0; i < children.length; i++) {
+          const val = children[i].getAttribute ? children[i].getAttribute(attrName) : null;
+          if (eqIdx !== -1 ? val === attrVal : (children[i].hasAttribute && children[i].hasAttribute(attrName))) {
+            return children[i];
+          }
           const found = children[i].querySelector ? children[i].querySelector(selector) : null;
           if (found) return found;
         }
@@ -229,21 +259,22 @@ global.document = {
 };
 
 // 2. Import CalendarView and taskStore
-const { CalendarView } = await import('./calendarView.js');
-const { taskStore } = await import('./taskStore.js');
+(async function runCalendarTests() {
+  const { CalendarView } = await import('./calendarView.js');
+  const { taskStore } = await import('./taskStore.js');
 
-let passed = 0;
-let failed = 0;
+  let passed = 0;
+  let failed = 0;
 
-function assert(condition, message) {
-  if (condition) {
-    console.log(`  ✓ PASS: ${message}`);
-    passed++;
-  } else {
-    console.error(`  ✗ FAIL: ${message}`);
-    failed++;
+  function assert(condition, message) {
+    if (condition) {
+      console.log(`  ✓ PASS: ${message}`);
+      passed++;
+    } else {
+      console.error(`  ✗ FAIL: ${message}`);
+      failed++;
+    }
   }
-}
 
 console.log('--- 1. Testing CalendarView Initialization ---');
 const calendar = new CalendarView();
@@ -774,6 +805,9 @@ monthPinchPill.dispatchSimulatedEvent('touchstart', {
 await new Promise(resolve => setTimeout(resolve, 220));
 assert(calendar.isDraggingEvent === false, 'Month pill does not enter drag mode during multi-touch');
 assert(monthPinchPill.style.position !== 'fixed', 'Month pill is not lifted to fixed during multi-touch');
+window.dispatchSimulatedEvent('touchend', {});
+calendar.isPinching = false;
+calendar.pinchCooldownUntil = 0;
 
 console.log('\n--- 11. Testing Work / Break Segmented Toggle in Calendar Event Modal ---');
 // Scenario A: Opening new event defaults to Work
@@ -826,12 +860,85 @@ assert(calendar.elements.calEventTitleLabel.textContent === 'Break Name', 'Title
 assert(calendar.elements.btnSaveCalEvent.textContent === 'Save Break', 'Save button says Save Break');
 calendar.closeEventInspector();
 
-console.log('\n========================================');
-console.log(`Summary: ${passed} passed, ${failed} failed.`);
-console.log('========================================');
+console.log('\n--- 12. Testing Locked Event Pulsing, Default Today View on Open & Smooth Arrow Navigation ---');
 
-if (failed > 0) {
+// 1. Locked Event Toast & Glow in Day View
+const lockedDayEvent = {
+  id: 'evt-locked-1',
+  title: 'Fixed Meeting',
+  category: 'Work',
+  plannedDuration: 60,
+  startTime: '11:00',
+  endTime: '12:00',
+  date: calendar._formatDateISO(new Date()),
+  isLocked: true
+};
+taskStore.addCalendarEvent(lockedDayEvent);
+calendar.switchView('day');
+calendar.render();
+
+const testDayLockedCard = calendar.elements.dayTimelineBody.children.find(function(c) {
+  return c.getAttribute && c.getAttribute('data-event-id') === lockedDayEvent.id;
+});
+assert(testDayLockedCard !== null && testDayLockedCard !== undefined, 'Locked day card found in timeline');
+
+// Verify no static orange border inline or on day-event-card
+assert(testDayLockedCard.style.borderLeftColor !== '#f59e0b', 'Locked day card does not have static orange border');
+
+// Attempt to drag locked card
+let toastShown = '';
+calendar._showToast = function(msg) { toastShown = msg; };
+
+testDayLockedCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 100, clientY: 200 }]
+});
+await new Promise(function(resolve) { setTimeout(resolve, 220); });
+
+assert(toastShown === '🔒 Unlock event before moving', 'Toast pop-up notifies user to unlock event before moving');
+assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Day card pulses with glowing orange border (lock-pulse-glow)');
+const lockBtnInside = testDayLockedCard.querySelector('.cal-event-lock-btn');
+assert(lockBtnInside && lockBtnInside.classList.contains('pulse-glow'), 'Padlock icon pulses with glow (pulse-glow)');
+
+// 2. Calendar Tab defaults to today's date and user's chosen view upon opening
+calendar.currentDate.setDate(calendar.currentDate.getDate() + 14); // moved 2 weeks in future
+calendar.switchView('week'); // user selected week view
+taskStore.setCalendarView('week');
+
+calendar.open();
+const todayISO = calendar._formatDateISO(new Date());
+assert(calendar._formatDateISO(calendar.currentDate) === todayISO, 'calendar.open() resets date to today');
+assert(calendar.activeView === 'week', 'calendar.open() loads user-selected view (week)');
+
+// 3. Smooth Arrow Navigation & Glow Disablement
+calendar.switchView('day');
+calendar.render();
+const prevDateStr = calendar._formatDateISO(calendar.currentDate);
+
+const btnNext = calendar.elements.btnNext;
+assert(btnNext !== null, 'btnNext element exists');
+
+calendar.slideNavigate(1, btnNext);
+assert(btnNext.classList.contains('is-active-nav'), 'btnNext gains is-active-nav (green glow) during slide navigation');
+assert(calendar.isNavigating === true, 'calendar.isNavigating is true during animation');
+
+await new Promise(resolve => setTimeout(resolve, 340));
+
+assert(!btnNext.classList.contains('is-active-nav'), 'Green glow stops (is-active-nav removed) after view has moved over');
+assert(calendar.isNavigating === false, 'calendar.isNavigating resets to false after animation completes');
+const nextDate = new Date(prevDateStr);
+nextDate.setDate(nextDate.getDate() + 1);
+assert(calendar._formatDateISO(calendar.currentDate) === calendar._formatDateISO(nextDate), 'View transitioned to next day');
+
+  console.log('\n========================================');
+  console.log(`Summary: ${passed} passed, ${failed} failed.`);
+  console.log('========================================');
+
+  if (failed > 0) {
+    process.exit(1);
+  } else {
+    process.exit(0);
+  }
+})().catch(function(err) {
+  console.error('Unhandled error in testCalendarView:', err);
   process.exit(1);
-} else {
-  process.exit(0);
-}
+});

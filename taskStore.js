@@ -378,6 +378,32 @@ export class TaskStore {
   }
 
   /**
+   * Retrieves preferred calendar view ('day', 'week', 'month').
+   * Default is 'day'.
+   * @returns {string}
+   */
+  getCalendarView() {
+    try {
+      return safeGetItem('calentimer_calendar_view') || 'day';
+    } catch (e) {
+      return 'day';
+    }
+  }
+
+  /**
+   * Sets preferred calendar view ('day', 'week', 'month').
+   * @param {string} view
+   */
+  setCalendarView(view) {
+    try {
+      if (view === 'day' || view === 'week' || view === 'month') {
+        safeSetItem('calentimer_calendar_view', view);
+        this._notify();
+      }
+    } catch (e) {}
+  }
+
+  /**
    * Retrieves whether haptic feedback (vibrations) is enabled.
    * Default is true.
    * @returns {boolean}
