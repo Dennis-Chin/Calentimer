@@ -5496,6 +5496,10 @@ function setupNavigationAndModals() {
     openConfirmExitAppModal();
   }
 
+  window.handleMobileBackButton = handleMobileBackButton;
+  window.openConfirmExitAppModal = openConfirmExitAppModal;
+  window.closeConfirmExitAppModal = closeConfirmExitAppModal;
+
   window.addEventListener('popstate', handleMobileBackButton);
   document.addEventListener('backbutton', (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();

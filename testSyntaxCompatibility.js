@@ -188,6 +188,20 @@ assert(htmlContent.includes('id="calTypeSegmentWork"'), 'index.html contains #ca
 assert(htmlContent.includes('id="calTypeSegmentBreak"'), 'index.html contains #calTypeSegmentBreak');
 assert(calContent.includes('setCalEventType('), 'calendarView.js implements setCalEventType() handler');
 
+console.log('\n--- 5. Testing Exit App Modal, ensureHistoryBuffer & Clean Day Locked Styling ---');
+// 5. Exit App modal in index.html
+assert(htmlContent.includes('id="confirmExitAppModalBackdrop"'), '#confirmExitAppModalBackdrop exists in index.html');
+assert(htmlContent.includes('id="btnCancelExitApp"'), '#btnCancelExitApp exists in index.html');
+assert(htmlContent.includes('id="btnConfirmExitApp"'), '#btnConfirmExitApp exists in index.html');
+
+// 6. ensureHistoryBuffer declared in app.js
+assert(appContent.includes('function ensureHistoryBuffer('), 'app.js defines ensureHistoryBuffer()');
+
+// 7. Verify Day View locked card has no static orange border in style.css
+const cssContent = fs.readFileSync(path.resolve(process.cwd(), 'style.css'), 'utf8');
+const hasDayLockedOrangeBoxShadow = cssContent.includes('.day-event-card.is-locked') && cssContent.match(/\.day-event-card\.is-locked[^{]*\{[^}]*#f59e0b/);
+assert(!hasDayLockedOrangeBoxShadow, 'style.css has zero static orange borders or box-shadows on .day-event-card.is-locked');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

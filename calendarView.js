@@ -2323,6 +2323,21 @@ export class CalendarView {
       this.render();
     };
 
+    const triggerDayLockedWarning = () => {
+      mobileServices.hapticWarning();
+      this._showToast('🔒 Unlock event before moving');
+      card.classList.remove('lock-pulse-glow');
+      const lockBtn = card.querySelector('.cal-event-lock-btn');
+      if (lockBtn) lockBtn.classList.remove('pulse-glow');
+      void card.offsetWidth;
+      card.classList.add('lock-pulse-glow');
+      if (lockBtn) lockBtn.classList.add('pulse-glow');
+      setTimeout(() => {
+        if (card) card.classList.remove('lock-pulse-glow');
+        if (lockBtn) lockBtn.classList.remove('pulse-glow');
+      }, 950);
+    };
+
     const startDragMode = () => {
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         if (holdTimer) clearTimeout(holdTimer);
@@ -2330,18 +2345,7 @@ export class CalendarView {
         return;
       }
       if (ev.isLocked) {
-        mobileServices.hapticWarning();
-        this._showToast('🔒 Unlock event before moving');
-        card.classList.remove('lock-pulse-glow');
-        const lockBtn = card.querySelector('.cal-event-lock-btn');
-        if (lockBtn) lockBtn.classList.remove('pulse-glow');
-        void card.offsetWidth;
-        card.classList.add('lock-pulse-glow');
-        if (lockBtn) lockBtn.classList.add('pulse-glow');
-        setTimeout(() => {
-          if (card) card.classList.remove('lock-pulse-glow');
-          if (lockBtn) lockBtn.classList.remove('pulse-glow');
-        }, 950);
+        triggerDayLockedWarning();
         return;
       }
       isDragging = true;
@@ -2490,6 +2494,9 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
+            if (ev.isLocked) {
+              triggerDayLockedWarning();
+            }
           }
         }
         return;
@@ -2547,6 +2554,9 @@ export class CalendarView {
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            if (ev.isLocked) {
+              triggerDayLockedWarning();
+            }
           }
           return;
         }
@@ -2781,6 +2791,21 @@ export class CalendarView {
       this.render();
     };
 
+    const triggerWeekLockedWarning = () => {
+      mobileServices.hapticWarning();
+      this._showToast('🔒 Unlock event before moving');
+      card.classList.remove('lock-pulse-glow');
+      const lockSvg = card.querySelector('.cal-mini-lock-svg');
+      if (lockSvg) lockSvg.classList.remove('pulse-glow');
+      void card.offsetWidth;
+      card.classList.add('lock-pulse-glow');
+      if (lockSvg) lockSvg.classList.add('pulse-glow');
+      setTimeout(() => {
+        if (card) card.classList.remove('lock-pulse-glow');
+        if (lockSvg) lockSvg.classList.remove('pulse-glow');
+      }, 950);
+    };
+
     const startDragMode = () => {
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         if (holdTimer) clearTimeout(holdTimer);
@@ -2788,14 +2813,7 @@ export class CalendarView {
         return;
       }
       if (ev.isLocked) {
-        mobileServices.hapticWarning();
-        this._showToast('🔒 Unlock event before moving');
-        card.classList.remove('lock-pulse-glow');
-        void card.offsetWidth;
-        card.classList.add('lock-pulse-glow');
-        setTimeout(() => {
-          if (card) card.classList.remove('lock-pulse-glow');
-        }, 950);
+        triggerWeekLockedWarning();
         return;
       }
       isDragging = true;
@@ -3005,6 +3023,9 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
+            if (ev.isLocked) {
+              triggerWeekLockedWarning();
+            }
           }
         }
         return;
@@ -3060,6 +3081,9 @@ export class CalendarView {
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            if (ev.isLocked) {
+              triggerWeekLockedWarning();
+            }
           }
           return;
         }
@@ -3233,6 +3257,21 @@ export class CalendarView {
       this.render();
     };
 
+    const triggerMonthLockedWarning = () => {
+      mobileServices.hapticWarning();
+      this._showToast('🔒 Unlock event before moving');
+      pill.classList.remove('lock-pulse-glow');
+      const lockSvg = pill.querySelector('.cal-mini-lock-svg');
+      if (lockSvg) lockSvg.classList.remove('pulse-glow');
+      void pill.offsetWidth;
+      pill.classList.add('lock-pulse-glow');
+      if (lockSvg) lockSvg.classList.add('pulse-glow');
+      setTimeout(() => {
+        if (pill) pill.classList.remove('lock-pulse-glow');
+        if (lockSvg) lockSvg.classList.remove('pulse-glow');
+      }, 950);
+    };
+
     const startDragMode = () => {
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         if (holdTimer) clearTimeout(holdTimer);
@@ -3240,14 +3279,7 @@ export class CalendarView {
         return;
       }
       if (ev.isLocked) {
-        mobileServices.hapticWarning();
-        this._showToast('🔒 Unlock event before moving');
-        pill.classList.remove('lock-pulse-glow');
-        void pill.offsetWidth;
-        pill.classList.add('lock-pulse-glow');
-        setTimeout(() => {
-          if (pill) pill.classList.remove('lock-pulse-glow');
-        }, 950);
+        triggerMonthLockedWarning();
         return;
       }
       isDragging = true;
@@ -3401,6 +3433,9 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
+            if (ev.isLocked) {
+              triggerMonthLockedWarning();
+            }
           }
         }
         return;
@@ -3453,6 +3488,9 @@ export class CalendarView {
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
+            if (ev.isLocked) {
+              triggerMonthLockedWarning();
+            }
           }
           return;
         }

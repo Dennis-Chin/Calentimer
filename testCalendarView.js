@@ -885,7 +885,7 @@ assert(testDayLockedCard !== null && testDayLockedCard !== undefined, 'Locked da
 // Verify no static orange border inline or on day-event-card
 assert(testDayLockedCard.style.borderLeftColor !== '#f59e0b', 'Locked day card does not have static orange border');
 
-// Attempt to drag locked card
+// Attempt to drag locked card by holding 200ms
 let toastShown = '';
 calendar._showToast = function(msg) { toastShown = msg; };
 
@@ -898,6 +898,73 @@ assert(toastShown === '🔒 Unlock event before moving', 'Toast pop-up notifies 
 assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Day card pulses with glowing orange border (lock-pulse-glow)');
 const lockBtnInside = testDayLockedCard.querySelector('.cal-event-lock-btn');
 assert(lockBtnInside && lockBtnInside.classList.contains('pulse-glow'), 'Padlock icon pulses with glow (pulse-glow)');
+
+// Attempt to move locked day card immediately with finger drag movement (> 8px)
+toastShown = '';
+testDayLockedCard.classList.remove('lock-pulse-glow');
+testDayLockedCard.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 100, clientY: 200 }]
+});
+testDayLockedCard.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 100, clientY: 215 }] // deltaY = 15 > 8px
+});
+assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked day card triggers toast alert');
+assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on day card');
+
+// Attempt to move locked week card immediately with finger drag movement (> 8px)
+calendar.switchView('week');
+calendar.render();
+const weekColsListTest = calendar.elements.weekGridBody.children.filter(function(c) {
+  return c.classList && c.classList.contains('week-day-col');
+});
+let lockedWeekCardTest = null;
+for (let w = 0; w < weekColsListTest.length; w++) {
+  const card = weekColsListTest[w].children.find(function(c) {
+    return c.getAttribute && c.getAttribute('data-event-id') === lockedDayEvent.id;
+  });
+  if (card) { lockedWeekCardTest = card; break; }
+}
+if (lockedWeekCardTest) {
+  toastShown = '';
+  lockedWeekCardTest.dispatchSimulatedEvent('touchstart', {
+    touches: [{ clientX: 120, clientY: 200 }]
+  });
+  lockedWeekCardTest.dispatchSimulatedEvent('touchmove', {
+    touches: [{ clientX: 135, clientY: 200 }] // deltaX = 15 > 8px
+  });
+  assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked week card triggers toast alert');
+  assert(lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on week card');
+}
+
+// Attempt to move locked month pill immediately with finger drag movement (> 8px)
+calendar.switchView('month');
+calendar.render();
+let lockedMonthPillTest = null;
+const mCellsTest = calendar.elements.monthGrid.children.filter(function(c) {
+  return c.classList && c.classList.contains('month-day-cell');
+});
+for (let m = 0; m < mCellsTest.length; m++) {
+  const list = mCellsTest[m].children.find(function(c) {
+    return c.classList && c.classList.contains('cell-events-list');
+  });
+  if (list && list.children) {
+    const pill = list.children.find(function(p) {
+      return p.getAttribute && p.getAttribute('data-event-id') === lockedDayEvent.id;
+    });
+    if (pill) { lockedMonthPillTest = pill; break; }
+  }
+}
+if (lockedMonthPillTest) {
+  toastShown = '';
+  lockedMonthPillTest.dispatchSimulatedEvent('touchstart', {
+    touches: [{ clientX: 100, clientY: 150 }]
+  });
+  lockedMonthPillTest.dispatchSimulatedEvent('touchmove', {
+    touches: [{ clientX: 120, clientY: 150 }] // deltaX = 20 > 8px
+  });
+  assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked month pill triggers toast alert');
+  assert(lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on month pill');
+}
 
 // 2. Calendar Tab defaults to today's date and user's chosen view upon opening
 calendar.currentDate.setDate(calendar.currentDate.getDate() + 14); // moved 2 weeks in future
