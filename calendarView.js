@@ -24,6 +24,7 @@ export class CalendarView {
     this.weekHourHeight = 50; // dynamic hour height for week view (px)
     this.currentTimeTimer = null;
     this.refreshCategoryChips = null;
+    this.isDraggingEvent = false; // Prevents page swipe when holding/dragging an event
 
     // DOM Elements (bound on init)
     this.elements = {};
@@ -134,6 +135,8 @@ export class CalendarView {
         mobileServices.hapticTick();
         if (this.activeView === 'day') {
           this._renderDayView();
+        } else if (this.activeView === 'week') {
+          this._renderWeekView();
         }
       });
     }
@@ -405,6 +408,7 @@ export class CalendarView {
     };
 
     modalBody.addEventListener('touchstart', (e) => {
+      if (this.isDraggingEvent) return;
       if (e.touches && e.touches.length === 1) {
         // Allow touches on event cards so swiping over tasks changes days; ignore only clickable buttons/inputs
         if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn')) {
@@ -424,6 +428,17 @@ export class CalendarView {
     }, { passive: true });
 
     modalBody.addEventListener('touchmove', (e) => {
+      if (this.isDraggingEvent) {
+        if (isSwipingHorizontal && activeContainer) {
+          isSwipingHorizontal = false;
+          activeContainer.style.removeProperty('transform');
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+            adjacentSlide = null;
+          }
+        }
+        return;
+      }
       if (!touchStartX || !touchStartY || !activeContainer) return;
       if (e.touches && e.touches.length > 1) {
         if (isSwipingHorizontal) {
@@ -949,21 +964,18 @@ export class CalendarView {
 
   _applyEventCardLayout(card, heightPx) {
     card.style.height = `${heightPx}px`;
-    const titleEl = card.querySelector('.day-event-title');
-    const titleText = titleEl ? (titleEl.textContent || '') : '';
-    const approxTitleWidth = titleText.length * 7.5;
-    const isOverlapping = card.classList.contains('is-overlapping-earlier') || card.classList.contains('is-overlapping-later');
-    const cardWidth = card.clientWidth || (isOverlapping ? 130 : 270);
 
-    // If single line can fit emoji (24px) + full title + timespan (~75px) + duration (~35px) + padding (30px) = ~164px
-    const canFitSingleLine = (cardWidth - 164) >= approxTitleWidth;
-
-    if (heightPx < 36 && canFitSingleLine && !isOverlapping) {
+    // When squashed or short duration (height < 38px), always use single-row layout
+    // In this compact mode, category is hidden and timespan+duration are pinned on far right before padlock
+    if (heightPx < 38) {
       card.classList.add('is-single-row');
       card.classList.remove('is-compact-two-line');
+    } else if (heightPx < 54) {
+      card.classList.remove('is-single-row');
+      card.classList.add('is-compact-two-line');
     } else {
       card.classList.remove('is-single-row');
-      card.classList.toggle('is-compact-two-line', heightPx < 52);
+      card.classList.remove('is-compact-two-line');
     }
   }
 
@@ -1515,12 +1527,26 @@ export class CalendarView {
       dayCol.setAttribute('data-date', dStr);
       dayCol.style.height = `${(endHour - startHour) * hourHeight}px`;
 
-      // Render horizontal lines at the hours in each day column
+      // Render bold solid hour lines and subtle dashed interval lines matching Day view
+      const resolution = this.weekResolution || 15;
       for (let h = startHour; h < endHour; h++) {
+        const hourTop = 14 + ((h - startHour) * hourHeight);
         const line = document.createElement('div');
         line.className = 'week-hour-line';
-        line.style.top = `${14 + ((h - startHour) * hourHeight)}px`;
+        line.style.top = `${hourTop}px`;
         dayCol.appendChild(line);
+
+        // Sub-interval dashed lines (only intervals have dashed lines)
+        if (resolution < 60) {
+          const stepCount = 60 / resolution;
+          for (let s = 1; s < stepCount; s++) {
+            const subLine = document.createElement('div');
+            subLine.className = 'week-sub-interval-line';
+            const subTop = hourTop + ((s / stepCount) * hourHeight);
+            subLine.style.top = `${subTop}px`;
+            dayCol.appendChild(subLine);
+          }
+        }
       }
 
       const eventsForDate = allEvents.filter(e => e.date === dStr);
@@ -1868,6 +1894,57 @@ export class CalendarView {
       autoScrollRaf = requestAnimationFrame(step);
     };
 
+    let hasJumpedDay = false;
+
+    const jumpToAdjacentDay = (direction) => {
+      if (hasJumpedDay || !isDragging) return;
+      hasJumpedDay = true;
+      isDragging = false;
+      this.isDraggingEvent = false;
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (container) {
+        container.style.removeProperty('overflow-y');
+      }
+      card.classList.remove('is-dragging-cal-event');
+      card.style.removeProperty('transform');
+
+      const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
+      const hourHeight = this.dayHourHeight || 56;
+      const rawMinutes = (startHour * 60) + ((currentTop / hourHeight) * 60);
+      const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+
+      const newStartH = Math.floor(newStartMin / 60);
+      const newStartM = newStartMin % 60;
+      const newEndTotal = newStartMin + durMin;
+      const newEndH = Math.min(23, Math.floor(newEndTotal / 60));
+      const newEndM = newEndTotal % 60;
+
+      const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
+      const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
+
+      // Calculate target date (yesterday or tomorrow)
+      const currentActiveDate = new Date(this.selectedDate || this.currentDate);
+      currentActiveDate.setDate(currentActiveDate.getDate() + direction);
+      const targetDateStr = this._formatDateISO(currentActiveDate);
+
+      // Reschedule task to target day and new time
+      taskStore.updateCalendarEvent(ev.id, {
+        date: targetDateStr,
+        startTime: newStartTime,
+        endTime: newEndTime,
+        plannedDuration: durMin
+      });
+
+      mobileServices.hapticBuzz();
+      this._showToast(`📅 Moved to ${direction > 0 ? 'tomorrow' : 'yesterday'} (${newStartTime} - ${newEndTime})`);
+
+      // Smooth slide transition to adjacent day
+      this.navigate(direction);
+    };
+
     const startDragMode = () => {
       if (ev.isLocked) {
         mobileServices.hapticWarning();
@@ -1884,6 +1961,8 @@ export class CalendarView {
         return;
       }
       isDragging = true;
+      this.isDraggingEvent = true;
+      hasJumpedDay = false;
       card.classList.add('is-dragging-cal-event');
       mobileServices.hapticBuzz();
       if (container) {
@@ -1895,6 +1974,7 @@ export class CalendarView {
     const finishDrag = () => {
       if (!isDragging) return;
       isDragging = false;
+      this.isDraggingEvent = false;
       if (autoScrollRaf) {
         cancelAnimationFrame(autoScrollRaf);
         autoScrollRaf = null;
@@ -1903,6 +1983,7 @@ export class CalendarView {
         container.style.removeProperty('overflow-y');
       }
       card.classList.remove('is-dragging-cal-event');
+      card.style.removeProperty('transform');
 
       const currentTop = Math.max(0, (parseInt(card.style.top, 10) || 14) - 14);
       const hourHeight = this.dayHourHeight || 56;
@@ -1961,6 +2042,17 @@ export class CalendarView {
       if (e.touches && e.touches.length === 1) {
         if (e.cancelable) e.preventDefault();
         lastClientY = e.touches[0].clientY;
+        const currentX = e.touches[0].clientX;
+        const diffX = currentX - startX;
+
+        // Check horizontal resistance threshold for inter-day jump (> 85px)
+        if (Math.abs(diffX) > 85) {
+          jumpToAdjacentDay(diffX < 0 ? 1 : -1);
+          return;
+        }
+
+        // Subtle elastic horizontal tilt and snapped vertical position
+        card.style.transform = `translate3d(${Math.max(-28, Math.min(28, diffX * 0.22))}px, 0, 0)`;
         applySnappedPosition(e.touches[0].clientY);
       }
     }, { passive: false });
@@ -2080,6 +2172,8 @@ export class CalendarView {
       autoScrollRaf = requestAnimationFrame(step);
     };
 
+    let currentOverCol = null;
+
     const startDragMode = () => {
       if (ev.isLocked) {
         mobileServices.hapticWarning();
@@ -2094,6 +2188,7 @@ export class CalendarView {
         return;
       }
       isDragging = true;
+      this.isDraggingEvent = true;
       card.classList.add('is-dragging-cal-event');
       mobileServices.hapticBuzz();
       if (container) {
@@ -2102,9 +2197,50 @@ export class CalendarView {
       startAutoScrollLoop();
     };
 
+    const updateWeekDragPosition = (clientX, clientY) => {
+      card.style.transform = `translate3d(${clientX - startX}px, ${clientY - startY}px, 0) scale(1.08)`;
+
+      card.style.pointerEvents = 'none';
+      const targetEl = document.elementFromPoint(clientX, clientY);
+      card.style.pointerEvents = '';
+
+      const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
+      if (targetCol !== currentOverCol) {
+        if (currentOverCol) currentOverCol.classList.remove('drag-target-over');
+        currentOverCol = targetCol;
+        if (currentOverCol) currentOverCol.classList.add('drag-target-over');
+      }
+
+      if (targetCol) {
+        const colRect = targetCol.getBoundingClientRect();
+        const clickY = clientY - colRect.top - 14;
+        const hourHeight = this.weekHourHeight || 50;
+        const resolution = this.weekResolution || 15;
+        const rawMinutes = (startHour * 60) + ((clickY / hourHeight) * 60);
+        const dur = ev.plannedDuration || 60;
+        const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - dur, Math.round(rawMinutes / resolution) * resolution));
+        const newStartH = Math.floor(snappedStartMin / 60);
+        const newStartM = snappedStartMin % 60;
+        const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
+        const newEndTotal = snappedStartMin + dur;
+        const endH = Math.min(23, Math.floor(newEndTotal / 60));
+        const endM = newEndTotal % 60;
+        const newEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+        let timeEl = card.querySelector('.week-event-time');
+        if (!timeEl) {
+          timeEl = document.createElement('div');
+          timeEl.className = 'week-event-time';
+          card.appendChild(timeEl);
+        }
+        timeEl.textContent = `${newStartTime} - ${newEndTime}`;
+      }
+    };
+
     const finishDrag = (clientX, clientY) => {
       if (!isDragging) return;
       isDragging = false;
+      this.isDraggingEvent = false;
       if (autoScrollRaf) {
         cancelAnimationFrame(autoScrollRaf);
         autoScrollRaf = null;
@@ -2115,11 +2251,17 @@ export class CalendarView {
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
 
-      card.style.display = 'none';
-      const targetEl = document.elementFromPoint(clientX, clientY);
-      card.style.display = '';
+      if (currentOverCol) {
+        currentOverCol.classList.remove('drag-target-over');
+      }
 
-      const targetCol = targetEl ? targetEl.closest('.week-day-col') : null;
+      card.style.pointerEvents = 'none';
+      const targetEl = document.elementFromPoint(clientX, clientY);
+      card.style.pointerEvents = '';
+
+      const targetCol = targetEl ? targetEl.closest('.week-day-col') : currentOverCol;
+      currentOverCol = null;
+
       if (targetCol) {
         const targetDateStr = targetCol.getAttribute('data-date');
         const colRect = targetCol.getBoundingClientRect();
@@ -2140,11 +2282,12 @@ export class CalendarView {
         taskStore.updateCalendarEvent(ev.id, {
           date: targetDateStr || ev.date,
           startTime: newStartTime,
-          endTime: newEndTime
+          endTime: newEndTime,
+          plannedDuration: dur
         });
 
         mobileServices.hapticTap();
-        this._showToast(`✓ Moved to ${targetDateStr} at ${newStartTime}`);
+        this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
         this.render();
       } else {
         this.render();
@@ -2183,7 +2326,7 @@ export class CalendarView {
         if (e.cancelable) e.preventDefault();
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
-        card.style.transform = `translate3d(${lastClientX - startX}px, ${lastClientY - startY}px, 0)`;
+        updateWeekDragPosition(lastClientX, lastClientY);
       }
     }, { passive: false });
 
@@ -2232,7 +2375,7 @@ export class CalendarView {
         me.preventDefault();
         lastClientX = me.clientX;
         lastClientY = me.clientY;
-        card.style.transform = `translate3d(${me.clientX - startX}px, ${me.clientY - startY}px, 0)`;
+        updateWeekDragPosition(me.clientX, me.clientY);
       };
 
       const onMouseUp = (me) => {
@@ -2269,6 +2412,7 @@ export class CalendarView {
         return;
       }
       isDragging = true;
+      this.isDraggingEvent = true;
       pill.classList.add('is-dragging-cal-event');
       mobileServices.hapticBuzz();
     };
@@ -2276,9 +2420,9 @@ export class CalendarView {
     const updateDragPosition = (clientX, clientY) => {
       pill.style.transform = `translate3d(${clientX - startX}px, ${clientY - startY}px, 0) scale(1.12)`;
 
-      pill.style.display = 'none';
+      pill.style.pointerEvents = 'none';
       const targetEl = document.elementFromPoint(clientX, clientY);
-      pill.style.display = '';
+      pill.style.pointerEvents = '';
 
       const targetCell = targetEl ? targetEl.closest('.month-day-cell') : null;
       if (targetCell !== currentOverCell) {
@@ -2291,6 +2435,7 @@ export class CalendarView {
     const finishDrag = () => {
       if (!isDragging) return;
       isDragging = false;
+      this.isDraggingEvent = false;
       pill.classList.remove('is-dragging-cal-event');
       pill.style.removeProperty('transform');
 
@@ -2300,9 +2445,14 @@ export class CalendarView {
         currentOverCell = null;
 
         if (targetDateStr && targetDateStr !== ev.date) {
-          taskStore.updateCalendarEvent(ev.id, { date: targetDateStr });
+          taskStore.updateCalendarEvent(ev.id, {
+            date: targetDateStr,
+            startTime: ev.startTime,
+            endTime: ev.endTime,
+            plannedDuration: ev.plannedDuration
+          });
           mobileServices.hapticTap();
-          this._showToast(`✓ Moved to ${targetDateStr}`);
+          this._showToast(`✓ Moved to ${targetDateStr} (${ev.startTime} - ${ev.endTime})`);
           this.render();
           return;
         }

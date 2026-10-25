@@ -4609,39 +4609,67 @@ body {
   white-space: nowrap;
 }
 
-/* Squeeze styles for 15-minute / ultra-short cards (Single Row Layout) */
+/* Squeeze styles for 15-minute / squashed compact cards (Single Row Layout) */
 .day-event-card.is-single-row {
   padding: 1px 6px;
-  gap: 4px;
+  gap: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .day-event-card.is-single-row .day-event-emoji {
   font-size: 0.78rem;
+  flex-shrink: 0;
 }
 
 .day-event-card.is-single-row .day-event-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 5px;
+  justify-content: space-between;
+  gap: 6px;
   overflow: hidden;
+  width: 100%;
 }
 
 .day-event-card.is-single-row .day-event-title-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   width: auto;
-  flex: 0 1 auto;
-  max-width: 48%;
+  max-width: none;
 }
 
 .day-event-card.is-single-row .day-event-title {
   font-size: 0.74rem;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  width: 100%;
 }
 
 .day-event-card.is-single-row .day-event-meta-line {
-  flex: 1 1 auto;
-  gap: 3px;
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.64rem;
   line-height: 1.1;
+  white-space: nowrap;
+}
+
+.day-event-card.is-single-row .event-cat-pill {
+  display: none !important; /* Category hidden in squashed view to maximize title space */
+}
+
+.day-event-card.is-single-row .cal-event-lock-btn {
+  flex-shrink: 0;
+  padding: 2px;
 }
 
 /* Squeeze styles for 30-minute cards (Compact Two-Line Layout with No Top/Bottom Truncation) */
@@ -4836,19 +4864,39 @@ body {
   border-right: 1px solid var(--border-subtle);
 }
 
-/* Horizontal Hour Lines in Week View (Dashed & Bolder/Thicker at every hour) */
+/* Horizontal Hour Lines in Week View (Thick Bold SOLID at every hour, matching Day view) */
 .week-hour-line {
   position: absolute;
   left: 0;
   right: 0;
   height: 1px;
-  border-top: 1.5px dashed rgba(255, 255, 255, 0.22);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.18);
   pointer-events: none;
   z-index: 1;
 }
 
 [data-theme="light"] .week-hour-line {
-  border-top: 1.5px dashed rgba(0, 0, 0, 0.22);
+  border-top: 1.5px solid rgba(0, 0, 0, 0.16);
+}
+
+/* Subtle Dashed Sub-Interval Lines in Week View (15m / 30m steps) matching Day view */
+.week-sub-interval-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-theme="light"] .week-sub-interval-line {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.week-day-col.drag-target-over {
+  background: rgba(0, 240, 255, 0.08) !important;
+  border-color: var(--accent-cyan) !important;
 }
 
 .cal-mini-lock-svg {
