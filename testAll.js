@@ -13,6 +13,7 @@ const suites = [
   'testTimerRuntime.js',
   'testTimeBank.js',
   'testAnalyticsDb.js',
+  'testCalendarView.js',
   'testSyntaxCompatibility.js'
 ];
 

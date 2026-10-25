@@ -1847,6 +1847,7 @@ export class CalendarView {
     let startY = 0;
     let startX = 0;
     let initialTop = 0;
+    let lastClientX = 0;
     let lastClientY = 0;
     let autoScrollRaf = null;
     const resolution = this.currentResolution || 15;
