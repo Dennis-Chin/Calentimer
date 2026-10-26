@@ -2585,7 +2585,13 @@ function setupScheduleConflictModal() {
 
   if (modalBackdrop) {
     modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === modalBackdrop) closeScheduleConflictModal();
+      if (e.target === modalBackdrop) {
+        if (btnKeep) {
+          btnKeep.click();
+        } else {
+          closeScheduleConflictModal();
+        }
+      }
     });
   }
 

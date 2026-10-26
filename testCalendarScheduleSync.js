@@ -389,6 +389,20 @@ assert(pushedTaskB.endTime === '11:00', 'Pushed task ends at 11:00');
 assert(pushedTaskB.isLocked === false, 'Pushed task preserved unlocked flexible lock state');
 assert(pushedTaskB.fixedStartTime === null, 'Pushed flexible task fixedStartTime is null');
 
+console.log('\n--- 15. Testing Conflict Modal Button Ordering & Outside Click Default ---');
+import fs from 'fs';
+import path from 'path';
+
+const indexHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+const keepIdx = indexHtml.indexOf('id="btnConflictKeep"');
+const shiftIdx = indexHtml.indexOf('id="btnConflictShift"');
+assert(keepIdx !== -1 && shiftIdx !== -1, 'Both conflict action buttons exist in index.html');
+assert(keepIdx < shiftIdx, 'btnConflictKeep (Ignore Other Task) is positioned above btnConflictShift (Push Other Task)');
+
+const appJsContent = fs.readFileSync(path.resolve(process.cwd(), 'app.js'), 'utf8');
+const backdropHandlingOk = appJsContent.indexOf('btnKeep.click()') !== -1;
+assert(backdropHandlingOk, 'Outside backdrop click defaults to btnKeep.click() (Ignore Other Task)');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

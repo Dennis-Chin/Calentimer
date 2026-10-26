@@ -2530,9 +2530,10 @@ export class CalendarView {
       if (!modalBody || isDayPanning || isDayPanCooldown) return;
       const modalRect = modalBody.getBoundingClientRect();
       const cardLeft = clientX - grabOffsetX;
-      const cardWidth = card.offsetWidth || 150;
-      const isLeft = (clientX < modalRect.left + 45) || (cardLeft < modalRect.left + 25);
-      const isRight = (clientX > modalRect.right - 45) || ((cardLeft + cardWidth) > modalRect.right - 25);
+      const cardWidth = card.offsetWidth || card.clientWidth || 300;
+      const cardMidX = cardLeft + (cardWidth / 2);
+      const isLeft = cardMidX < modalRect.left + 70;
+      const isRight = cardMidX > modalRect.right - 70;
 
       if (isLeft || isRight) {
         if (!dayNavTimer) {
@@ -2645,7 +2646,7 @@ export class CalendarView {
 
       checkDayEdgePull(clientX);
 
-      // Trigger day pan only when moved far to the edge in that direction (prevents indented overlapping tasks from triggering day switch when dragged midway to un-overlap)
+      // Trigger day pan only when the card's midpoint is close to the far left or far right edge with resistance
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
       const modalRect = modalBody ? modalBody.getBoundingClientRect() : {
         left: 0,
@@ -2654,17 +2655,18 @@ export class CalendarView {
       };
       if (!isDayPanning && !isDayPanCooldown) {
         const cardLeft = clientX - grabOffsetX;
-        const cardWidth = card.offsetWidth || 150;
+        const cardWidth = card.offsetWidth || card.clientWidth || 300;
+        const cardMidX = cardLeft + (cardWidth / 2);
         const diffX = clientX - startX;
 
-        // Only transition to previous day when moved far to the left
-        const isFarLeft = (clientX < modalRect.left + 45) || (cardLeft < modalRect.left + 25);
-        if (diffX < -35 && isFarLeft) {
+        // Only transition to previous day when card midpoint is close to far left with intentional resistance
+        const isFarLeft = cardMidX < modalRect.left + 70;
+        if (diffX < -50 && isFarLeft) {
           panToAdjacentDay(-1);
         } else {
-          // Only transition to next day when moved far to the right
-          const isFarRight = (clientX > modalRect.right - 45) || ((cardLeft + cardWidth) > modalRect.right - 25);
-          if (diffX > 35 && isFarRight) {
+          // Only transition to next day when card midpoint is close to far right with intentional resistance
+          const isFarRight = cardMidX > modalRect.right - 70;
+          if (diffX > 50 && isFarRight) {
             panToAdjacentDay(1);
           }
         }

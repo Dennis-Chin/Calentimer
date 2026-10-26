@@ -4540,26 +4540,42 @@ body {
   touch-action: pan-y; /* Allows smooth scrolling when finger starts on event card */
 }
 
-/* Subtle status backgrounds for day event cards */
+/* Subtle solid opaque status backgrounds for day event cards */
 .day-event-card.is-event-completed {
-  background: rgba(16, 185, 129, 0.16) !important;
-  border-color: rgba(16, 185, 129, 0.35) !important;
+  background: #142a22 !important;
+  border-color: #059669 !important;
+}
+
+.day-event-card.is-event-completed:hover {
+  background: #19352b !important;
 }
 
 [data-theme="light"] .day-event-card.is-event-completed {
-  background: rgba(5, 150, 105, 0.12) !important;
-  border-color: rgba(5, 150, 105, 0.3) !important;
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+[data-theme="light"] .day-event-card.is-event-completed:hover {
+  background: #d1fae5 !important;
 }
 
 .day-event-card.is-event-current {
-  background: rgba(0, 240, 255, 0.16) !important;
-  border-color: rgba(0, 240, 255, 0.45) !important;
+  background: #122938 !important;
+  border-color: #0284c7 !important;
   box-shadow: 0 0 14px rgba(0, 240, 255, 0.22);
 }
 
+.day-event-card.is-event-current:hover {
+  background: #163346 !important;
+}
+
 [data-theme="light"] .day-event-card.is-event-current {
-  background: rgba(14, 165, 233, 0.14) !important;
-  border-color: rgba(14, 165, 233, 0.38) !important;
+  background: #f0f9ff !important;
+  border-color: #bae6fd !important;
+}
+
+[data-theme="light"] .day-event-card.is-event-current:hover {
+  background: #e0f2fe !important;
 }
 
 /* Overlapping Event Card Positioning */
@@ -5659,14 +5675,26 @@ body {
 }
 
 .btn-conflict-keep {
-  background: rgba(245, 158, 11, 0.14);
-  border-color: rgba(245, 158, 11, 0.35);
-  color: #f59e0b;
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
 }
 
 .btn-conflict-keep:hover, .btn-conflict-keep:active {
-  background: rgba(245, 158, 11, 0.25);
-  border-color: #f59e0b;
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #10b981;
+}
+
+[data-theme="light"] .btn-conflict-keep {
+  background: rgba(5, 150, 105, 0.12);
+  border-color: rgba(5, 150, 105, 0.35);
+  color: #047857;
+}
+
+[data-theme="light"] .btn-conflict-keep:hover,
+[data-theme="light"] .btn-conflict-keep:active {
+  background: rgba(5, 150, 105, 0.2);
+  border-color: #047857;
 }
 
 .conflict-cascade-warning {
