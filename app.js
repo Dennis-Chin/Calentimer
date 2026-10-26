@@ -178,14 +178,29 @@ function initApp() {
         const currentIds = (runtime.initialTasks || []).map(t => t.id).join(',');
         const storedIds = storedTasks.map(t => t.id).join(',');
         if (currentIds !== storedIds || JSON.stringify(storedTasks) !== JSON.stringify(runtime.initialTasks)) {
+          const storedIdSet = new Set(storedTasks.map(t => t.id));
+          const removedTasks = (runtime.initialTasks || []).filter(t => !storedIdSet.has(t.id));
+          removedTasks.forEach(t => {
+            runtime.deleteTask(t.id);
+          });
           runtime.initialTasks = storedTasks;
           runtime.recalculate();
           updateScheduleUI(runtime.currentSchedule);
           updateActiveTaskDisplay();
           renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || storedTasks);
           renderCalendarModal();
+          const activeTask = runtime.getActiveTask();
+          if (activeTask) {
+            renderClockTime(runtime.getRemainingSeconds());
+          } else {
+            renderClockTime(0);
+            updateWheelProgress(0);
+          }
           checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
         }
+      }
+      if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+        calendarView.render();
       }
     });
 
@@ -1599,6 +1614,9 @@ function setupControls() {
         updateWheelProgress(0);
       }
     }
+    if (calendarView && typeof calendarView.render === 'function') {
+      calendarView.render();
+    }
     mobileServices.hapticBuzz();
     showToastNotification(`✓ Deleted "${taskTitle}"`);
   }
@@ -1656,6 +1674,9 @@ function setupControls() {
       updateScheduleUI(runtime.currentSchedule);
       renderClockTime(0);
       updateWheelProgress(0);
+      if (calendarView && typeof calendarView.render === 'function') {
+        calendarView.render();
+      }
       mobileServices.hapticBuzz();
       showToastNotification("✓ Cleared today's schedule");
     });

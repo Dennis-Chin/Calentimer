@@ -17,7 +17,8 @@ const STORAGE_KEYS = {
   CALENDAR_EVENTS: 'calentimer_calendar_events_v1',
   CAL_RANGE_ENABLED: 'calentimer_cal_range_enabled_v1',
   CAL_START_TIME: 'calentimer_cal_start_time_v1',
-  CAL_END_TIME: 'calentimer_cal_end_time_v1'
+  CAL_END_TIME: 'calentimer_cal_end_time_v1',
+  DELETED_IDS: 'calentimer_deleted_ids_v1'
 };
 
 const memoryStorage = {};
@@ -85,6 +86,70 @@ export class TaskStore {
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
+  }
+
+  /**
+   * Retrieves set of deleted IDs for a given date.
+   * Prevents deleted items from resurrecting during cross-sync.
+   * @param {string} [targetDateStr]
+   * @returns {Set<string>}
+   */
+  getDeletedIds(targetDateStr) {
+    try {
+      const today = targetDateStr || this.getTodayDateString();
+      const raw = safeGetItem(STORAGE_KEYS.DELETED_IDS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const list = parsed[today];
+          if (Array.isArray(list)) return new Set(list);
+        }
+      }
+    } catch (_) {}
+    return new Set();
+  }
+
+  /**
+   * Records a deleted item ID in tombstones for target date.
+   * @param {string} id
+   * @param {string} [targetDateStr]
+   */
+  addDeletedId(id, targetDateStr) {
+    if (!id) return;
+    try {
+      const today = targetDateStr || this.getTodayDateString();
+      let record = {};
+      const raw = safeGetItem(STORAGE_KEYS.DELETED_IDS);
+      if (raw) {
+        try { record = JSON.parse(raw) || {}; } catch (_) {}
+      }
+      const list = Array.isArray(record[today]) ? record[today] : [];
+      if (list.indexOf(id) === -1) {
+        list.push(id);
+      }
+      record[today] = list;
+      safeSetItem(STORAGE_KEYS.DELETED_IDS, JSON.stringify(record));
+    } catch (_) {}
+  }
+
+  /**
+   * Removes an item ID from tombstones (e.g. when explicitly created).
+   * @param {string} id
+   * @param {string} [targetDateStr]
+   */
+  removeDeletedId(id, targetDateStr) {
+    if (!id) return;
+    try {
+      const today = targetDateStr || this.getTodayDateString();
+      const raw = safeGetItem(STORAGE_KEYS.DELETED_IDS);
+      if (raw) {
+        const record = JSON.parse(raw) || {};
+        if (Array.isArray(record[today])) {
+          record[today] = record[today].filter(item => item !== id);
+          safeSetItem(STORAGE_KEYS.DELETED_IDS, JSON.stringify(record));
+        }
+      }
+    } catch (_) {}
   }
 
   onChange(callback) {
@@ -192,6 +257,7 @@ export class TaskStore {
       lastModified: now
     };
     tasks.push(newTask);
+    this.removeDeletedId(newTask.id);
     this.saveTasks(tasks);
 
     if (!this._isSyncing) {
@@ -205,15 +271,15 @@ export class TaskStore {
    * Deletes a task by ID.
    */
   deleteTask(taskId) {
+    this.addDeletedId(taskId);
     const tasks = this.getTasks().filter(t => t.id !== taskId);
     this.saveTasks(tasks);
 
     if (!this._isSyncing) {
       this._isSyncing = true;
       try {
-        const todayStr = this.getTodayDateString();
         const calEvents = this.getCalendarEvents();
-        const filteredCal = calEvents.filter(e => !(e.id === taskId && e.date === todayStr));
+        const filteredCal = calEvents.filter(e => e.id !== taskId);
         if (filteredCal.length !== calEvents.length) {
           this.saveCalendarEvents(filteredCal);
         }
@@ -358,10 +424,28 @@ export class TaskStore {
   }
 
   /**
-   * Clears all tasks from schedule.
+   * Clears all tasks from schedule and removes today's calendar events.
    */
   clearAllTasks() {
+    const todayStr = this.getTodayDateString();
+    const tasks = this.getTasks();
+    tasks.forEach(t => this.addDeletedId(t.id, todayStr));
+    const calEvents = this.getCalendarEvents();
+    calEvents.filter(e => e.date === todayStr).forEach(e => this.addDeletedId(e.id, todayStr));
+
     this.saveTasks([]);
+
+    if (!this._isSyncing) {
+      this._isSyncing = true;
+      try {
+        const filteredCal = calEvents.filter(e => e.date !== todayStr);
+        if (filteredCal.length !== calEvents.length) {
+          this.saveCalendarEvents(filteredCal);
+        }
+      } finally {
+        this._isSyncing = false;
+      }
+    }
   }
 
   /**
@@ -879,6 +963,7 @@ export class TaskStore {
       lastModified: now
     };
     current.push(newEvent);
+    this.removeDeletedId(newEvent.id);
     this.saveCalendarEvents(current);
 
     if (!this._isSyncing) {
@@ -929,17 +1014,20 @@ export class TaskStore {
    * @returns {boolean}
    */
   deleteCalendarEvent(id) {
+    this.addDeletedId(id);
     const current = this.getCalendarEvents();
-    const eventToDelete = current.find(e => e.id === id);
     const filtered = current.filter(e => e.id !== id);
     if (filtered.length !== current.length) {
       this.saveCalendarEvents(filtered);
 
-      if (!this._isSyncing && eventToDelete && eventToDelete.date === this.getTodayDateString()) {
+      if (!this._isSyncing) {
         this._isSyncing = true;
         try {
-          const tasks = this.getTasks().filter(t => t.id !== id);
-          this.saveTasks(tasks);
+          const tasks = this.getTasks();
+          const filteredTasks = tasks.filter(t => t.id !== id);
+          if (filteredTasks.length !== tasks.length) {
+            this.saveTasks(filteredTasks);
+          }
         } finally {
           this._isSyncing = false;
         }
@@ -1059,10 +1147,13 @@ export class TaskStore {
     this._isSyncing = true;
     try {
       const todayStr = targetDateStr || this.getTodayDateString();
-      const currentTasks = this.getTasks();
+      const deletedIds = this.getDeletedIds(todayStr);
+
+      const rawTasks = this.getTasks();
+      const currentTasks = rawTasks.filter(t => !deletedIds.has(t.id));
       const allCalEvents = this.getCalendarEvents();
 
-      const todayCalEvents = allCalEvents.filter(e => e.date === todayStr);
+      const todayCalEvents = allCalEvents.filter(e => e.date === todayStr && !deletedIds.has(e.id));
       const otherCalEvents = allCalEvents.filter(e => e.date !== todayStr);
 
       const taskMap = new Map();
@@ -1071,7 +1162,7 @@ export class TaskStore {
       const calMap = new Map();
       todayCalEvents.forEach(e => calMap.set(e.id, e));
 
-      let tasksChanged = false;
+      let tasksChanged = rawTasks.length !== currentTasks.length;
       let calChanged = false;
 
       const mergedTasks = [...currentTasks];
@@ -1079,6 +1170,7 @@ export class TaskStore {
 
       // 1. Sync Calendar Events -> Tasks (Events created or edited on Calendar for Today)
       todayCalEvents.forEach(calEvent => {
+        if (deletedIds.has(calEvent.id)) return;
         const existingTask = taskMap.get(calEvent.id);
         const isEventLocked = Boolean(calEvent.isLocked);
         const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
@@ -1120,9 +1212,13 @@ export class TaskStore {
         }
       });
 
-      // 2. Remove any tasks whose calendar event was moved away from today
+      // 2. Remove any tasks whose calendar event was moved away from today or deleted
       const tasksToKeep = [];
       mergedTasks.forEach(task => {
+        if (deletedIds.has(task.id)) {
+          tasksChanged = true;
+          return;
+        }
         const movedAway = otherCalEvents.some(e => e.id === task.id);
         if (movedAway) {
           tasksChanged = true;
@@ -1133,6 +1229,7 @@ export class TaskStore {
 
       // 3. Sync Tasks -> Calendar Events (Tasks created, reordered, or edited in Schedule)
       tasksToKeep.forEach(task => {
+        if (deletedIds.has(task.id)) return;
         const existingEvent = calMap.get(task.id);
         const startTime = task.fixedStartTime || task.startTime || '09:00';
         let endTime = task.endTime;
@@ -1196,11 +1293,12 @@ export class TaskStore {
       });
       safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
       tasksChanged = true;
-      if (calChanged) {
+      const todayEventsWithDeletes = allCalEvents.some(e => e.date === todayStr && deletedIds.has(e.id));
+      if (calChanged || todayEventsWithDeletes) {
         const finalEvents = otherCalEvents.concat(mergedTodayEvents);
         safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, JSON.stringify(finalEvents));
       }
-      if (tasksChanged || calChanged) {
+      if (tasksChanged || calChanged || todayEventsWithDeletes) {
         this._notify();
       }
     } finally {

@@ -257,6 +257,55 @@ assert(syncedTasks[0].startTime === '08:00', 'Task timespan updated to 08:00');
 assert(syncedTasks[0].isLocked === false, 'Task remains unlocked after move');
 assert(syncedTasks[1].id === unlo2.id, 'Event at 10:00 is now second');
 
+console.log('\n--- 12. Testing Cross-Deletion & Anti-Resurrection via Tombstones ---');
+store.saveTasks([]);
+store.saveCalendarEvents([]);
+
+// Add task 1 and event 2
+const delTask1 = store.addTask({ title: 'Task to Delete', plannedDuration: 30 });
+const delEvent2 = store.addCalendarEvent({ title: 'Event to Delete', date: todayStr, startTime: '13:00', endTime: '14:00', plannedDuration: 60 });
+
+// Verify both exist in both stores
+assert(store.getTasks().some(t => t.id === delTask1.id), 'Task 1 exists in schedule');
+assert(store.getCalendarEvents().some(e => e.id === delTask1.id), 'Task 1 mirrored in calendar');
+assert(store.getTasks().some(t => t.id === delEvent2.id), 'Event 2 mirrored in schedule');
+assert(store.getCalendarEvents().some(e => e.id === delEvent2.id), 'Event 2 exists in calendar');
+
+// Delete Task 1 from Schedule
+store.deleteTask(delTask1.id);
+assert(!store.getTasks().some(t => t.id === delTask1.id), 'Task 1 deleted from schedule');
+assert(!store.getCalendarEvents().some(e => e.id === delTask1.id), 'Task 1 deleted from calendar');
+
+// Sync should NOT resurrect Task 1
+store.syncScheduleAndCalendar();
+assert(!store.getTasks().some(t => t.id === delTask1.id), 'Task 1 not resurrected in schedule after sync');
+assert(!store.getCalendarEvents().some(e => e.id === delTask1.id), 'Task 1 not resurrected in calendar after sync');
+
+// Delete Event 2 from Calendar
+store.deleteCalendarEvent(delEvent2.id);
+assert(!store.getCalendarEvents().some(e => e.id === delEvent2.id), 'Event 2 deleted from calendar');
+assert(!store.getTasks().some(t => t.id === delEvent2.id), 'Event 2 deleted from schedule');
+
+// Sync should NOT resurrect Event 2
+store.syncScheduleAndCalendar();
+assert(!store.getCalendarEvents().some(e => e.id === delEvent2.id), 'Event 2 not resurrected in calendar after sync');
+assert(!store.getTasks().some(t => t.id === delEvent2.id), 'Event 2 not resurrected in schedule after sync');
+
+// Add two new tasks, then test clearAllTasks()
+const clr1 = store.addTask({ title: 'Clear Test 1', plannedDuration: 30 });
+const clr2 = store.addCalendarEvent({ title: 'Clear Test 2', date: todayStr, startTime: '15:00', endTime: '16:00', plannedDuration: 60 });
+assert(store.getTasks().length >= 2, 'Schedule has tasks before clearAllTasks');
+assert(store.getCalendarEvents().filter(e => e.date === todayStr).length >= 2, 'Calendar has today events before clearAllTasks');
+
+store.clearAllTasks();
+assert(store.getTasks().length === 0, 'Schedule tasks cleared');
+assert(store.getCalendarEvents().filter(e => e.date === todayStr).length === 0, 'Today calendar events cleared');
+
+// Sync should NOT resurrect any cleared tasks/events
+store.syncScheduleAndCalendar();
+assert(store.getTasks().length === 0, 'Schedule remains empty after sync');
+assert(store.getCalendarEvents().filter(e => e.date === todayStr).length === 0, 'Calendar today events remain empty after sync');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');
