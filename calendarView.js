@@ -874,9 +874,9 @@ export class CalendarView {
           const cardEndHour = endMin / 60;
 
           if (cardEndHour > startHour && cardStartHour < endHour) {
-            const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
-            const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
-            const height = durationHrs * hourHeight;
+            const durationMin = Math.max(10, endMin - startMin);
+            const top = Math.max(0, (cardStartHour - startHour) * hourHeight) + 1;
+            const height = Math.max(14, ((durationMin / 60) * hourHeight) - 2);
             const card = document.createElement('div');
             card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
             card.style.top = `${top}px`;
@@ -1213,8 +1213,8 @@ export class CalendarView {
           dur = endMin - startMin;
           if (dur <= 0) dur = 60;
         }
-        const topPx = Math.max(0, ((startMin - (startHour * 60)) / 60) * hourHeight);
-        const hPx = Math.max(20, (dur / 60) * hourHeight);
+        const topPx = Math.max(0, ((startMin - (startHour * 60)) / 60) * hourHeight) + 1;
+        const hPx = Math.max(14, ((dur / 60) * hourHeight) - 2);
         card.style.top = `${topPx}px`;
         card.style.height = `${hPx}px`;
       }
@@ -1844,9 +1844,9 @@ export class CalendarView {
         const cardEndHour = endMin / 60;
 
         if (cardEndHour > startHour && cardStartHour < endHour) {
-          const top = Math.max(0, (cardStartHour - startHour) * hourHeight);
-          const durationHrs = Math.max(0.4, (endMin - startMin) / 60);
-          const height = durationHrs * hourHeight;
+          const durationMin = Math.max(10, endMin - startMin);
+          const top = Math.max(0, (cardStartHour - startHour) * hourHeight) + 1;
+          const height = Math.max(14, ((durationMin / 60) * hourHeight) - 2);
 
           const card = document.createElement('div');
           card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
@@ -2966,10 +2966,10 @@ export class CalendarView {
         if (silhouette.parentNode !== targetCol) {
           targetCol.appendChild(silhouette);
         }
-        const snappedTopPx = (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
-        const durHeight = Math.max(20, (dur / 60) * hourHeight);
-        silhouette.style.top = `${snappedTopPx - 1}px`;
-        silhouette.style.height = `${durHeight + 2}px`;
+        const snappedTopPx = (((snappedStartMin - (startHour * 60)) / 60) * hourHeight) + 1;
+        const durHeight = Math.max(14, ((dur / 60) * hourHeight) - 2);
+        silhouette.style.top = `${snappedTopPx}px`;
+        silhouette.style.height = `${durHeight}px`;
         silhouette.style.display = 'block';
 
         currentSnappedTarget = {
