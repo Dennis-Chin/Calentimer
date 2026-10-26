@@ -29,6 +29,8 @@ export class CalendarView {
     this.pinchCooldownUntil = 0;
     this.isNavigating = false; // Prevents overlapping arrow transitions
     this._activeDragCancelHandler = null;
+    this.activeResizeCard = null;
+    this.activeResizeEvent = null;
 
     // DOM Elements (bound on init)
     this.elements = {};
@@ -1473,6 +1475,7 @@ export class CalendarView {
   }
 
   render(preserveScrollTop) {
+    this._clearActiveResizeHandles();
     this._renderRangeLabel();
 
     if (this.activeView === 'day') {
@@ -1890,8 +1893,24 @@ export class CalendarView {
           const top = Math.max(0, (cardStartHour - startHour) * hourHeight) + 1;
           const height = Math.max(14, ((durationMin / 60) * hourHeight) - 2);
 
+          // Check if overlapping with earlier event in same day
+          let isLaterOverlap = false;
+          for (let k = 0; k < j; k++) {
+            const other = eventsForDate[k];
+            const otherStart = this._parseTimeToMinutes(other.startTime);
+            const otherEnd = this._parseTimeToMinutes(other.endTime);
+            if (startMin < otherEnd && endMin > otherStart) {
+              isLaterOverlap = true;
+              const earlierCard = dayCol.querySelector(`[data-event-id="${other.id}"]`);
+              if (earlierCard) {
+                earlierCard.classList.add('is-overlapping-earlier');
+              }
+              break;
+            }
+          }
+
           const card = document.createElement('div');
-          card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+          card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''}`;
           card.style.top = `${top}px`;
           card.style.height = `${height}px`;
           card.style.backgroundColor = this._getCategoryColor(ev.category);
@@ -2143,6 +2162,304 @@ export class CalendarView {
   _isViewingToday() {
     const sel = this.selectedDate || this.currentDate;
     return this._formatDateISO(sel) === this._formatDateISO(new Date());
+  }
+
+  // ==========================================
+  // Task Duration Resize Handles (Hold-Still Gesture)
+  // ==========================================
+
+  _clearActiveResizeHandles() {
+    if (this.activeResizeCard) {
+      this.activeResizeCard.classList.remove('has-resize-handles');
+      const handles = this.activeResizeCard.querySelectorAll('.event-resize-handle');
+      for (let i = 0; i < handles.length; i++) {
+        const h = handles[i];
+        if (h.parentNode) {
+          h.parentNode.removeChild(h);
+        } else if (typeof h.remove === 'function') {
+          h.remove();
+        }
+      }
+      this.activeResizeCard = null;
+      this.activeResizeEvent = null;
+    }
+    const allHandles = document.querySelectorAll('.event-resize-handle');
+    for (let i = 0; i < allHandles.length; i++) {
+      const h = allHandles[i];
+      if (h.parentNode) {
+        h.parentNode.removeChild(h);
+      } else if (typeof h.remove === 'function') {
+        h.remove();
+      }
+    }
+    const allCards = document.querySelectorAll('.has-resize-handles');
+    for (let i = 0; i < allCards.length; i++) {
+      allCards[i].classList.remove('has-resize-handles');
+    }
+  }
+
+  _attachResizeHandles(card, ev, viewType) {
+    this._clearActiveResizeHandles();
+    this.activeResizeCard = card;
+    this.activeResizeEvent = ev;
+    card.classList.add('has-resize-handles');
+
+    const topHandle = document.createElement('div');
+    topHandle.className = 'event-resize-handle handle-top';
+    topHandle.setAttribute('data-handle', 'top');
+    topHandle.setAttribute('title', 'Drag to adjust start time');
+
+    const bottomHandle = document.createElement('div');
+    bottomHandle.className = 'event-resize-handle handle-bottom';
+    bottomHandle.setAttribute('data-handle', 'bottom');
+    bottomHandle.setAttribute('title', 'Drag to adjust end time');
+
+    card.appendChild(topHandle);
+    card.appendChild(bottomHandle);
+
+    this._setupResizeHandleDrag(topHandle, 'top', card, ev, viewType);
+    this._setupResizeHandleDrag(bottomHandle, 'bottom', card, ev, viewType);
+
+    const outsideDismissHandler = (e) => {
+      if (!card.contains(e.target)) {
+        this._clearActiveResizeHandles();
+        document.removeEventListener('pointerdown', outsideDismissHandler, true);
+        document.removeEventListener('touchstart', outsideDismissHandler, true);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('pointerdown', outsideDismissHandler, true);
+      document.addEventListener('touchstart', outsideDismissHandler, true);
+    }, 60);
+  }
+
+  _setupResizeHandleDrag(handleEl, edge, card, ev, viewType) {
+    const isTop = edge === 'top';
+    let isResizing = false;
+    let initialStartMin = 0;
+    let initialEndMin = 0;
+    let currentStartMin = 0;
+    let currentEndMin = 0;
+    let currentDur = 0;
+    const self = this;
+
+    const resolution = viewType === 'week' ? (this.weekResolution || 15) : (this.currentResolution || 15);
+    const container = viewType === 'week' ? this.elements.weekGridScroll : this.elements.dayTimelineScroll;
+    const hourHeight = viewType === 'week' ? (this.weekHourHeight || 44) : (this.dayHourHeight || 56);
+
+    const isCustom = taskStore.getCalendarCustomRangeEnabled();
+    let startHour = 0;
+    let endHour = 24;
+    if (isCustom) {
+      const startStr = taskStore.getCalendarStartTime() || '08:00';
+      const endStr = taskStore.getCalendarEndTime() || '22:00';
+      startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+      endHour = Math.max(startHour + 1, Math.min(24, Math.ceil(this._parseTimeToMinutes(endStr) / 60)));
+    }
+
+    const onPointerDown = (e) => {
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+
+      if (ev.isLocked) {
+        mobileServices.hapticWarning();
+        self._showToast('🔒 Unlock event before adjusting time');
+        card.classList.remove('lock-pulse-glow');
+        void card.offsetWidth;
+        card.classList.add('lock-pulse-glow');
+        setTimeout(() => {
+          if (card) card.classList.remove('lock-pulse-glow');
+        }, 950);
+        return;
+      }
+
+      isResizing = true;
+      handleEl.classList.add('is-active-dragging');
+      mobileServices.hapticTap();
+
+      initialStartMin = self._parseTimeToMinutes(ev.startTime);
+      initialEndMin = self._parseTimeToMinutes(ev.endTime);
+      currentStartMin = initialStartMin;
+      currentEndMin = initialEndMin;
+      currentDur = ev.plannedDuration || (currentEndMin - currentStartMin);
+
+      if (container) {
+        container.style.overflowY = 'hidden';
+      }
+
+      const onPointerMove = (moveEv) => {
+        if (!isResizing) return;
+        if (moveEv.cancelable) moveEv.preventDefault();
+
+        const clientY = (moveEv.touches && moveEv.touches[0]) ? moveEv.touches[0].clientY : moveEv.clientY;
+        const contRect = container ? container.getBoundingClientRect() : { top: 0 };
+        const relativeY = (clientY - contRect.top) + (container ? container.scrollTop : 0) - 14;
+        const rawMinutes = (startHour * 60) + ((Math.max(0, relativeY) / hourHeight) * 60);
+        const snappedMinutes = Math.round(rawMinutes / resolution) * resolution;
+        const minDur = resolution;
+
+        if (isTop) {
+          currentStartMin = Math.max(startHour * 60, Math.min(initialEndMin - minDur, snappedMinutes));
+          currentDur = initialEndMin - currentStartMin;
+          const newTopPx = 14 + (((currentStartMin - (startHour * 60)) / 60) * hourHeight);
+          const newHeightPx = Math.max(16, (currentDur / 60) * hourHeight);
+
+          card.style.top = `${newTopPx}px`;
+          card.style.height = `${newHeightPx}px`;
+
+          const startStr = self._formatMinutesToTime(currentStartMin);
+          const endStr = ev.endTime;
+
+          if (viewType === 'day') {
+            const timeRangeEl = card.querySelector('.event-time-range');
+            const durPill = card.querySelector('.event-duration-pill');
+            if (timeRangeEl) timeRangeEl.textContent = `${startStr} - ${endStr}`;
+            if (durPill) durPill.textContent = `(${currentDur}m)`;
+            self._applyEventCardLayout(card, newHeightPx);
+          } else {
+            const weekTimeEl = card.querySelector('.week-event-time');
+            if (weekTimeEl) weekTimeEl.textContent = `${startStr} - ${endStr}`;
+          }
+
+          self._updateLiveOverlapIndentation(card, ev, currentStartMin, initialEndMin, viewType);
+        } else {
+          currentEndMin = Math.max(initialStartMin + minDur, Math.min(endHour * 60, snappedMinutes));
+          currentDur = currentEndMin - initialStartMin;
+          const newHeightPx = Math.max(16, (currentDur / 60) * hourHeight);
+
+          card.style.height = `${newHeightPx}px`;
+
+          const startStr = ev.startTime;
+          const endStr = self._formatMinutesToTime(currentEndMin);
+
+          if (viewType === 'day') {
+            const timeRangeEl = card.querySelector('.event-time-range');
+            const durPill = card.querySelector('.event-duration-pill');
+            if (timeRangeEl) timeRangeEl.textContent = `${startStr} - ${endStr}`;
+            if (durPill) durPill.textContent = `(${currentDur}m)`;
+            self._applyEventCardLayout(card, newHeightPx);
+          } else {
+            const weekTimeEl = card.querySelector('.week-event-time');
+            if (weekTimeEl) weekTimeEl.textContent = `${startStr} - ${endStr}`;
+          }
+
+          self._updateLiveOverlapIndentation(card, ev, initialStartMin, currentEndMin, viewType);
+        }
+      };
+
+      const onPointerUp = (upEv) => {
+        if (!isResizing) return;
+        isResizing = false;
+        handleEl.classList.remove('is-active-dragging');
+
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        window.removeEventListener('touchcancel', onPointerUp);
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+
+        if (container) {
+          container.style.removeProperty('overflow-y');
+        }
+
+        const finalStartMin = isTop ? currentStartMin : initialStartMin;
+        const finalEndMin = isTop ? initialEndMin : currentEndMin;
+        const finalDur = Math.max(resolution, finalEndMin - finalStartMin);
+        const finalStartStr = self._formatMinutesToTime(finalStartMin);
+        const finalEndStr = self._formatMinutesToTime(finalEndMin);
+
+        taskStore.updateCalendarEvent(ev.id, {
+          startTime: finalStartStr,
+          endTime: finalEndStr,
+          plannedDuration: finalDur,
+          fixedStartTime: ev.isLocked ? finalStartStr : (ev.fixedStartTime ? finalStartStr : null),
+          isLocked: Boolean(ev.isLocked)
+        });
+
+        const todayStr = self._formatDateISO(new Date());
+        if (ev.date === todayStr) {
+          if (typeof window !== 'undefined' && window.runtime) {
+            const rt = window.runtime;
+            rt.initialTasks = taskStore.getTasks();
+            rt.recalculate();
+            if (typeof window.syncDynamicScheduleTimesToCalendar === 'function') {
+              window.syncDynamicScheduleTimesToCalendar();
+            }
+            if (typeof window.updateActiveTaskDisplay === 'function') {
+              window.updateActiveTaskDisplay();
+            }
+            if (typeof window.updateScheduleUI === 'function') {
+              window.updateScheduleUI(rt.currentSchedule);
+            }
+            if (typeof window.renderTaskList === 'function') {
+              window.renderTaskList(((rt.currentSchedule && rt.currentSchedule.tasks) || []) || []);
+            }
+            if (typeof window.renderCalendarModal === 'function') {
+              window.renderCalendarModal();
+            }
+          }
+        }
+
+        if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
+          window.clearDismissedOverlapPairs();
+        }
+
+        mobileServices.hapticTap();
+        self._showToast(`✓ Updated duration: ${finalStartStr} - ${finalEndStr} (${finalDur}m)`);
+        self.render();
+      };
+
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp, { passive: false });
+      window.addEventListener('touchcancel', onPointerUp, { passive: false });
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+    };
+
+    handleEl.addEventListener('touchstart', onPointerDown, { passive: false });
+    handleEl.addEventListener('mousedown', onPointerDown);
+  }
+
+  _updateLiveOverlapIndentation(card, ev, startMin, endMin, viewType) {
+    const parent = card.parentNode;
+    if (!parent) return;
+
+    const selector = viewType === 'week' ? '.week-event-card' : '.day-event-card';
+    const siblingCards = parent.querySelectorAll(selector);
+    const allEvents = taskStore.getCalendarEvents();
+
+    let hasOverlap = false;
+
+    for (let i = 0; i < siblingCards.length; i++) {
+      const sib = siblingCards[i];
+      const sibId = sib.getAttribute('data-event-id');
+      if (!sibId || sibId === ev.id) continue;
+
+      const sibEv = allEvents.find(e => e.id === sibId);
+      if (!sibEv) continue;
+
+      const oStart = this._parseTimeToMinutes(sibEv.startTime);
+      const oEnd = this._parseTimeToMinutes(sibEv.endTime);
+
+      if (startMin < oEnd && endMin > oStart) {
+        hasOverlap = true;
+        if (startMin >= oStart) {
+          card.classList.add('is-overlapping-later');
+          card.classList.remove('is-overlapping-earlier');
+          sib.classList.add('is-overlapping-earlier');
+          sib.classList.remove('is-overlapping-later');
+        } else {
+          card.classList.add('is-overlapping-earlier');
+          card.classList.remove('is-overlapping-later');
+          sib.classList.add('is-overlapping-later');
+          sib.classList.remove('is-overlapping-earlier');
+        }
+      }
+    }
+
+    if (!hasOverlap) {
+      card.classList.remove('is-overlapping-later', 'is-overlapping-earlier');
+    }
   }
 
   // ==========================================
@@ -2492,7 +2809,6 @@ export class CalendarView {
       isDragging = false;
       this.isDraggingEvent = false;
       this._activeDragCancelHandler = null;
-      this._activeDragCancelHandler = null;
 
       if (dayNavTimer) {
         clearTimeout(dayNavTimer);
@@ -2519,6 +2835,23 @@ export class CalendarView {
       card.style.removeProperty('z-index');
       card.style.removeProperty('pointer-events');
       card.style.removeProperty('transition');
+
+      if (!hasMoved) {
+        if (card.parentNode && card.parentNode === document.body) {
+          document.body.removeChild(card);
+        }
+        if (silhouette && silhouette.parentNode) {
+          silhouette.parentNode.removeChild(silhouette);
+          silhouette = null;
+        }
+        this.render();
+        const renderedCard = this.elements.dayTimelineBody ? this.elements.dayTimelineBody.querySelector(`[data-event-id="${ev.id}"]`) : null;
+        if (renderedCard) {
+          this._attachResizeHandles(renderedCard, ev, 'day');
+        }
+        mobileServices.hapticTap();
+        return;
+      }
 
       if (card.parentNode) {
         card.parentNode.removeChild(card);
@@ -2556,11 +2889,6 @@ export class CalendarView {
       if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
         window.clearDismissedOverlapPairs();
       }
-      if (typeof window !== 'undefined' && typeof window.checkAndPromptScheduleConflict === 'function') {
-        setTimeout(() => {
-          window.checkAndPromptScheduleConflict();
-        }, 120);
-      }
 
       mobileServices.hapticTap();
       this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
@@ -2568,8 +2896,10 @@ export class CalendarView {
     };
 
     // Touch events for mobile dragging
+    let hasMoved = false;
+
     card.addEventListener('touchstart', (e) => {
-      if (e.target.closest('[data-action="toggle-lock"]')) return;
+      if (e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
         if (holdTimer) clearTimeout(holdTimer);
         holdTimer = null;
@@ -2585,6 +2915,7 @@ export class CalendarView {
         grabOffsetY = e.touches[0].clientY - cRect.top;
         initialTop = parseInt(card.style.top, 10) || 14;
         isDragging = false;
+        hasMoved = false;
         this._activeDragCancelHandler = cancelDrag;
 
         holdTimer = setTimeout(() => {
@@ -2595,21 +2926,27 @@ export class CalendarView {
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
-      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"]')) return;
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
         cancelDrag();
         return;
       }
       if (!isDragging) {
+        if (card.classList.contains('has-resize-handles')) {
+          return;
+        }
         if (holdTimer && e.touches && e.touches.length === 1) {
           const diffX = e.touches[0].clientX - startX;
           const diffY = e.touches[0].clientY - startY;
           if (Math.hypot(diffX, diffY) > 8) {
+            hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
             if (ev.isLocked) {
               triggerDayLockedWarning();
+            } else {
+              startDragMode();
             }
           }
         }
@@ -2619,12 +2956,13 @@ export class CalendarView {
         if (e.cancelable) e.preventDefault();
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
+        hasMoved = true;
         updateDayDragPosition(lastClientX, lastClientY);
       }
     }, { passive: false });
 
     card.addEventListener('touchend', (e) => {
-      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"]')) return;
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         cancelDrag();
         if (e && e.cancelable) e.preventDefault();
@@ -2635,7 +2973,9 @@ export class CalendarView {
         holdTimer = null;
         this._activeDragCancelHandler = null;
         if (e && e.cancelable) e.preventDefault();
-        this.openEventInspector(ev);
+        if (!card.classList.contains('has-resize-handles')) {
+          this.openEventInspector(ev);
+        }
         return;
       }
       if (ev.isLocked) {
@@ -2653,7 +2993,7 @@ export class CalendarView {
     // Mouse events for desktop dragging
     card.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('[data-action="toggle-lock"]')) return;
+      if (e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       startX = e.clientX;
       startY = e.clientY;
       lastClientX = e.clientX;
@@ -2663,6 +3003,7 @@ export class CalendarView {
       grabOffsetY = e.clientY - cRect.top;
       initialTop = parseInt(card.style.top, 10) || 14;
       isDragging = false;
+      hasMoved = false;
 
       holdTimer = setTimeout(() => {
         holdTimer = null;
@@ -2670,29 +3011,36 @@ export class CalendarView {
       }, 200);
 
       const onMouseMove = (me) => {
-        if (me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"]')) return;
+        if (me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
         if (!isDragging) {
+          if (card.classList.contains('has-resize-handles')) return;
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+            hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
             if (ev.isLocked) {
               triggerDayLockedWarning();
+            } else {
+              startDragMode();
             }
           }
           return;
         }
         me.preventDefault();
+        hasMoved = true;
         updateDayDragPosition(me.clientX, me.clientY);
       };
 
       const onMouseUp = (me) => {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
-        if (me && me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"]')) return;
+        if (me && me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
-          this.openEventInspector(ev);
+          if (!card.classList.contains('has-resize-handles')) {
+            this.openEventInspector(ev);
+          }
           return;
         }
         if (ev.isLocked) {
@@ -3095,6 +3443,24 @@ export class CalendarView {
       }
       currentOverCol = null;
 
+      if (!hasMoved) {
+        if (card.parentNode && card.parentNode === document.body) {
+          document.body.removeChild(card);
+        }
+        if (silhouette && silhouette.parentNode) {
+          silhouette.parentNode.removeChild(silhouette);
+          silhouette = null;
+        }
+        this.render();
+        const weekGrid = this.elements.weekGridBody;
+        const renderedCard = weekGrid ? weekGrid.querySelector(`[data-event-id="${ev.id}"]`) : null;
+        if (renderedCard) {
+          this._attachResizeHandles(renderedCard, ev, 'week');
+        }
+        mobileServices.hapticTap();
+        return;
+      }
+
       if (dropTarget && dropTarget.targetCol) {
         taskStore.updateCalendarEvent(ev.id, {
           date: dropTarget.targetDateStr || ev.date,
@@ -3108,11 +3474,6 @@ export class CalendarView {
         if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
           window.clearDismissedOverlapPairs();
         }
-        if (typeof window !== 'undefined' && typeof window.checkAndPromptScheduleConflict === 'function') {
-          setTimeout(() => {
-            window.checkAndPromptScheduleConflict();
-          }, 120);
-        }
 
         mobileServices.hapticTap();
         this._showToast(`✓ Rescheduled to ${dropTarget.targetDateStr} (${dropTarget.startTime} - ${dropTarget.endTime})`);
@@ -3123,7 +3484,10 @@ export class CalendarView {
     };
 
     // Touch events for mobile
+    let hasMoved = false;
+
     card.addEventListener('touchstart', (e) => {
+      if (e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
         if (holdTimer) clearTimeout(holdTimer);
         holdTimer = null;
@@ -3138,6 +3502,7 @@ export class CalendarView {
         grabOffsetX = e.touches[0].clientX - cRect.left;
         grabOffsetY = e.touches[0].clientY - cRect.top;
         isDragging = false;
+        hasMoved = false;
         this._activeDragCancelHandler = cancelDrag;
 
         holdTimer = setTimeout(() => {
@@ -3148,20 +3513,27 @@ export class CalendarView {
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil || (e.touches && e.touches.length > 1)) {
         cancelDrag();
         return;
       }
       if (!isDragging) {
+        if (card.classList.contains('has-resize-handles')) {
+          return;
+        }
         if (holdTimer && e.touches && e.touches.length === 1) {
           const diffX = e.touches[0].clientX - startX;
           const diffY = e.touches[0].clientY - startY;
           if (Math.hypot(diffX, diffY) > 8) {
+            hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
             if (ev.isLocked) {
               triggerWeekLockedWarning();
+            } else {
+              startDragMode();
             }
           }
         }
@@ -3171,11 +3543,13 @@ export class CalendarView {
         if (e.cancelable) e.preventDefault();
         lastClientX = e.touches[0].clientX;
         lastClientY = e.touches[0].clientY;
+        hasMoved = true;
         updateWeekDragPosition(lastClientX, lastClientY);
       }
     }, { passive: false });
 
     card.addEventListener('touchend', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       if (this.isPinching || Date.now() < this.pinchCooldownUntil) {
         cancelDrag();
         if (e && e.cancelable) e.preventDefault();
@@ -3186,7 +3560,9 @@ export class CalendarView {
         holdTimer = null;
         this._activeDragCancelHandler = null;
         if (e && e.cancelable) e.preventDefault();
-        this.openEventInspector(ev);
+        if (!card.classList.contains('has-resize-handles')) {
+          this.openEventInspector(ev);
+        }
         return;
       }
       if (ev.isLocked) {
@@ -3204,6 +3580,7 @@ export class CalendarView {
     // Mouse events for desktop
     card.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (e.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
       startX = e.clientX;
       startY = e.clientY;
       lastClientX = e.clientX;
@@ -3212,6 +3589,7 @@ export class CalendarView {
       grabOffsetX = e.clientX - cRect.left;
       grabOffsetY = e.clientY - cRect.top;
       isDragging = false;
+      hasMoved = false;
 
       holdTimer = setTimeout(() => {
         holdTimer = null;
@@ -3219,12 +3597,17 @@ export class CalendarView {
       }, 200);
 
       const onMouseMove = (me) => {
+        if (me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
         if (!isDragging) {
+          if (card.classList.contains('has-resize-handles')) return;
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+            hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
             if (ev.isLocked) {
               triggerWeekLockedWarning();
+            } else {
+              startDragMode();
             }
           }
           return;
@@ -3232,16 +3615,20 @@ export class CalendarView {
         me.preventDefault();
         lastClientX = me.clientX;
         lastClientY = me.clientY;
+        hasMoved = true;
         updateWeekDragPosition(me.clientX, me.clientY);
       };
 
       const onMouseUp = (me) => {
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
+        if (me && me.target && me.target.closest && me.target.closest('[data-action="toggle-lock"], .event-resize-handle')) return;
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
-          this.openEventInspector(ev);
+          if (!card.classList.contains('has-resize-handles')) {
+            this.openEventInspector(ev);
+          }
           return;
         }
         if (ev.isLocked) {
@@ -4069,6 +4456,13 @@ export class CalendarView {
     const h = parseInt(parts[0], 10) || 0;
     const m = parseInt(parts[1], 10) || 0;
     return (h * 60) + m;
+  }
+
+  _formatMinutesToTime(totalMin) {
+    const wrapped = ((Math.round(totalMin) % 1440) + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
   _escapeHtml(str) {

@@ -4576,6 +4576,93 @@ body {
   box-shadow: -3px 4px 14px rgba(0, 0, 0, 0.45);
 }
 
+/* Week View Overlapping Event Card Positioning */
+.week-event-card.is-overlapping-earlier {
+  left: 2px !important;
+  right: 48% !important;
+  z-index: 5 !important;
+}
+
+.week-event-card.is-overlapping-later {
+  left: calc(2px + 45%) !important;
+  right: 2px !important;
+  z-index: 7 !important;
+  box-shadow: -2px 3px 10px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Calendar Task Resize Circles (Top & Bottom Border Handles) */
+.day-event-card.has-resize-handles,
+.week-event-card.has-resize-handles {
+  overflow: visible !important;
+  z-index: 80 !important;
+  box-shadow: 0 0 0 2px var(--accent-cyan, #00f0ff), 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+
+.event-resize-handle {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  background: #ffffff;
+  border: 2.5px solid var(--accent-cyan, #00f0ff);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  cursor: ns-resize;
+  touch-action: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.12s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Invisible 40px touch hitbox for smooth mobile finger grabbing */
+.event-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: -13px;
+  bottom: -13px;
+  left: -13px;
+  right: -13px;
+}
+
+.event-resize-handle.handle-top {
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+.event-resize-handle.handle-bottom {
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+
+.event-resize-handle:active,
+.event-resize-handle.is-active-dragging {
+  background: var(--accent-cyan, #00f0ff) !important;
+  border-color: #ffffff !important;
+  transform: translate(-50%, -50%) scale(1.35) !important;
+  box-shadow: 0 0 12px var(--accent-cyan, #00f0ff), 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+.event-resize-handle.handle-bottom:active,
+.event-resize-handle.handle-bottom.is-active-dragging {
+  transform: translate(-50%, 50%) scale(1.35) !important;
+}
+
+[data-theme="light"] .event-resize-handle {
+  background: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] .day-event-card.has-resize-handles,
+[data-theme="light"] .week-event-card.has-resize-handles {
+  box-shadow: 0 0 0 2px #0284c7, 0 6px 18px rgba(0, 0, 0, 0.2) !important;
+}
+
 .day-event-card.is-dragging-cal-event,
 .week-event-card.is-dragging-cal-event {
   z-index: 99999 !important;
