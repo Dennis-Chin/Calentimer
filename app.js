@@ -868,6 +868,16 @@ function setupRotaryWheel() {
     updateWheelProgress(Math.min(1, Math.max(0, finalRatio)));
     updateActiveTaskTimeSpanDynamic(lastScrubbedSecond >= 0 ? lastScrubbedSecond : runtime.getRemainingSeconds());
 
+    syncDynamicScheduleTimesToCalendar();
+    updateScheduleUI(runtime.currentSchedule);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    renderCalendarModal();
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
+      calendarView.render();
+    }
+    dismissedOverlapPairs.clear();
+    checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
+
     if (runtime.status === TimerStatus.RUNNING) {
       startContinuousWheelAnimation();
     }
@@ -1009,7 +1019,15 @@ function setupRotaryWheel() {
       updateActiveTaskTimeSpanDynamic(remainingSec);
       updateWheelProgress(runtime.getProgress());
       updateFinishEarlyButtonText(remainingSec);
+      syncDynamicScheduleTimesToCalendar();
+      updateScheduleUI(runtime.currentSchedule);
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      renderCalendarModal();
+      if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
+        calendarView.render();
+      }
+      dismissedOverlapPairs.clear();
+      checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
       pendingMinuteAdjustment = 0;
 
       if (runtime.status === TimerStatus.RUNNING) {
@@ -2283,9 +2301,10 @@ function syncDynamicScheduleTimesToCalendar() {
   scheduledTasks.forEach(schedTask => {
     const calEvent = calEvents.find(e => e.id === schedTask.id && e.date === todayStr);
     if (calEvent) {
-      if (calEvent.startTime !== schedTask.startTime || calEvent.endTime !== schedTask.endTime) {
+      if (calEvent.startTime !== schedTask.startTime || calEvent.endTime !== schedTask.endTime || calEvent.plannedDuration !== schedTask.plannedDuration) {
         calEvent.startTime = schedTask.startTime;
         calEvent.endTime = schedTask.endTime;
+        calEvent.plannedDuration = schedTask.plannedDuration;
         updatedAnyCal = true;
       }
     } else {
@@ -2308,9 +2327,10 @@ function syncDynamicScheduleTimesToCalendar() {
 
     const t = storeTasks.find(item => item.id === schedTask.id);
     if (t) {
-      if (t.startTime !== schedTask.startTime || t.endTime !== schedTask.endTime) {
+      if (t.startTime !== schedTask.startTime || t.endTime !== schedTask.endTime || t.plannedDuration !== schedTask.plannedDuration) {
         t.startTime = schedTask.startTime;
         t.endTime = schedTask.endTime;
+        t.plannedDuration = schedTask.plannedDuration;
         updatedAnyTask = true;
       }
     }
@@ -2497,7 +2517,7 @@ function setupScheduleConflictModal() {
 
       closeScheduleConflictModal();
       mobileServices.hapticTap();
-      showToastNotification(`✓ Shifted "${taskB.title}" to start at ${targetStartTime}`);
+      showToastNotification(`✓ Moved "${taskB.title}" to start at ${targetStartTime}`);
 
       setTimeout(() => {
         const nextTasks = (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks();
@@ -2506,7 +2526,7 @@ function setupScheduleConflictModal() {
     });
   }
 
-  // Choice B: Keep Times & Prioritize Timer
+  // Choice B: Ignore Other Task & Record Selected Only
   if (btnKeep) {
     btnKeep.addEventListener('click', () => {
       if (!currentConflictData) {
@@ -2536,7 +2556,7 @@ function setupScheduleConflictModal() {
 
       closeScheduleConflictModal();
       mobileServices.hapticTap();
-      showToastNotification(`✓ Active timer dedicated to "${selectedTask.title}"`);
+      showToastNotification(`✓ Recording "${selectedTask.title}" on timer (overlap ignored)`);
 
       setTimeout(() => {
         const nextTasks = (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks();
@@ -2549,6 +2569,41 @@ function setupScheduleConflictModal() {
     modalBackdrop.addEventListener('click', (e) => {
       if (e.target === modalBackdrop) closeScheduleConflictModal();
     });
+  }
+}
+
+function hexToRgba(hex, alpha) {
+  const a = typeof alpha === 'number' ? alpha : 0.12;
+  if (!hex || typeof hex !== 'string' || hex.charAt(0) !== '#') {
+    return 'rgba(37, 99, 235, ' + a + ')';
+  }
+  let h = hex.slice(1);
+  if (h.length === 3) {
+    h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  }
+  const num = parseInt(h, 16);
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + a + ')';
+}
+
+function getCategoryHexColor(category) {
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView._getCategoryColor === 'function') {
+    return calendarView._getCategoryColor(category);
+  }
+  const cat = (category || 'general').trim().toLowerCase();
+  switch (cat) {
+    case 'work': return '#2563eb';
+    case 'study': return '#7c3aed';
+    case 'break': return '#d97706';
+    case 'personal': return '#0d9488';
+    case 'exercise':
+    case 'fitness': return '#e11d48';
+    case 'reading': return '#0891b2';
+    case 'coding':
+    case 'dev': return '#4f46e5';
+    default: return '#8b5cf6';
   }
 }
 
@@ -2602,9 +2657,7 @@ function renderTaskList(tasks) {
     const isOverlap = overlapIndices.has(idx);
 
     let statusClass = 'task-pending';
-    let statusBadge = isBreak
-      ? '<span class="task-status-pill break-pill">☕ Break</span>'
-      : '<span class="task-status-pill pending">⏳ Todo</span>';
+    let statusBadge = '';
 
     if (isAllCompleted || (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
       statusClass = 'task-completed';
@@ -2614,14 +2667,22 @@ function renderTaskList(tasks) {
       statusBadge = '<span class="task-status-pill current">▶ Active</span>';
     } else {
       statusClass = 'task-pending';
+      const catHex = getCategoryHexColor(task.category);
       statusBadge = isBreak
         ? '<span class="task-status-pill break-pill">☕ Break</span>'
-        : '<span class="task-status-pill pending">⏳ Todo</span>';
+        : `<span class="task-status-pill pending" style="background:${hexToRgba(catHex, 0.18)};color:${catHex};border:1px solid ${hexToRgba(catHex, 0.45)};">⏳ Todo</span>`;
     }
 
     card.className = `task-card ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''} ${isOverlap ? 'is-schedule-overlap' : ''}`;
     card.setAttribute('data-id', task.id);
     card.setAttribute('data-index', idx);
+
+    if (statusClass === 'task-pending') {
+      const catHex = getCategoryHexColor(task.category);
+      card.style.background = hexToRgba(catHex, 0.12);
+      card.style.borderColor = hexToRgba(catHex, 0.35);
+      card.style.borderLeft = `5px solid ${catHex}`;
+    }
 
     const isCompressed = task.allocatedDuration < task.plannedDuration;
     const durationText = isCompressed
@@ -3507,30 +3568,30 @@ function closeTodo() {
   if (navItemTodo) navItemTodo.classList.remove('active');
 }
 
-// Category Color Palette: Vibrant, colorful tones strictly distinct from task status colors (no light-blue, red, orange/yellow, or grey)
+// Category Color Palette: Vibrant, colorful tones strictly avoiding light green (reserved for completed)
 const CATEGORY_PALETTE = [
   { bg: 'rgba(168, 85, 247, 0.22)', border: '#a855f7', text: '#e9d5ff' },  // Bright Purple (Study / Deep Work)
-  { bg: 'rgba(16, 185, 129, 0.22)', border: '#10b981', text: '#6ee7b7' },  // Emerald / Mint (Personal)
+  { bg: 'rgba(13, 148, 136, 0.22)', border: '#0d9488', text: '#99f6e4' },  // Deep Teal (Personal - avoids light green)
   { bg: 'rgba(236, 72, 153, 0.22)', border: '#ec4899', text: '#fbcfe8' },  // Magenta / Hot Pink (Creative / Life)
-  { bg: 'rgba(132, 204, 22, 0.22)', border: '#84cc16', text: '#d9f99d' },  // Bright Lime (Health / Fitness)
-  { bg: 'rgba(99, 102, 241, 0.22)', border: '#6366f1', text: '#c7d2fe' },  // Royal Indigo (Coding / Dev)
-  { bg: 'rgba(20, 184, 166, 0.22)', border: '#14b8a6', text: '#99f6e4' },  // Teal (Chores / Tasks)
+  { bg: 'rgba(225, 29, 72, 0.22)', border: '#e11d48', text: '#fecdd3' },   // Rose (Health / Fitness)
+  { bg: 'rgba(37, 99, 235, 0.22)', border: '#2563eb', text: '#bfdbfe' },   // Royal Blue (Work)
+  { bg: 'rgba(217, 119, 6, 0.22)', border: '#d97706', text: '#fde68a' },   // Amber (Break)
   { bg: 'rgba(217, 70, 239, 0.22)', border: '#d946ef', text: '#f5d0fe' },  // Vivid Fuchsia (Meeting)
   { bg: 'rgba(139, 92, 246, 0.22)', border: '#8b5cf6', text: '#ddd6fe' },  // Violet (General)
-  { bg: 'rgba(34, 197, 94, 0.22)', border: '#22c55e', text: '#bbf7d0' }   // Spring Green (Admin)
+  { bg: 'rgba(79, 70, 229, 0.22)', border: '#4f46e5', text: '#c7d2fe' }   // Royal Indigo (Coding / Dev)
 ];
 
 function getCategoryColor(category) {
   const cat = (category || 'General').trim();
   const lower = cat.toLowerCase();
   if (lower === 'study') return CATEGORY_PALETTE[0];
-  if (lower === 'work') return CATEGORY_PALETTE[4];
   if (lower === 'personal') return CATEGORY_PALETTE[1];
   if (lower === 'health' || lower === 'fitness') return CATEGORY_PALETTE[3];
+  if (lower === 'work') return CATEGORY_PALETTE[4];
+  if (lower === 'break') return CATEGORY_PALETTE[5];
   if (lower === 'meeting') return CATEGORY_PALETTE[6];
-  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[4];
-  if (lower === 'chores') return CATEGORY_PALETTE[5];
   if (lower === 'general') return CATEGORY_PALETTE[7];
+  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[8];
 
   let hash = 0;
   for (let i = 0; i < cat.length; i++) {
@@ -3589,6 +3650,13 @@ function renderCalendarModal() {
     item.className = `calendar-block ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''}`;
     item.setAttribute('data-id', task.id);
     item.setAttribute('data-index', idx);
+
+    if (statusClass === 'pending') {
+      const catHex = getCategoryHexColor(task.category);
+      item.style.background = hexToRgba(catHex, 0.12);
+      item.style.borderColor = hexToRgba(catHex, 0.35);
+      item.style.borderLeft = `4px solid ${catHex}`;
+    }
 
     item.innerHTML = `
       <div class="calendar-block-left">

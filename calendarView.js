@@ -3987,14 +3987,14 @@ export class CalendarView {
       case 'work': return '#2563eb'; // Royal Blue
       case 'study': return '#7c3aed'; // Vibrant Purple
       case 'break': return '#d97706'; // Amber
-      case 'personal': return '#059669'; // Emerald Green
+      case 'personal': return '#0d9488'; // Deep Teal (Avoids light green reserved for completed tasks)
       case 'exercise':
-      case 'fitness': return '#dc2626'; // Red
+      case 'fitness': return '#e11d48'; // Rose
       case 'reading': return '#0891b2'; // Cyan
       case 'coding':
       case 'dev': return '#4f46e5'; // Indigo
       default: {
-        const colors = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#4f46e5', '#db2777', '#0284c7'];
+        const colors = ['#2563eb', '#7c3aed', '#0d9488', '#d97706', '#0891b2', '#4f46e5', '#db2777', '#8b5cf6'];
         let hash = 0;
         for (let i = 0; i < cat.length; i++) {
           hash = cat.charCodeAt(i) + ((hash << 5) - hash);

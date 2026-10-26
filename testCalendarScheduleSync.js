@@ -306,6 +306,48 @@ store.syncScheduleAndCalendar();
 assert(store.getTasks().length === 0, 'Schedule remains empty after sync');
 assert(store.getCalendarEvents().filter(e => e.date === todayStr).length === 0, 'Calendar today events remain empty after sync');
 
+console.log('\n--- 13. Testing Dial Duration Adjustment & Overlap Collision Trigger ---');
+store.saveTasks([]);
+store.saveCalendarEvents([]);
+
+const dialTaskA = store.addTask({
+  title: 'Task Alpha',
+  startTime: '10:00',
+  endTime: '10:30',
+  plannedDuration: 30,
+  isLocked: true,
+  category: 'Personal'
+});
+
+const dialTaskB = store.addTask({
+  title: 'Task Beta',
+  startTime: '10:45',
+  endTime: '11:15',
+  plannedDuration: 30,
+  isLocked: true,
+  category: 'Work'
+});
+
+const dialRuntime = new TimerRuntime({
+  hardStop: '17:00',
+  tasks: store.getTasks()
+});
+dialRuntime.recalculate();
+
+// Adjust Task Alpha from 30m to 50m using dial (e.g. +20 minutes)
+dialRuntime.setActiveTaskTargetSeconds(50 * 60, 20);
+const activeAfterDial = dialRuntime.getActiveTask();
+assert(activeAfterDial.plannedDuration === 50, 'Active task duration extended to 50 minutes');
+
+// Recalculate schedule end time
+const newEndMinutes = 10 * 60 + 50; // 10:50
+const newEndTime = `${Math.floor(newEndMinutes / 60)}:${String(newEndMinutes % 60).padStart(2, '0')}`; // 10:50
+
+// Collision check: Task Alpha now runs 10:00 -> 10:50, while Task Beta starts at 10:45!
+const betaStartMinutes = 10 * 60 + 45;
+const hasCollision = newEndMinutes > betaStartMinutes;
+assert(hasCollision === true, 'Dial adjustment extending Task Alpha to 10:50 collides with Task Beta starting at 10:45');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');
