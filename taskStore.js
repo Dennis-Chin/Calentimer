@@ -1007,15 +1007,17 @@ export class TaskStore {
     try {
       const tasks = this.getTasks();
       const existingIdx = tasks.findIndex(t => t.id === calEvent.id);
+      const isEventLocked = Boolean(calEvent.isLocked);
+      const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
       const taskPayload = {
         id: calEvent.id,
         title: calEvent.title,
         plannedDuration: calEvent.plannedDuration,
         category: calEvent.category,
         emoji: calEvent.emoji,
-        isLocked: Boolean(calEvent.isLocked),
+        isLocked: isEventLocked,
         useTimeBank: calEvent.useTimeBank !== false,
-        fixedStartTime: calEvent.isLocked ? calEvent.startTime : null,
+        fixedStartTime: fixedStart,
         startTime: calEvent.startTime,
         endTime: calEvent.endTime,
         source: calEvent.source || 'local',
@@ -1028,6 +1030,13 @@ export class TaskStore {
       } else {
         tasks.push(taskPayload);
       }
+
+      tasks.sort((a, b) => {
+        const aStart = a.startTime ? (parseInt(a.startTime.split(':')[0], 10) * 60 + parseInt(a.startTime.split(':')[1], 10)) : 0;
+        const bStart = b.startTime ? (parseInt(b.startTime.split(':')[0], 10) * 60 + parseInt(b.startTime.split(':')[1], 10)) : 0;
+        return aStart - bStart;
+      });
+
       this.saveTasks(tasks);
     } finally {
       this._isSyncing = false;
@@ -1063,6 +1072,8 @@ export class TaskStore {
       // 1. Sync Calendar Events -> Tasks (Events created or edited on Calendar for Today)
       todayCalEvents.forEach(calEvent => {
         const existingTask = taskMap.get(calEvent.id);
+        const isEventLocked = Boolean(calEvent.isLocked);
+        const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
         if (!existingTask) {
           const newTask = {
             id: calEvent.id,
@@ -1070,9 +1081,9 @@ export class TaskStore {
             plannedDuration: calEvent.plannedDuration || 30,
             category: calEvent.category || 'General',
             emoji: calEvent.emoji || '📅',
-            isLocked: Boolean(calEvent.isLocked),
+            isLocked: isEventLocked,
             useTimeBank: calEvent.useTimeBank !== false,
-            fixedStartTime: calEvent.isLocked ? (calEvent.startTime || null) : null,
+            fixedStartTime: fixedStart,
             startTime: calEvent.startTime || null,
             endTime: calEvent.endTime || null,
             source: calEvent.source || 'local',
@@ -1090,11 +1101,9 @@ export class TaskStore {
             existingTask.plannedDuration = calEvent.plannedDuration;
             existingTask.category = calEvent.category;
             existingTask.emoji = calEvent.emoji;
-            existingTask.isLocked = Boolean(calEvent.isLocked);
+            existingTask.isLocked = isEventLocked;
             existingTask.useTimeBank = calEvent.useTimeBank !== false;
-            if (calEvent.isLocked) {
-              existingTask.fixedStartTime = calEvent.startTime || null;
-            }
+            existingTask.fixedStartTime = fixedStart;
             existingTask.startTime = calEvent.startTime;
             existingTask.endTime = calEvent.endTime;
             existingTask.lastModified = calMod;
@@ -1160,7 +1169,7 @@ export class TaskStore {
             if (existingEvent.useTimeBank !== (task.useTimeBank !== false)) { existingEvent.useTimeBank = task.useTimeBank !== false; updated = true; }
             if (task.startTime && existingEvent.startTime !== task.startTime) { existingEvent.startTime = task.startTime; updated = true; }
             if (task.endTime && existingEvent.endTime !== task.endTime) { existingEvent.endTime = task.endTime; updated = true; }
-            const lockedState = Boolean(task.isLocked || task.fixedStartTime);
+            const lockedState = Boolean(task.isLocked);
             if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
             if (updated) {
               existingEvent.lastModified = Date.now();
@@ -1171,11 +1180,19 @@ export class TaskStore {
       });
 
       if (tasksChanged) {
+        tasksToKeep.sort((a, b) => {
+          const aStart = a.startTime ? (parseInt(a.startTime.split(':')[0], 10) * 60 + parseInt(a.startTime.split(':')[1], 10)) : 0;
+          const bStart = b.startTime ? (parseInt(b.startTime.split(':')[0], 10) * 60 + parseInt(b.startTime.split(':')[1], 10)) : 0;
+          return aStart - bStart;
+        });
         safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
       }
       if (calChanged) {
         const finalEvents = otherCalEvents.concat(mergedTodayEvents);
         safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, JSON.stringify(finalEvents));
+      }
+      if (tasksChanged || calChanged) {
+        this._notify();
       }
     } finally {
       this._isSyncing = false;

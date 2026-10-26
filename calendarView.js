@@ -1720,7 +1720,8 @@ export class CalendarView {
             e.stopPropagation();
             if (e.cancelable) e.preventDefault();
           }
-          const newLocked = !ev.isLocked;
+          const currentLocked = Boolean(ev.isLocked || ev.fixedStartTime);
+          const newLocked = !currentLocked;
           const fixedStart = newLocked ? (ev.startTime || null) : null;
           taskStore.updateCalendarEvent(ev.id, {
             isLocked: newLocked,
@@ -2522,7 +2523,9 @@ export class CalendarView {
         date: targetDateStr,
         startTime: newStartTime,
         endTime: newEndTime,
-        plannedDuration: durMin
+        plannedDuration: durMin,
+        fixedStartTime: newStartTime,
+        isLocked: Boolean(ev.isLocked)
       });
 
       mobileServices.hapticTap();
@@ -3063,7 +3066,9 @@ export class CalendarView {
           date: dropTarget.targetDateStr || ev.date,
           startTime: dropTarget.startTime,
           endTime: dropTarget.endTime,
-          plannedDuration: dropTarget.dur
+          plannedDuration: dropTarget.dur,
+          fixedStartTime: dropTarget.startTime,
+          isLocked: Boolean(ev.isLocked)
         });
 
         mobileServices.hapticTap();

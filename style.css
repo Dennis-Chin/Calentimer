@@ -5561,4 +5561,33 @@ body {
   border-color: #f59e0b;
 }
 
+.conflict-cascade-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-md);
+  color: #fbbf24;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.conflict-cascade-warning.hidden {
+  display: none !important;
+}
+
+.conflict-cascade-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.conflict-cascade-text {
+  flex: 1;
+}
+
 

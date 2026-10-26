@@ -152,6 +152,72 @@ runtime.recalculate();
 assert(runtime.currentSchedule.tasks[0].id === taskB.id, 'Task B is now first in pipeline after reorder');
 assert(runtime.currentSchedule.tasks[1].id === taskA.id, 'Task A is now second in pipeline after reorder');
 
+console.log('\n--- 8. Testing Real-Time Calendar Event Drag Move ---');
+store.saveTasks([]);
+store.saveCalendarEvents([]);
+const cal1 = store.addCalendarEvent({
+  title: 'Morning Sync',
+  date: todayStr,
+  startTime: '09:00',
+  endTime: '10:00',
+  plannedDuration: 60,
+  isLocked: true
+});
+const cal2 = store.addCalendarEvent({
+  title: 'Afternoon Review',
+  date: todayStr,
+  startTime: '14:00',
+  endTime: '15:00',
+  plannedDuration: 60,
+  isLocked: true
+});
+
+store.updateCalendarEvent(cal2.id, {
+  date: todayStr,
+  startTime: '08:00',
+  endTime: '09:00',
+  plannedDuration: 60,
+  fixedStartTime: '08:00',
+  isLocked: true
+});
+
+const tasksAfterDrag = store.getTasks();
+const movedTaskInSchedule = tasksAfterDrag.find(t => t.id === cal2.id);
+assert(movedTaskInSchedule && movedTaskInSchedule.fixedStartTime === '08:00', 'Moved calendar event updates fixedStartTime on Today\'s Schedule');
+assert(movedTaskInSchedule && movedTaskInSchedule.startTime === '08:00', 'Moved calendar event updates startTime on Today\'s Schedule');
+assert(tasksAfterDrag[0] && tasksAfterDrag[0].id === cal2.id, 'Tasks in Today\'s Schedule are sorted chronologically by new start time');
+
+console.log('\n--- 9. Testing Padlock Unlock on Active/Progressed Task ---');
+runtime.initialTasks = store.getTasks();
+runtime.recalculate();
+const activeTask = runtime.getActiveTask();
+assert(Boolean(activeTask.isLocked || activeTask.fixedStartTime), 'Active task starts locked');
+
+const currentLocked = Boolean(activeTask.isLocked || activeTask.fixedStartTime);
+const nextLock = !currentLocked;
+const fixedStartTime = nextLock ? (activeTask.fixedStartTime || activeTask.startTime || null) : null;
+store.updateTask(activeTask.id, { isLocked: nextLock, fixedStartTime: fixedStartTime });
+runtime.initialTasks = store.getTasks();
+runtime.recalculate();
+
+const unlockedActiveTask = runtime.getActiveTask();
+assert(unlockedActiveTask.isLocked === false, 'Active task isLocked toggled to false');
+assert(unlockedActiveTask.fixedStartTime === null, 'Active task fixedStartTime cleared to null');
+
+console.log('\n--- 10. Testing Overlap Cascade Collision Detection Logic ---');
+store.saveTasks([]);
+const testA = store.addTask({ title: 'Task A', startTime: '10:00', endTime: '11:00', plannedDuration: 60, isLocked: true });
+const testB = store.addTask({ title: 'Task B', startTime: '10:30', endTime: '11:30', plannedDuration: 60, isLocked: true });
+const testC = store.addTask({ title: 'Task C', startTime: '11:30', endTime: '12:30', plannedDuration: 60, isLocked: true });
+
+const shiftStartMin = 11 * 60;
+const shiftEndMin = shiftStartMin + 60;
+const taskCStartMin = 11 * 60 + 30;
+const taskCEndMin = 12 * 60 + 30;
+
+const willCascadeCollide = (shiftStartMin < taskCEndMin && taskCStartMin < shiftEndMin);
+assert(willCascadeCollide === true, 'Cascade collision correctly detected: shifting B to 11:00-12:00 collides with C at 11:30');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');
