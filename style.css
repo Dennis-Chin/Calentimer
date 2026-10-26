@@ -5128,35 +5128,42 @@ body {
   transform: translateY(-1px);
 }
 
+/* Thin outer orange border for locked cards & pills in week and month views */
+.week-event-card.is-locked,
+.month-event-pill.is-locked {
+  box-shadow: 0 0 0 1.5px #f59e0b;
+  outline: 1.5px solid #f59e0b;
+}
+
 /* Pulsing Glow Animation for Locked Event Cards / Pills when Dragging is Prevented */
 @keyframes cardLockPulseGlow {
   0% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0), inset 0 0 0 0 rgba(245, 158, 11, 0);
-    outline: 2px solid transparent;
+    box-shadow: 0 0 0 1.5px #f59e0b;
+    outline: 1.5px solid #f59e0b;
     filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0));
     transform: scale(1);
   }
   25% {
-    box-shadow: 0 0 16px rgba(245, 158, 11, 0.95), inset 0 0 0 2px #f59e0b;
-    outline: 2px solid #f59e0b;
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.95), 0 0 0 2.5px #f59e0b;
+    outline: 2.5px solid #f59e0b;
     filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.9));
     transform: scale(1.04);
   }
   50% {
-    box-shadow: 0 0 5px rgba(245, 158, 11, 0.5), inset 0 0 0 1.5px #f59e0b;
+    box-shadow: 0 0 5px rgba(245, 158, 11, 0.5), 0 0 0 1.5px #f59e0b;
     outline: 1.5px solid #f59e0b;
     filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.4));
     transform: scale(1.02);
   }
   75% {
-    box-shadow: 0 0 14px rgba(245, 158, 11, 0.9), inset 0 0 0 2px #f59e0b;
-    outline: 2px solid #f59e0b;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.9), 0 0 0 2.5px #f59e0b;
+    outline: 2.5px solid #f59e0b;
     filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.8));
     transform: scale(1.04);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0), inset 0 0 0 0 rgba(245, 158, 11, 0);
-    outline: 2px solid transparent;
+    box-shadow: 0 0 0 1.5px #f59e0b;
+    outline: 1.5px solid #f59e0b;
     filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0));
     transform: scale(1);
   }
