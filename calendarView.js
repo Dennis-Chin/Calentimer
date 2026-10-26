@@ -360,8 +360,8 @@ export class CalendarView {
     let isPullingDown = false;
 
     const onTouchStart = (e) => {
-      if (this.isDraggingEvent) return;
-      if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn')) return;
+      if (this.isDraggingEvent || this.activeResizeCard) return;
+      if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn, .event-resize-handle')) return;
       if (!e.touches || e.touches.length !== 1) return;
 
       const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
@@ -489,10 +489,10 @@ export class CalendarView {
     };
 
     modalBody.addEventListener('touchstart', (e) => {
-      if (this.isDraggingEvent) return;
+      if (this.isDraggingEvent || this.activeResizeCard) return;
       if (e.touches && e.touches.length === 1) {
         // Allow touches on event cards so swiping over tasks changes days; ignore only clickable buttons/inputs
-        if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn')) {
+        if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn, .event-resize-handle')) {
           return;
         }
         touchStartX = e.touches[0].clientX;
@@ -512,7 +512,7 @@ export class CalendarView {
     }, { passive: true });
 
     modalBody.addEventListener('touchmove', (e) => {
-      if (this.isDraggingEvent) {
+      if (this.isDraggingEvent || this.activeResizeCard) {
         if (isSwipingHorizontal && activeContainer) {
           isSwipingHorizontal = false;
           activeContainer.style.removeProperty('transform');
@@ -2169,6 +2169,7 @@ export class CalendarView {
   // ==========================================
 
   _clearActiveResizeHandles() {
+    this.isDraggingEvent = false;
     if (this.activeResizeCard) {
       this.activeResizeCard.classList.remove('has-resize-handles');
       const handles = this.activeResizeCard.querySelectorAll('.event-resize-handle');
@@ -2274,6 +2275,7 @@ export class CalendarView {
       }
 
       isResizing = true;
+      self.isDraggingEvent = true;
       handleEl.classList.add('is-active-dragging');
       mobileServices.hapticTap();
 
@@ -2289,6 +2291,7 @@ export class CalendarView {
 
       const onPointerMove = (moveEv) => {
         if (!isResizing) return;
+        moveEv.stopPropagation();
         if (moveEv.cancelable) moveEv.preventDefault();
 
         const clientY = (moveEv.touches && moveEv.touches[0]) ? moveEv.touches[0].clientY : moveEv.clientY;
@@ -2350,6 +2353,7 @@ export class CalendarView {
       const onPointerUp = (upEv) => {
         if (!isResizing) return;
         isResizing = false;
+        self.isDraggingEvent = false;
         handleEl.classList.remove('is-active-dragging');
 
         window.removeEventListener('touchmove', onPointerMove);
