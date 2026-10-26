@@ -2529,8 +2529,10 @@ export class CalendarView {
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
       if (!modalBody || isDayPanning || isDayPanCooldown) return;
       const modalRect = modalBody.getBoundingClientRect();
-      const isLeft = clientX < modalRect.left + 45;
-      const isRight = clientX > modalRect.right - 45;
+      const cardLeft = clientX - grabOffsetX;
+      const cardWidth = card.offsetWidth || 150;
+      const isLeft = (clientX < modalRect.left + 45) || (cardLeft < modalRect.left + 25);
+      const isRight = (clientX > modalRect.right - 45) || ((cardLeft + cardWidth) > modalRect.right - 25);
 
       if (isLeft || isRight) {
         if (!dayNavTimer) {
@@ -2553,6 +2555,7 @@ export class CalendarView {
       if (isDayPanning || isDayPanCooldown || !isDragging) return;
       isDayPanning = true;
       isDayPanCooldown = true;
+      startX = lastClientX;
 
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
       if (!modalBody) {
@@ -2642,10 +2645,29 @@ export class CalendarView {
 
       checkDayEdgePull(clientX);
 
-      // Trigger day pan if resistance threshold exceeded (105px resistance)
-      const diffX = clientX - startX;
-      if (Math.abs(diffX) > 105) {
-        panToAdjacentDay(diffX < 0 ? -1 : 1);
+      // Trigger day pan only when moved far to the edge in that direction (prevents indented overlapping tasks from triggering day switch when dragged midway to un-overlap)
+      const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
+      const modalRect = modalBody ? modalBody.getBoundingClientRect() : {
+        left: 0,
+        right: (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 360,
+        width: 360
+      };
+      if (!isDayPanning && !isDayPanCooldown) {
+        const cardLeft = clientX - grabOffsetX;
+        const cardWidth = card.offsetWidth || 150;
+        const diffX = clientX - startX;
+
+        // Only transition to previous day when moved far to the left
+        const isFarLeft = (clientX < modalRect.left + 45) || (cardLeft < modalRect.left + 25);
+        if (diffX < -35 && isFarLeft) {
+          panToAdjacentDay(-1);
+        } else {
+          // Only transition to next day when moved far to the right
+          const isFarRight = (clientX > modalRect.right - 45) || ((cardLeft + cardWidth) > modalRect.right - 25);
+          if (diffX > 35 && isFarRight) {
+            panToAdjacentDay(1);
+          }
+        }
       }
 
       // Update silhouette in active day timeline

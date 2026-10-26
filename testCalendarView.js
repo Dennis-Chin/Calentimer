@@ -354,17 +354,33 @@ try {
 }
 assert(touchmoveError === null, 'Vertical touchmove executes without error');
 
-// Simulate horizontal drag exceeding resistance threshold (pan to previous day)
+// Test: Dragging left to midway point (e.g., un-overlapping from right) does NOT transition to previous day
+let midwayDayPanned = false;
+const origNavigate = calendar.navigate.bind(calendar);
+calendar.navigate = function(dir, scroll) {
+  midwayDayPanned = true;
+  return origNavigate(dir, scroll);
+};
+
+// Simulate dragging card left to midway point (clientX: 100, not far to the left edge)
+dayCard.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 100, clientY: 240 }],
+  cancelable: true
+});
+assert(midwayDayPanned === false, 'Moving card left to midway point does NOT transition to previous day');
+
+// Simulate horizontal drag far to the left edge (pan to previous day)
 let panError = null;
 try {
   dayCard.dispatchSimulatedEvent('touchmove', {
-    touches: [{ clientX: 5, clientY: 240 }], // diffX = 5 - 120 = -115px (> 105px resistance)
+    touches: [{ clientX: 5, clientY: 240 }],
     cancelable: true
   });
 } catch (err) {
   panError = err;
 }
-assert(panError === null, 'Horizontal resistance pan (diffX < -105) initiates smoothly without error');
+assert(panError === null, 'Horizontal resistance pan far to left edge (clientX < 45) initiates smoothly without error');
+calendar.navigate = origNavigate;
 
 // Finish drag
 let finishDragError = null;
