@@ -174,7 +174,6 @@ function initApp() {
     setupScheduleConflictModal();
 
     taskStore.onChange(() => {
-      dismissedOverlapPairs.clear();
       if (runtime) {
         const storedTasks = taskStore.getTasks();
         const currentIds = (runtime.initialTasks || []).map(t => t.id).join(',');
@@ -2391,7 +2390,10 @@ function checkAndPromptScheduleConflict(tasks) {
 
       if (aStart < bEnd && bStart < aEnd) {
         const pairKey = `${tA.id}_${tB.id}`;
-        if (!dismissedOverlapPairs.has(pairKey)) {
+        const reverseKey = `${tB.id}_${tA.id}`;
+        const timeKey = `${tA.id}:${tA.startTime}-${tA.endTime}__${tB.id}:${tB.startTime}-${tB.endTime}`;
+        const altTimeKey = `${tB.id}:${tB.startTime}-${tB.endTime}__${tA.id}:${tA.startTime}-${tA.endTime}`;
+        if (!dismissedOverlapPairs.has(pairKey) && !dismissedOverlapPairs.has(reverseKey) && !dismissedOverlapPairs.has(timeKey) && !dismissedOverlapPairs.has(altTimeKey)) {
           openScheduleConflictModal(tA, tB, i, j);
           return;
         }
@@ -2474,7 +2476,14 @@ function closeScheduleConflictModal() {
   const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
   if (modalBackdrop) modalBackdrop.classList.add('hidden');
   if (currentConflictData) {
-    dismissedOverlapPairs.add(`${currentConflictData.taskA.id}_${currentConflictData.taskB.id}`);
+    const tA = currentConflictData.taskA;
+    const tB = currentConflictData.taskB;
+    dismissedOverlapPairs.add(`${tA.id}_${tB.id}`);
+    dismissedOverlapPairs.add(`${tB.id}_${tA.id}`);
+    if (tA.startTime && tA.endTime && tB.startTime && tB.endTime) {
+      dismissedOverlapPairs.add(`${tA.id}:${tA.startTime}-${tA.endTime}__${tB.id}:${tB.startTime}-${tB.endTime}`);
+      dismissedOverlapPairs.add(`${tB.id}:${tB.startTime}-${tB.endTime}__${tA.id}:${tA.startTime}-${tA.endTime}`);
+    }
   }
 }
 

@@ -2532,8 +2532,8 @@ export class CalendarView {
       const cardLeft = clientX - grabOffsetX;
       const cardWidth = card.offsetWidth || card.clientWidth || 300;
       const cardMidX = cardLeft + (cardWidth / 2);
-      const isLeft = cardMidX < modalRect.left + 70;
-      const isRight = cardMidX > modalRect.right - 70;
+      const isLeft = (cardMidX < modalRect.left + 70) || (clientX < modalRect.left + 40);
+      const isRight = (cardMidX > modalRect.right - 70) || (clientX > modalRect.right - 40);
 
       if (isLeft || isRight) {
         if (!dayNavTimer) {
@@ -2646,7 +2646,7 @@ export class CalendarView {
 
       checkDayEdgePull(clientX);
 
-      // Trigger day pan only when the card's midpoint is close to the far left or far right edge with resistance
+      // Trigger day pan only when the card's midpoint or touch point is close to the far left or far right edge with resistance
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
       const modalRect = modalBody ? modalBody.getBoundingClientRect() : {
         left: 0,
@@ -2659,14 +2659,14 @@ export class CalendarView {
         const cardMidX = cardLeft + (cardWidth / 2);
         const diffX = clientX - startX;
 
-        // Only transition to previous day when card midpoint is close to far left with intentional resistance
-        const isFarLeft = cardMidX < modalRect.left + 70;
-        if (diffX < -50 && isFarLeft) {
+        // Transition to previous day when midpoint or touch point is at far left edge with resistance
+        const isFarLeft = (cardMidX < modalRect.left + 70) || (clientX < modalRect.left + 40);
+        if (diffX < -45 && isFarLeft) {
           panToAdjacentDay(-1);
         } else {
-          // Only transition to next day when card midpoint is close to far right with intentional resistance
-          const isFarRight = cardMidX > modalRect.right - 70;
-          if (diffX > 50 && isFarRight) {
+          // Transition to next day when midpoint or touch point is at far right edge with resistance
+          const isFarRight = (cardMidX > modalRect.right - 70) || (clientX > modalRect.right - 40);
+          if (diffX > 45 && isFarRight) {
             panToAdjacentDay(1);
           }
         }
@@ -2969,8 +2969,6 @@ export class CalendarView {
             this._activeDragCancelHandler = null;
             if (ev.isLocked) {
               triggerDayLockedWarning();
-            } else {
-              startDragMode();
             }
           }
         }
@@ -3044,8 +3042,6 @@ export class CalendarView {
             holdTimer = null;
             if (ev.isLocked) {
               triggerDayLockedWarning();
-            } else {
-              startDragMode();
             }
           }
           return;
@@ -3556,8 +3552,6 @@ export class CalendarView {
             this._activeDragCancelHandler = null;
             if (ev.isLocked) {
               triggerWeekLockedWarning();
-            } else {
-              startDragMode();
             }
           }
         }
