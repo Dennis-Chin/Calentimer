@@ -218,6 +218,45 @@ const taskCEndMin = 12 * 60 + 30;
 const willCascadeCollide = (shiftStartMin < taskCEndMin && taskCStartMin < shiftEndMin);
 assert(willCascadeCollide === true, 'Cascade collision correctly detected: shifting B to 11:00-12:00 collides with C at 11:30');
 
+console.log('\n--- 11. Testing Padlock Non-Auto-Lock & Chronological Pipeline Order ---');
+store.saveTasks([]);
+store.saveCalendarEvents([]);
+const unlo1 = store.addCalendarEvent({
+  title: 'Event at 15:00',
+  date: todayStr,
+  startTime: '15:00',
+  endTime: '16:00',
+  plannedDuration: 60,
+  isLocked: false
+});
+const unlo2 = store.addCalendarEvent({
+  title: 'Event at 10:00',
+  date: todayStr,
+  startTime: '10:00',
+  endTime: '11:00',
+  plannedDuration: 60,
+  isLocked: false
+});
+
+let syncedTasks = store.getTasks();
+assert(syncedTasks[0].id === unlo2.id, 'Task at 10:00 is sorted before task at 15:00');
+assert(syncedTasks[0].isLocked === false, 'Unlocked task with startTime does NOT auto-lock');
+assert(syncedTasks[1].isLocked === false, 'Second unlocked task does NOT auto-lock');
+
+// Drag Event 1 to 08:00
+store.updateCalendarEvent(unlo1.id, {
+  startTime: '08:00',
+  endTime: '09:00',
+  fixedStartTime: '08:00',
+  isLocked: false
+});
+
+syncedTasks = store.getTasks();
+assert(syncedTasks[0].id === unlo1.id, 'Event moved to 08:00 dynamically reorders to first place in Today\'s Schedule');
+assert(syncedTasks[0].startTime === '08:00', 'Task timespan updated to 08:00');
+assert(syncedTasks[0].isLocked === false, 'Task remains unlocked after move');
+assert(syncedTasks[1].id === unlo2.id, 'Event at 10:00 is now second');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

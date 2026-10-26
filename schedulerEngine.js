@@ -394,10 +394,11 @@ export function calculateSchedule(config) {
     const allocated = allocatedDurations[idx];
 
     let taskStart = currentClockMinutes;
-    if (task.fixedStartTime) {
+    const specifiedStart = task.fixedStartTime || task.startTime;
+    if (specifiedStart) {
       try {
-        const fixedStart = parseTimeToMinutes(task.fixedStartTime);
-        taskStart = fixedStart;
+        const parsedStart = parseTimeToMinutes(specifiedStart);
+        taskStart = parsedStart;
       } catch (e) {
         // Fallback to sequential
       }
@@ -412,10 +413,10 @@ export function calculateSchedule(config) {
       category: task.category || null,
       tags: Array.isArray(task.tags) ? [...task.tags] : [],
       emoji: task.emoji || '📌',
-      isLocked: Boolean(task.isLocked || task.fixedStartTime),
+      isLocked: Boolean(task.isLocked),
       useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : true,
       fixedStartTime: task.fixedStartTime || null,
-      isImmovable: Boolean(task.fixedStartTime),
+      isImmovable: Boolean(task.isLocked),
       plannedDuration: Math.round(task.plannedDuration),
       allocatedDuration: allocated,
       startTime: formatMinutesToTime(taskStart),

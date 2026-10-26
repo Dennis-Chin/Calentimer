@@ -150,14 +150,14 @@ export class TimerRuntime {
           remainingTasks.push({
             ...origTask,
             plannedDuration: remainingMin,
-            isLocked: Boolean(origTask.isLocked || origTask.fixedStartTime)
+            isLocked: Boolean(origTask.isLocked)
           });
         } else {
           // Task has not started ticking yet: use its full planned duration!
           remainingTasks.push({
             ...origTask,
             plannedDuration: origTask.plannedDuration,
-            isLocked: Boolean(origTask.isLocked || origTask.fixedStartTime)
+            isLocked: Boolean(origTask.isLocked)
           });
         }
       }
@@ -174,7 +174,7 @@ export class TimerRuntime {
           useTimeBank: initTask.useTimeBank !== false,
           tags: initTask.tags,
           fixedStartTime: initTask.fixedStartTime,
-          isLocked: Boolean(initTask.isLocked || initTask.fixedStartTime),
+          isLocked: Boolean(initTask.isLocked),
           plannedDuration: initTask.plannedDuration
         });
       }

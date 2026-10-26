@@ -1666,6 +1666,13 @@ function setupControls() {
 
   openTaskDrawer = function() {
     ensureHistoryBuffer();
+    taskStore.syncScheduleAndCalendar();
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+    renderCalendarModal();
+    updateScheduleUI(runtime.currentSchedule);
+    updateActiveTaskDisplay();
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.remove('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
@@ -2248,36 +2255,50 @@ function syncDynamicScheduleTimesToCalendar() {
   const todayStr = taskStore.getTodayDateString();
   const scheduledTasks = runtime.currentSchedule.tasks;
   const calEvents = taskStore.getCalendarEvents();
-  let updatedAny = false;
+  const storeTasks = taskStore.getTasks();
+  let updatedAnyCal = false;
+  let updatedAnyTask = false;
 
-  scheduledTasks.forEach(task => {
-    const calEvent = calEvents.find(e => e.id === task.id && e.date === todayStr);
+  scheduledTasks.forEach(schedTask => {
+    const calEvent = calEvents.find(e => e.id === schedTask.id && e.date === todayStr);
     if (calEvent) {
-      if (calEvent.startTime !== task.startTime || calEvent.endTime !== task.endTime) {
-        calEvent.startTime = task.startTime;
-        calEvent.endTime = task.endTime;
-        updatedAny = true;
+      if (calEvent.startTime !== schedTask.startTime || calEvent.endTime !== schedTask.endTime) {
+        calEvent.startTime = schedTask.startTime;
+        calEvent.endTime = schedTask.endTime;
+        updatedAnyCal = true;
       }
     } else {
       calEvents.push({
-        id: task.id,
-        title: task.title,
+        id: schedTask.id,
+        title: schedTask.title,
         date: todayStr,
-        startTime: task.startTime || '09:00',
-        endTime: task.endTime || '10:00',
-        plannedDuration: task.plannedDuration || 30,
-        isLocked: Boolean(task.isLocked || task.fixedStartTime),
-        useTimeBank: task.useTimeBank !== false,
-        emoji: task.emoji || '📌',
-        category: task.category || 'General',
-        source: task.source || 'local',
+        startTime: schedTask.startTime || '09:00',
+        endTime: schedTask.endTime || '10:00',
+        plannedDuration: schedTask.plannedDuration || 30,
+        isLocked: Boolean(schedTask.isLocked),
+        useTimeBank: schedTask.useTimeBank !== false,
+        emoji: schedTask.emoji || '📌',
+        category: schedTask.category || 'General',
+        source: schedTask.source || 'local',
         lastModified: Date.now()
       });
-      updatedAny = true;
+      updatedAnyCal = true;
+    }
+
+    const t = storeTasks.find(item => item.id === schedTask.id);
+    if (t) {
+      if (t.startTime !== schedTask.startTime || t.endTime !== schedTask.endTime) {
+        t.startTime = schedTask.startTime;
+        t.endTime = schedTask.endTime;
+        updatedAnyTask = true;
+      }
     }
   });
 
-  if (updatedAny) {
+  if (updatedAnyTask) {
+    taskStore.saveTasks(storeTasks);
+  }
+  if (updatedAnyCal) {
     taskStore.saveCalendarEvents(calEvents);
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
       calendarView.render();
@@ -2552,10 +2573,10 @@ function renderTaskList(tasks) {
 
   tasks.forEach((task, idx) => {
     const card = document.createElement('div');
-    const isImmovable = Boolean(task.fixedStartTime);
+    const isImmovable = Boolean(task.isLocked);
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
     // Task padlock stays strictly in the user-selected state (never forced locked just because timer is running)
-    const isLocked = Boolean(task.isLocked || isImmovable);
+    const isLocked = Boolean(task.isLocked);
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
     const isOverlap = overlapIndices.has(idx);
 
@@ -2586,9 +2607,9 @@ function renderTaskList(tasks) {
       ? `${task.allocatedDuration}m (was ${task.plannedDuration}m)`
       : `${task.allocatedDuration}m`;
 
-    const lockTitle = isImmovable
-      ? `🔒 Fixed in place at ${task.fixedStartTime} (Immovable)`
-      : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
+    const lockTitle = isLocked
+      ? `🔒 Locked (${task.startTime || task.fixedStartTime || 'Fixed timing'})`
+      : '🔓 Unlocked (Flexible)';
 
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
 
@@ -2772,7 +2793,7 @@ function renderTaskList(tasks) {
     if (_lockToggle) {
       _lockToggle.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentLocked = Boolean(task.isLocked || task.fixedStartTime);
+        const currentLocked = Boolean(task.isLocked);
         const nextLocked = !currentLocked;
         const fixedStartTime = nextLocked ? (task.fixedStartTime || task.startTime || null) : null;
 
@@ -3283,7 +3304,7 @@ function saveCurrentTaskEdit() {
   const plannedDuration = parseInt((() => { const _el = document.getElementById("editTaskDuration"); return _el ? _el.value : ""; })(), 10) || 30;
   const category = (() => { const _el = document.getElementById("editTaskCategory"); return _el ? _el.value : ""; })().trim() || 'General';
   const fixedStartTime = (() => { const _el = document.getElementById("editTaskStartTime"); return _el ? _el.value : ""; })() || (() => { const _el = document.getElementById("editTaskFixedTime"); return _el ? _el.value : ""; })() || null;
-  const isLocked = (() => { const _el = document.getElementById("editTaskIsLocked"); return _el ? _el.checked : false; })() || Boolean(fixedStartTime);
+  const isLocked = (() => { const _el = document.getElementById("editTaskIsLocked"); return _el ? _el.checked : false; })();
   const useTimeBank = document.getElementById('editTaskTimeBank') ? document.getElementById('editTaskTimeBank').checked : true;
   const emoji = currentEditEmoji || (() => { const _el = document.getElementById("editTaskHeaderEmoji"); return _el ? _el.textContent : ""; })().trim() || '📝';
 
@@ -3412,7 +3433,13 @@ function openCalendar() {
   calendarView.close();
   const navItemFullCalendar = document.getElementById('navItemFullCalendar');
   if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+  taskStore.syncScheduleAndCalendar();
+  runtime.initialTasks = taskStore.getTasks();
+  runtime.recalculate();
+  renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
   renderCalendarModal();
+  updateScheduleUI(runtime.currentSchedule);
+  updateActiveTaskDisplay();
   checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
@@ -3509,10 +3536,10 @@ function renderCalendarModal() {
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
 
   tasks.forEach((task, idx) => {
-    const isImmovable = Boolean(task.fixedStartTime);
+    const isImmovable = Boolean(task.isLocked);
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
     // Task padlock stays strictly in user-selected state (never forced active merely because timer is running)
-    const isLocked = Boolean(task.isLocked || isImmovable);
+    const isLocked = Boolean(task.isLocked);
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
     const catColor = getCategoryColor(task.category);
@@ -3524,9 +3551,9 @@ function renderCalendarModal() {
       statusClass = 'current';
     }
 
-    const lockTitle = isImmovable
-      ? `🔒 Fixed in place at ${task.fixedStartTime} (Immovable)`
-      : (task.isLocked ? 'Locked (Incompressible)' : 'Unlocked');
+    const lockTitle = isLocked
+      ? `🔒 Locked (${task.startTime || task.fixedStartTime || 'Fixed timing'})`
+      : '🔓 Unlocked (Flexible)';
 
     const wrapper = document.createElement('div');
     wrapper.className = 'calendar-item-wrapper';
@@ -3623,7 +3650,7 @@ function renderCalendarModal() {
     if (calLockBtn) {
       calLockBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentLocked = Boolean(task.isLocked || task.fixedStartTime);
+        const currentLocked = Boolean(task.isLocked);
         const nextLocked = !currentLocked;
         const fixedStartTime = nextLocked ? (task.fixedStartTime || task.startTime || null) : null;
 
@@ -4890,7 +4917,7 @@ function setupNavigationAndModals() {
     const useTimeBank = bankInput ? bankInput.checked : true;
 
     const lockInput = document.getElementById('addModalIsLocked');
-    const isLocked = lockInput ? lockInput.checked : Boolean(fixedStartTime);
+    const isLocked = Boolean(lockInput && lockInput.checked);
 
     if (category) taskStore.addCategory(category);
 

@@ -1720,7 +1720,7 @@ export class CalendarView {
             e.stopPropagation();
             if (e.cancelable) e.preventDefault();
           }
-          const currentLocked = Boolean(ev.isLocked || ev.fixedStartTime);
+          const currentLocked = Boolean(ev.isLocked);
           const newLocked = !currentLocked;
           const fixedStart = newLocked ? (ev.startTime || null) : null;
           taskStore.updateCalendarEvent(ev.id, {

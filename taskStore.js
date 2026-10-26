@@ -179,7 +179,7 @@ export class TaskStore {
       id: (task && task.id) ? task.id : `task-${now}-${Math.random().toString(36).substr(2, 4)}`,
       title: (task && task.title) ? task.title : 'Untitled Task',
       plannedDuration: Math.max(1, parseInt(task && task.plannedDuration, 10) || 25),
-      isLocked: Boolean(task && (task.isLocked || task.fixedStartTime)),
+      isLocked: Boolean(task && task.isLocked),
       useTimeBank: (task && task.useTimeBank !== undefined) ? Boolean(task.useTimeBank) : true,
       fixedStartTime: (task && task.fixedStartTime) ? task.fixedStartTime : null,
       startTime: (task && task.startTime) ? task.startTime : null,
@@ -979,7 +979,7 @@ export class TaskStore {
         startTime: startTime,
         endTime: endTime,
         plannedDuration: task.plannedDuration,
-        isLocked: Boolean(task.isLocked || task.fixedStartTime),
+        isLocked: Boolean(task.isLocked),
         useTimeBank: task.useTimeBank !== false,
         emoji: task.emoji || '📌',
         category: task.category || 'General',
@@ -1031,9 +1031,17 @@ export class TaskStore {
         tasks.push(taskPayload);
       }
 
+      const allEvents = this.getCalendarEvents().filter(e => e.date === todayStr);
+      const eventTimeMap = new Map();
+      allEvents.forEach(e => {
+        if (e.startTime) eventTimeMap.set(e.id, e.startTime);
+      });
+
       tasks.sort((a, b) => {
-        const aStart = a.startTime ? (parseInt(a.startTime.split(':')[0], 10) * 60 + parseInt(a.startTime.split(':')[1], 10)) : 0;
-        const bStart = b.startTime ? (parseInt(b.startTime.split(':')[0], 10) * 60 + parseInt(b.startTime.split(':')[1], 10)) : 0;
+        const timeA = a.startTime || a.fixedStartTime || (eventTimeMap.has(a.id) ? eventTimeMap.get(a.id) : null);
+        const timeB = b.startTime || b.fixedStartTime || (eventTimeMap.has(b.id) ? eventTimeMap.get(b.id) : null);
+        const aStart = timeA ? (parseInt(timeA.split(':')[0], 10) * 60 + parseInt(timeA.split(':')[1], 10)) : 1440;
+        const bStart = timeB ? (parseInt(timeB.split(':')[0], 10) * 60 + parseInt(timeB.split(':')[1], 10)) : 1440;
         return aStart - bStart;
       });
 
@@ -1146,7 +1154,7 @@ export class TaskStore {
             startTime: startTime,
             endTime: endTime || '10:00',
             plannedDuration: task.plannedDuration || 30,
-            isLocked: Boolean(task.isLocked || task.fixedStartTime),
+            isLocked: Boolean(task.isLocked),
             useTimeBank: task.useTimeBank !== false,
             emoji: task.emoji || '📌',
             category: task.category || 'General',
@@ -1179,14 +1187,15 @@ export class TaskStore {
         }
       });
 
-      if (tasksChanged) {
-        tasksToKeep.sort((a, b) => {
-          const aStart = a.startTime ? (parseInt(a.startTime.split(':')[0], 10) * 60 + parseInt(a.startTime.split(':')[1], 10)) : 0;
-          const bStart = b.startTime ? (parseInt(b.startTime.split(':')[0], 10) * 60 + parseInt(b.startTime.split(':')[1], 10)) : 0;
-          return aStart - bStart;
-        });
-        safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
-      }
+      tasksToKeep.sort((a, b) => {
+        const timeA = a.startTime || a.fixedStartTime || (calMap.has(a.id) ? calMap.get(a.id).startTime : null);
+        const timeB = b.startTime || b.fixedStartTime || (calMap.has(b.id) ? calMap.get(b.id).startTime : null);
+        const aStart = timeA ? (parseInt(timeA.split(':')[0], 10) * 60 + parseInt(timeA.split(':')[1], 10)) : 1440;
+        const bStart = timeB ? (parseInt(timeB.split(':')[0], 10) * 60 + parseInt(timeB.split(':')[1], 10)) : 1440;
+        return aStart - bStart;
+      });
+      safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
+      tasksChanged = true;
       if (calChanged) {
         const finalEvents = otherCalEvents.concat(mergedTodayEvents);
         safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, JSON.stringify(finalEvents));
