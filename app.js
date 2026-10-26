@@ -143,6 +143,8 @@ function updateHardStopPillsUI(enabled) {
 
 function initApp() {
   try {
+    taskStore.syncScheduleAndCalendar();
+
     const savedHardStop = taskStore.getHardStop();
     if (hardStopInput) hardStopInput.value = savedHardStop;
     if (calendarHardStopInput) calendarHardStopInput.value = savedHardStop;
@@ -168,9 +170,27 @@ function initApp() {
     setupTaskPipeline();
     setupNavigationAndModals();
     calendarView.init();
+    setupScheduleConflictModal();
+
+    taskStore.onChange(() => {
+      if (runtime) {
+        const storedTasks = taskStore.getTasks();
+        const currentIds = (runtime.initialTasks || []).map(t => t.id).join(',');
+        const storedIds = storedTasks.map(t => t.id).join(',');
+        if (currentIds !== storedIds || JSON.stringify(storedTasks) !== JSON.stringify(runtime.initialTasks)) {
+          runtime.initialTasks = storedTasks;
+          runtime.recalculate();
+          updateScheduleUI(runtime.currentSchedule);
+          updateActiveTaskDisplay();
+          renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || storedTasks);
+          renderCalendarModal();
+        }
+      }
+    });
 
     // Initial render: calculate schedule and populate all lists immediately
     runtime.recalculate();
+    syncDynamicScheduleTimesToCalendar();
     updateScheduleUI(runtime.currentSchedule);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || tasks);
     updateActiveTaskDisplay();
@@ -1640,6 +1660,7 @@ function setupControls() {
     taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
     mobileServices.hapticTap();
+    checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   };
 
   closeTaskDrawer = function() {
@@ -2095,6 +2116,7 @@ function setupInteractiveTaskDrag(container) {
         taskStore.reorderTaskById(draggedTaskId, targetTaskId);
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
+        syncDynamicScheduleTimesToCalendar();
         if (runtime.status === TimerStatus.IDLE) {
           runtime.activeTaskIndex = 0;
         }
@@ -2208,6 +2230,230 @@ function setupTimeBankInfoModal() {
 }
 
 // ==========================================
+// Dynamic Schedule & Calendar Synchronization
+// ==========================================
+function syncDynamicScheduleTimesToCalendar() {
+  if (!runtime || !runtime.currentSchedule || !runtime.currentSchedule.tasks) return;
+  const todayStr = taskStore.getTodayDateString();
+  const scheduledTasks = runtime.currentSchedule.tasks;
+  const calEvents = taskStore.getCalendarEvents();
+  let updatedAny = false;
+
+  scheduledTasks.forEach(task => {
+    const calEvent = calEvents.find(e => e.id === task.id && e.date === todayStr);
+    if (calEvent) {
+      if (calEvent.startTime !== task.startTime || calEvent.endTime !== task.endTime) {
+        calEvent.startTime = task.startTime;
+        calEvent.endTime = task.endTime;
+        updatedAny = true;
+      }
+    } else {
+      calEvents.push({
+        id: task.id,
+        title: task.title,
+        date: todayStr,
+        startTime: task.startTime || '09:00',
+        endTime: task.endTime || '10:00',
+        plannedDuration: task.plannedDuration || 30,
+        isLocked: Boolean(task.isLocked || task.fixedStartTime),
+        useTimeBank: task.useTimeBank !== false,
+        emoji: task.emoji || '📌',
+        category: task.category || 'General',
+        source: task.source || 'local',
+        lastModified: Date.now()
+      });
+      updatedAny = true;
+    }
+  });
+
+  if (updatedAny) {
+    taskStore.saveCalendarEvents(calEvents);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
+      calendarView.render();
+    }
+  }
+}
+
+// ==========================================
+// Schedule Overlap Conflict Resolution Modal
+// ==========================================
+let dismissedOverlapPairs = new Set();
+let currentConflictData = null;
+
+function checkAndPromptScheduleConflict(tasks) {
+  if (!tasks || tasks.length < 2) return;
+  const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
+  if (!modalBackdrop) return;
+
+  for (let i = 0; i < tasks.length; i++) {
+    const tA = tasks[i];
+    if (!tA.startTime || !tA.endTime) continue;
+    const aStart = parseTimeToMinutes(tA.startTime);
+    let aEnd = parseTimeToMinutes(tA.endTime);
+    if (aEnd <= aStart) aEnd += 1440;
+
+    for (let j = i + 1; j < tasks.length; j++) {
+      const tB = tasks[j];
+      if (!tB.startTime || !tB.endTime) continue;
+      const bStart = parseTimeToMinutes(tB.startTime);
+      let bEnd = parseTimeToMinutes(tB.endTime);
+      if (bEnd <= bStart) bEnd += 1440;
+
+      if (aStart < bEnd && bStart < aEnd) {
+        const pairKey = `${tA.id}_${tB.id}`;
+        if (!dismissedOverlapPairs.has(pairKey)) {
+          openScheduleConflictModal(tA, tB, i, j);
+          return;
+        }
+      }
+    }
+  }
+}
+
+function openScheduleConflictModal(taskA, taskB, idxA, idxB) {
+  const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
+  if (!modalBackdrop) return;
+
+  currentConflictData = { taskA, taskB, idxA, idxB };
+
+  const sub = document.getElementById('scheduleConflictSubtitle');
+  if (sub) {
+    sub.textContent = `"${taskA.title}" (${taskA.startTime} - ${taskA.endTime}) and "${taskB.title}" (${taskB.startTime} - ${taskB.endTime}) overlap. Select which task should run on the active timer:`;
+  }
+
+  const titleA = document.getElementById('conflictTitleA');
+  const timeA = document.getElementById('conflictTimeA');
+  const titleB = document.getElementById('conflictTitleB');
+  const timeB = document.getElementById('conflictTimeB');
+
+  if (titleA) titleA.textContent = taskA.title || 'Task A';
+  if (timeA) timeA.textContent = `${taskA.startTime || '--:--'} - ${taskA.endTime || '--:--'} (${taskA.allocatedDuration || taskA.plannedDuration}m)`;
+  if (titleB) titleB.textContent = taskB.title || 'Task B';
+  if (timeB) timeB.textContent = `${taskB.startTime || '--:--'} - ${taskB.endTime || '--:--'} (${taskB.allocatedDuration || taskB.plannedDuration}m)`;
+
+  const radioA = document.getElementById('conflictRadioA');
+  const radioB = document.getElementById('conflictRadioB');
+  const optA = document.getElementById('conflictTaskOptionA');
+  const optB = document.getElementById('conflictTaskOptionB');
+
+  if (radioA) radioA.checked = true;
+  if (optA) optA.classList.add('active');
+  if (optB) optB.classList.remove('active');
+
+  modalBackdrop.classList.remove('hidden');
+  mobileServices.hapticWarning();
+}
+
+function closeScheduleConflictModal() {
+  const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
+  if (modalBackdrop) modalBackdrop.classList.add('hidden');
+  if (currentConflictData) {
+    dismissedOverlapPairs.add(`${currentConflictData.taskA.id}_${currentConflictData.taskB.id}`);
+  }
+}
+
+function setupScheduleConflictModal() {
+  const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
+  const optA = document.getElementById('conflictTaskOptionA');
+  const optB = document.getElementById('conflictTaskOptionB');
+  const radioA = document.getElementById('conflictRadioA');
+  const radioB = document.getElementById('conflictRadioB');
+  const btnShift = document.getElementById('btnConflictShift');
+  const btnKeep = document.getElementById('btnConflictKeep');
+
+  if (optA) {
+    optA.addEventListener('click', () => {
+      if (radioA) radioA.checked = true;
+      optA.classList.add('active');
+      if (optB) optB.classList.remove('active');
+    });
+  }
+  if (optB) {
+    optB.addEventListener('click', () => {
+      if (radioB) radioB.checked = true;
+      optB.classList.add('active');
+      if (optA) optA.classList.remove('active');
+    });
+  }
+
+  // Choice A: Shift Overlapping Task
+  if (btnShift) {
+    btnShift.addEventListener('click', () => {
+      if (!currentConflictData) {
+        closeScheduleConflictModal();
+        return;
+      }
+      const taskA = currentConflictData.taskA;
+      const taskB = currentConflictData.taskB;
+
+      const targetStartTime = taskA.endTime;
+      const dur = taskB.plannedDuration || 30;
+      const startMin = parseTimeToMinutes(targetStartTime);
+      const endMin = (startMin + dur) % 1440;
+      const targetEndTime = formatMinutesToTime(endMin);
+
+      taskStore.updateTask(taskB.id, {
+        fixedStartTime: targetStartTime,
+        startTime: targetStartTime,
+        endTime: targetEndTime,
+        isLocked: true
+      });
+
+      runtime.initialTasks = taskStore.getTasks();
+      runtime.recalculate();
+      syncDynamicScheduleTimesToCalendar();
+      updateScheduleUI(runtime.currentSchedule);
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      renderCalendarModal();
+
+      closeScheduleConflictModal();
+      mobileServices.hapticTap();
+      showToastNotification(`✓ Shifted "${taskB.title}" to start at ${targetStartTime}`);
+    });
+  }
+
+  // Choice B: Keep Times & Prioritize Timer
+  if (btnKeep) {
+    btnKeep.addEventListener('click', () => {
+      if (!currentConflictData) {
+        closeScheduleConflictModal();
+        return;
+      }
+      const taskA = currentConflictData.taskA;
+      const taskB = currentConflictData.taskB;
+      const idxA = currentConflictData.idxA;
+      const idxB = currentConflictData.idxB;
+
+      const isAChecked = Boolean(radioA && radioA.checked);
+      const selectedTask = isAChecked ? taskA : taskB;
+      const targetIndex = isAChecked ? idxA : idxB;
+
+      if (runtime) {
+        runtime.activeTaskIndex = targetIndex;
+        updateActiveTaskDisplay();
+        const durSec = runtime.status === TimerStatus.IDLE
+          ? ((selectedTask.allocatedDuration || selectedTask.plannedDuration || 25) * 60)
+          : runtime.getRemainingSeconds();
+        renderClockTime(durSec);
+        updateWheelProgress(0);
+        updateFinishEarlyButtonText(durSec);
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      }
+
+      closeScheduleConflictModal();
+      mobileServices.hapticTap();
+      showToastNotification(`✓ Active timer dedicated to "${selectedTask.title}"`);
+    });
+  }
+
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) closeScheduleConflictModal();
+    });
+  }
+}
+
+// ==========================================
 // Task Pipeline List
 // ==========================================
 function setupTaskPipeline() {
@@ -2224,6 +2470,29 @@ function renderTaskList(tasks) {
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
   const isAllCompleted = runtime.status === TimerStatus.COMPLETED;
 
+  // Detect schedule overlaps in linear pipeline
+  const overlapIndices = new Set();
+  for (let i = 0; i < tasks.length; i++) {
+    const tA = tasks[i];
+    if (!tA.startTime || !tA.endTime) continue;
+    const aStart = parseTimeToMinutes(tA.startTime);
+    let aEnd = parseTimeToMinutes(tA.endTime);
+    if (aEnd <= aStart) aEnd += 1440;
+
+    for (let j = i + 1; j < tasks.length; j++) {
+      const tB = tasks[j];
+      if (!tB.startTime || !tB.endTime) continue;
+      const bStart = parseTimeToMinutes(tB.startTime);
+      let bEnd = parseTimeToMinutes(tB.endTime);
+      if (bEnd <= bStart) bEnd += 1440;
+
+      if (aStart < bEnd && bStart < aEnd) {
+        const laterIdx = bStart >= aStart ? j : i;
+        overlapIndices.add(laterIdx);
+      }
+    }
+  }
+
   tasks.forEach((task, idx) => {
     const card = document.createElement('div');
     const isImmovable = Boolean(task.fixedStartTime);
@@ -2231,6 +2500,7 @@ function renderTaskList(tasks) {
     // Task padlock stays strictly in the user-selected state (never forced locked just because timer is running)
     const isLocked = Boolean(task.isLocked || isImmovable);
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
+    const isOverlap = overlapIndices.has(idx);
 
     let statusClass = 'task-pending';
     let statusBadge = isBreak
@@ -2250,7 +2520,7 @@ function renderTaskList(tasks) {
         : '<span class="task-status-pill pending">⏳ Todo</span>';
     }
 
-    card.className = `task-card ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''}`;
+    card.className = `task-card ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''} ${isOverlap ? 'is-schedule-overlap' : ''}`;
     card.setAttribute('data-id', task.id);
     card.setAttribute('data-index', idx);
 
@@ -2432,6 +2702,7 @@ function renderTaskList(tasks) {
         taskStore.toggleTaskTimeBank(task.id);
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
+        syncDynamicScheduleTimesToCalendar();
         updateActiveTaskDisplay();
         renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
@@ -2446,28 +2717,40 @@ function renderTaskList(tasks) {
         e.stopPropagation();
         const currentLocked = Boolean(task.isLocked);
         const nextLocked = !currentLocked;
+        const fixedStartTime = nextLocked ? (task.fixedStartTime || task.startTime || null) : null;
 
-        taskStore.updateTask(task.id, { isLocked: nextLocked });
+        taskStore.updateTask(task.id, {
+          isLocked: nextLocked,
+          fixedStartTime: fixedStartTime
+        });
         const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === task.id) : null;
-        if (initTask) initTask.isLocked = nextLocked;
+        if (initTask) {
+          initTask.isLocked = nextLocked;
+          initTask.fixedStartTime = fixedStartTime;
+        }
 
         const activeTask = runtime ? runtime.getActiveTask() : null;
         if (activeTask && activeTask.id === task.id) {
           activeTask.isLocked = nextLocked;
+          activeTask.fixedStartTime = fixedStartTime;
         }
 
         if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
           const schedTask = runtime.currentSchedule.tasks.find(t => t.id === task.id);
-          if (schedTask) schedTask.isLocked = nextLocked;
+          if (schedTask) {
+            schedTask.isLocked = nextLocked;
+            schedTask.fixedStartTime = fixedStartTime;
+          }
         }
 
         runtime.recalculate();
+        syncDynamicScheduleTimesToCalendar();
         updateTimerQuickToggles();
         updateActiveTaskDisplay();
         renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
         mobileServices.hapticTap();
-        showToastNotification(nextLocked ? 'Task duration locked' : 'Task duration unlocked');
+        showToastNotification(nextLocked ? '🔒 Task locked to current timespan' : '🔓 Task unlocked (flexible)');
       });
     }
 
@@ -2969,6 +3252,7 @@ function saveCurrentTaskEdit() {
     if (schedTask) schedTask.isLocked = isLocked;
   }
   runtime.recalculate();
+  syncDynamicScheduleTimesToCalendar();
   updateTimerQuickToggles();
   updateActiveTaskDisplay();
   renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -3268,6 +3552,7 @@ function renderCalendarModal() {
         taskStore.toggleTaskTimeBank(task.id);
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
+        syncDynamicScheduleTimesToCalendar();
         updateActiveTaskDisplay();
         renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
         renderCalendarModal();
@@ -4551,6 +4836,7 @@ function setupNavigationAndModals() {
 
     runtime.initialTasks = taskStore.getTasks();
     runtime.recalculate();
+    syncDynamicScheduleTimesToCalendar();
     updateScheduleUI(runtime.currentSchedule);
     updateActiveTaskDisplay();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());

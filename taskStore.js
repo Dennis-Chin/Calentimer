@@ -76,6 +76,15 @@ const DEFAULT_TASKS = [
 export class TaskStore {
   constructor() {
     this._listeners = new Set();
+    this._isSyncing = false;
+  }
+
+  getTodayDateString() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   onChange(callback) {
@@ -165,19 +174,30 @@ export class TaskStore {
    */
   addTask(task) {
     const tasks = this.getTasks();
+    const now = Date.now();
     const newTask = {
-      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      title: task.title || 'Untitled Task',
-      plannedDuration: Math.max(1, parseInt(task.plannedDuration, 10) || 25),
-      isLocked: Boolean(task.isLocked || task.fixedStartTime),
-      useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : true,
-      fixedStartTime: task.fixedStartTime || null,
-      category: task.category || 'General',
-      tags: Array.isArray(task.tags) ? task.tags : (task.tags ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
-      emoji: task.emoji || '📌'
+      id: (task && task.id) ? task.id : `task-${now}-${Math.random().toString(36).substr(2, 4)}`,
+      title: (task && task.title) ? task.title : 'Untitled Task',
+      plannedDuration: Math.max(1, parseInt(task && task.plannedDuration, 10) || 25),
+      isLocked: Boolean(task && (task.isLocked || task.fixedStartTime)),
+      useTimeBank: (task && task.useTimeBank !== undefined) ? Boolean(task.useTimeBank) : true,
+      fixedStartTime: (task && task.fixedStartTime) ? task.fixedStartTime : null,
+      startTime: (task && task.startTime) ? task.startTime : null,
+      endTime: (task && task.endTime) ? task.endTime : null,
+      category: (task && task.category) ? task.category : 'General',
+      tags: (task && Array.isArray(task.tags)) ? task.tags : ((task && task.tags) ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
+      emoji: (task && task.emoji) ? task.emoji : '📌',
+      source: (task && task.source) ? task.source : 'local',
+      externalId: (task && task.externalId) ? task.externalId : null,
+      lastModified: now
     };
     tasks.push(newTask);
     this.saveTasks(tasks);
+
+    if (!this._isSyncing) {
+      this._syncTaskToCalendar(newTask);
+    }
+
     return newTask;
   }
 
@@ -187,6 +207,20 @@ export class TaskStore {
   deleteTask(taskId) {
     const tasks = this.getTasks().filter(t => t.id !== taskId);
     this.saveTasks(tasks);
+
+    if (!this._isSyncing) {
+      this._isSyncing = true;
+      try {
+        const todayStr = this.getTodayDateString();
+        const calEvents = this.getCalendarEvents();
+        const filteredCal = calEvents.filter(e => !(e.id === taskId && e.date === todayStr));
+        if (filteredCal.length !== calEvents.length) {
+          this.saveCalendarEvents(filteredCal);
+        }
+      } finally {
+        this._isSyncing = false;
+      }
+    }
   }
 
   /**
@@ -195,11 +229,23 @@ export class TaskStore {
   toggleLock(taskId) {
     const tasks = this.getTasks().map(t => {
       if (t.id === taskId) {
-        return { ...t, isLocked: !t.isLocked };
+        const nextLocked = !t.isLocked;
+        return Object.assign({}, t, {
+          isLocked: nextLocked,
+          fixedStartTime: nextLocked ? (t.fixedStartTime || t.startTime || null) : null,
+          lastModified: Date.now()
+        });
       }
       return t;
     });
     this.saveTasks(tasks);
+
+    if (!this._isSyncing) {
+      const updated = tasks.find(t => t.id === taskId);
+      if (updated) {
+        this._syncTaskToCalendar(updated);
+      }
+    }
   }
 
   /**
@@ -208,11 +254,21 @@ export class TaskStore {
   toggleTaskTimeBank(taskId) {
     const tasks = this.getTasks().map(t => {
       if (t.id === taskId) {
-        return { ...t, useTimeBank: !(t.useTimeBank !== false) };
+        return Object.assign({}, t, {
+          useTimeBank: !(t.useTimeBank !== false),
+          lastModified: Date.now()
+        });
       }
       return t;
     });
     this.saveTasks(tasks);
+
+    if (!this._isSyncing) {
+      const updated = tasks.find(t => t.id === taskId);
+      if (updated) {
+        this._syncTaskToCalendar(updated);
+      }
+    }
   }
 
   /**
@@ -221,11 +277,18 @@ export class TaskStore {
   updateTask(taskId, updates) {
     const tasks = this.getTasks().map(t => {
       if (t.id === taskId) {
-        return { ...t, ...updates };
+        return Object.assign({}, t, updates, { lastModified: Date.now() });
       }
       return t;
     });
     this.saveTasks(tasks);
+
+    if (!this._isSyncing) {
+      const updated = tasks.find(t => t.id === taskId);
+      if (updated) {
+        this._syncTaskToCalendar(updated);
+      }
+    }
   }
 
   /**
@@ -799,19 +862,29 @@ export class TaskStore {
    */
   addCalendarEvent(eventData) {
     const current = this.getCalendarEvents();
+    const now = Date.now();
     const newEvent = {
-      id: eventData && eventData.id ? eventData.id : `cal-event-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      title: eventData && eventData.title ? String(eventData.title).trim() : 'New Event',
-      date: eventData && eventData.date ? eventData.date : new Date().toISOString().split('T')[0],
-      startTime: eventData && eventData.startTime ? eventData.startTime : '09:00',
-      endTime: eventData && eventData.endTime ? eventData.endTime : '10:00',
-      plannedDuration: eventData && typeof eventData.plannedDuration === 'number' ? eventData.plannedDuration : 60,
-      isLocked: eventData && typeof eventData.isLocked === 'boolean' ? eventData.isLocked : true,
-      emoji: eventData && eventData.emoji ? eventData.emoji : '📅',
-      category: eventData && eventData.category ? eventData.category : 'General'
+      id: (eventData && eventData.id) ? eventData.id : `cal-event-${now}-${Math.random().toString(36).substr(2, 5)}`,
+      title: (eventData && eventData.title) ? String(eventData.title).trim() : 'New Event',
+      date: (eventData && eventData.date) ? eventData.date : this.getTodayDateString(),
+      startTime: (eventData && eventData.startTime) ? eventData.startTime : '09:00',
+      endTime: (eventData && eventData.endTime) ? eventData.endTime : '10:00',
+      plannedDuration: (eventData && typeof eventData.plannedDuration === 'number') ? eventData.plannedDuration : 60,
+      isLocked: (eventData && typeof eventData.isLocked === 'boolean') ? eventData.isLocked : true,
+      useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : true,
+      emoji: (eventData && eventData.emoji) ? eventData.emoji : '📅',
+      category: (eventData && eventData.category) ? eventData.category : 'General',
+      source: (eventData && eventData.source) ? eventData.source : 'local',
+      externalId: (eventData && eventData.externalId) ? eventData.externalId : null,
+      lastModified: now
     };
     current.push(newEvent);
     this.saveCalendarEvents(current);
+
+    if (!this._isSyncing) {
+      this._syncCalendarToTask(newEvent);
+    }
+
     return newEvent;
   }
 
@@ -826,9 +899,27 @@ export class TaskStore {
     const index = current.findIndex(e => e.id === id);
     if (index === -1) return null;
 
-    const item = Object.assign({}, current[index], updates);
+    const prevDate = current[index].date;
+    const item = Object.assign({}, current[index], updates, { lastModified: Date.now() });
     current[index] = item;
     this.saveCalendarEvents(current);
+
+    if (!this._isSyncing) {
+      const todayStr = this.getTodayDateString();
+      if (prevDate === todayStr && item.date !== todayStr) {
+        // Event was moved away from today to another date -> remove from today's schedule
+        this._isSyncing = true;
+        try {
+          const tasks = this.getTasks().filter(t => t.id !== id);
+          this.saveTasks(tasks);
+        } finally {
+          this._isSyncing = false;
+        }
+      } else if (item.date === todayStr) {
+        this._syncCalendarToTask(item);
+      }
+    }
+
     return item;
   }
 
@@ -839,12 +930,256 @@ export class TaskStore {
    */
   deleteCalendarEvent(id) {
     const current = this.getCalendarEvents();
+    const eventToDelete = current.find(e => e.id === id);
     const filtered = current.filter(e => e.id !== id);
     if (filtered.length !== current.length) {
       this.saveCalendarEvents(filtered);
+
+      if (!this._isSyncing && eventToDelete && eventToDelete.date === this.getTodayDateString()) {
+        this._isSyncing = true;
+        try {
+          const tasks = this.getTasks().filter(t => t.id !== id);
+          this.saveTasks(tasks);
+        } finally {
+          this._isSyncing = false;
+        }
+      }
       return true;
     }
     return false;
+  }
+
+  // ==========================================
+  // Schedule & Calendar Bi-directional Sync Bridge
+  // ==========================================
+
+  _syncTaskToCalendar(task) {
+    this._isSyncing = true;
+    try {
+      const todayStr = this.getTodayDateString();
+      const calEvents = this.getCalendarEvents();
+      const existingIdx = calEvents.findIndex(e => e.id === task.id && e.date === todayStr);
+
+      const startTime = task.fixedStartTime || task.startTime || '09:00';
+      let endTime = task.endTime;
+      if (!endTime) {
+        const dur = task.plannedDuration || 30;
+        const parts = startTime.split(':');
+        const startMin = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+        const endMin = (startMin + dur) % 1440;
+        const endH = Math.floor(endMin / 60);
+        const endM = endMin % 60;
+        endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      }
+
+      const eventPayload = {
+        id: task.id,
+        title: task.title,
+        date: todayStr,
+        startTime: startTime,
+        endTime: endTime,
+        plannedDuration: task.plannedDuration,
+        isLocked: Boolean(task.isLocked || task.fixedStartTime),
+        useTimeBank: task.useTimeBank !== false,
+        emoji: task.emoji || '📌',
+        category: task.category || 'General',
+        source: task.source || 'local',
+        externalId: task.externalId || null,
+        lastModified: task.lastModified || Date.now()
+      };
+
+      if (existingIdx >= 0) {
+        calEvents[existingIdx] = Object.assign({}, calEvents[existingIdx], eventPayload);
+      } else {
+        calEvents.push(eventPayload);
+      }
+      this.saveCalendarEvents(calEvents);
+    } finally {
+      this._isSyncing = false;
+    }
+  }
+
+  _syncCalendarToTask(calEvent) {
+    const todayStr = this.getTodayDateString();
+    if (calEvent.date !== todayStr) return;
+
+    this._isSyncing = true;
+    try {
+      const tasks = this.getTasks();
+      const existingIdx = tasks.findIndex(t => t.id === calEvent.id);
+      const taskPayload = {
+        id: calEvent.id,
+        title: calEvent.title,
+        plannedDuration: calEvent.plannedDuration,
+        category: calEvent.category,
+        emoji: calEvent.emoji,
+        isLocked: Boolean(calEvent.isLocked),
+        useTimeBank: calEvent.useTimeBank !== false,
+        fixedStartTime: calEvent.isLocked ? calEvent.startTime : null,
+        startTime: calEvent.startTime,
+        endTime: calEvent.endTime,
+        source: calEvent.source || 'local',
+        externalId: calEvent.externalId || null,
+        lastModified: calEvent.lastModified || Date.now()
+      };
+
+      if (existingIdx >= 0) {
+        tasks[existingIdx] = Object.assign({}, tasks[existingIdx], taskPayload);
+      } else {
+        tasks.push(taskPayload);
+      }
+      this.saveTasks(tasks);
+    } finally {
+      this._isSyncing = false;
+    }
+  }
+
+  /**
+   * Reconciles all items between Today's Schedule and Calendar for today.
+   */
+  syncScheduleAndCalendar(targetDateStr) {
+    if (this._isSyncing) return;
+    this._isSyncing = true;
+    try {
+      const todayStr = targetDateStr || this.getTodayDateString();
+      const currentTasks = this.getTasks();
+      const allCalEvents = this.getCalendarEvents();
+
+      const todayCalEvents = allCalEvents.filter(e => e.date === todayStr);
+      const otherCalEvents = allCalEvents.filter(e => e.date !== todayStr);
+
+      const taskMap = new Map();
+      currentTasks.forEach(t => taskMap.set(t.id, t));
+
+      const calMap = new Map();
+      todayCalEvents.forEach(e => calMap.set(e.id, e));
+
+      let tasksChanged = false;
+      let calChanged = false;
+
+      const mergedTasks = [...currentTasks];
+      const mergedTodayEvents = [...todayCalEvents];
+
+      // 1. Sync Calendar Events -> Tasks (Events created or edited on Calendar for Today)
+      todayCalEvents.forEach(calEvent => {
+        const existingTask = taskMap.get(calEvent.id);
+        if (!existingTask) {
+          const newTask = {
+            id: calEvent.id,
+            title: calEvent.title || 'Event',
+            plannedDuration: calEvent.plannedDuration || 30,
+            category: calEvent.category || 'General',
+            emoji: calEvent.emoji || '📅',
+            isLocked: Boolean(calEvent.isLocked),
+            useTimeBank: calEvent.useTimeBank !== false,
+            fixedStartTime: calEvent.isLocked ? (calEvent.startTime || null) : null,
+            startTime: calEvent.startTime || null,
+            endTime: calEvent.endTime || null,
+            source: calEvent.source || 'local',
+            externalId: calEvent.externalId || null,
+            lastModified: calEvent.lastModified || Date.now()
+          };
+          mergedTasks.push(newTask);
+          taskMap.set(newTask.id, newTask);
+          tasksChanged = true;
+        } else {
+          const calMod = calEvent.lastModified || 0;
+          const taskMod = existingTask.lastModified || 0;
+          if (calMod > taskMod) {
+            existingTask.title = calEvent.title;
+            existingTask.plannedDuration = calEvent.plannedDuration;
+            existingTask.category = calEvent.category;
+            existingTask.emoji = calEvent.emoji;
+            existingTask.isLocked = Boolean(calEvent.isLocked);
+            existingTask.useTimeBank = calEvent.useTimeBank !== false;
+            if (calEvent.isLocked) {
+              existingTask.fixedStartTime = calEvent.startTime || null;
+            }
+            existingTask.startTime = calEvent.startTime;
+            existingTask.endTime = calEvent.endTime;
+            existingTask.lastModified = calMod;
+            tasksChanged = true;
+          }
+        }
+      });
+
+      // 2. Remove any tasks whose calendar event was moved away from today
+      const tasksToKeep = [];
+      mergedTasks.forEach(task => {
+        const movedAway = otherCalEvents.some(e => e.id === task.id);
+        if (movedAway) {
+          tasksChanged = true;
+          return;
+        }
+        tasksToKeep.push(task);
+      });
+
+      // 3. Sync Tasks -> Calendar Events (Tasks created, reordered, or edited in Schedule)
+      tasksToKeep.forEach(task => {
+        const existingEvent = calMap.get(task.id);
+        const startTime = task.fixedStartTime || task.startTime || '09:00';
+        let endTime = task.endTime;
+        if (!endTime && startTime) {
+          const dur = task.plannedDuration || 30;
+          const startParts = startTime.split(':');
+          const startMin = (parseInt(startParts[0], 10) || 0) * 60 + (parseInt(startParts[1], 10) || 0);
+          const endMin = (startMin + dur) % 1440;
+          const endH = Math.floor(endMin / 60);
+          const endM = endMin % 60;
+          endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        }
+
+        if (!existingEvent) {
+          const newEvent = {
+            id: task.id,
+            title: task.title || 'Task',
+            date: todayStr,
+            startTime: startTime,
+            endTime: endTime || '10:00',
+            plannedDuration: task.plannedDuration || 30,
+            isLocked: Boolean(task.isLocked || task.fixedStartTime),
+            useTimeBank: task.useTimeBank !== false,
+            emoji: task.emoji || '📌',
+            category: task.category || 'General',
+            source: task.source || 'local',
+            externalId: task.externalId || null,
+            lastModified: task.lastModified || Date.now()
+          };
+          mergedTodayEvents.push(newEvent);
+          calMap.set(newEvent.id, newEvent);
+          calChanged = true;
+        } else {
+          const taskMod = task.lastModified || 0;
+          const calMod = existingEvent.lastModified || 0;
+          if (taskMod >= calMod || !existingEvent.isLocked) {
+            let updated = false;
+            if (existingEvent.title !== task.title) { existingEvent.title = task.title; updated = true; }
+            if (existingEvent.plannedDuration !== task.plannedDuration) { existingEvent.plannedDuration = task.plannedDuration; updated = true; }
+            if (existingEvent.category !== task.category) { existingEvent.category = task.category; updated = true; }
+            if (existingEvent.emoji !== task.emoji) { existingEvent.emoji = task.emoji; updated = true; }
+            if (existingEvent.useTimeBank !== (task.useTimeBank !== false)) { existingEvent.useTimeBank = task.useTimeBank !== false; updated = true; }
+            if (task.startTime && existingEvent.startTime !== task.startTime) { existingEvent.startTime = task.startTime; updated = true; }
+            if (task.endTime && existingEvent.endTime !== task.endTime) { existingEvent.endTime = task.endTime; updated = true; }
+            const lockedState = Boolean(task.isLocked || task.fixedStartTime);
+            if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
+            if (updated) {
+              existingEvent.lastModified = Date.now();
+              calChanged = true;
+            }
+          }
+        }
+      });
+
+      if (tasksChanged) {
+        safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
+      }
+      if (calChanged) {
+        const finalEvents = otherCalEvents.concat(mergedTodayEvents);
+        safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, JSON.stringify(finalEvents));
+      }
+    } finally {
+      this._isSyncing = false;
+    }
   }
 
   /**

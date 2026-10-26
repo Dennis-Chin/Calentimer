@@ -1459,6 +1459,47 @@
     </div>
   </div>
 
+  <!-- Schedule Overlap Conflict Resolution Modal -->
+  <div class="modal-backdrop hidden" id="scheduleConflictModalBackdrop">
+    <div class="confirm-modal-card schedule-conflict-card">
+      <div class="confirm-modal-icon" style="color: #f59e0b;">⚠️</div>
+      <div class="confirm-modal-title">Schedule Overlap Detected</div>
+      <div class="schedule-conflict-subtitle" id="scheduleConflictSubtitle">
+        Two tasks collide on today's schedule. Select which task should run on the active timer:
+      </div>
+
+      <!-- Overlapping tasks radio cards -->
+      <div class="conflict-tasks-selector" id="conflictTasksSelector">
+        <label class="conflict-task-option active" id="conflictTaskOptionA">
+          <input type="radio" name="conflictTaskChoice" id="conflictRadioA" value="A" checked>
+          <div class="conflict-task-info">
+            <span class="conflict-task-title" id="conflictTitleA">Task A</span>
+            <span class="conflict-task-time" id="conflictTimeA">10:00 - 11:00</span>
+          </div>
+        </label>
+        <label class="conflict-task-option" id="conflictTaskOptionB">
+          <input type="radio" name="conflictTaskChoice" id="conflictRadioB" value="B">
+          <div class="conflict-task-info">
+            <span class="conflict-task-title" id="conflictTitleB">Task B</span>
+            <span class="conflict-task-time" id="conflictTimeB">10:30 - 11:30</span>
+          </div>
+        </label>
+      </div>
+
+      <!-- Action Buttons for Choice A and Choice B -->
+      <div class="conflict-action-buttons">
+        <button type="button" class="btn-conflict-action btn-conflict-shift" id="btnConflictShift">
+          <span class="btn-conflict-main">Shift Overlapping Task</span>
+          <span class="btn-conflict-sub">Push overlapping task to start when the first finishes</span>
+        </button>
+        <button type="button" class="btn-conflict-action btn-conflict-keep" id="btnConflictKeep">
+          <span class="btn-conflict-main">Keep Times & Prioritize Timer</span>
+          <span class="btn-conflict-sub">Keep calendar times with overlap indent, dedicate timer to selection</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Custom Themed Confirmation Modal for Exiting App -->
   <div class="modal-backdrop hidden" id="confirmExitAppModalBackdrop">
     <div class="confirm-modal-card">

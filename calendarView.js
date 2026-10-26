@@ -123,6 +123,18 @@ export class CalendarView {
     }
     window.addEventListener('touchstart', cancelOnMultiTouch, { passive: true });
     window.addEventListener('touchmove', cancelOnMultiTouch, { passive: true });
+
+    if (typeof taskStore !== 'undefined' && typeof taskStore.onChange === 'function') {
+      taskStore.onChange(() => {
+        if (this.isOpen()) {
+          this.render();
+        }
+      });
+    }
+  }
+
+  isOpen() {
+    return Boolean(this.elements.backdrop && !this.elements.backdrop.classList.contains('hidden'));
   }
 
   _cancelActiveEventDrag() {
@@ -1709,7 +1721,11 @@ export class CalendarView {
             if (e.cancelable) e.preventDefault();
           }
           const newLocked = !ev.isLocked;
-          taskStore.updateCalendarEvent(ev.id, { isLocked: newLocked });
+          const fixedStart = newLocked ? (ev.startTime || null) : null;
+          taskStore.updateCalendarEvent(ev.id, {
+            isLocked: newLocked,
+            fixedStartTime: fixedStart
+          });
           mobileServices.hapticTap();
           this.render();
           this._showToast(newLocked ? '🔒 Event locked to fixed schedule' : '🔓 Event unlocked (flexible)');

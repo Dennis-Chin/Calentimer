@@ -5421,4 +5421,144 @@ body {
   border-color: #ef4444;
 }
 
+/* ==========================================================================
+   Schedule Overlap Indentation & Conflict Resolution Modal
+   ========================================================================== */
+
+.task-card.is-schedule-overlap {
+  margin-left: 20px !important;
+  border-left: 3.5px solid #f59e0b !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
+  position: relative;
+}
+
+.task-card.is-schedule-overlap::before {
+  content: '⚠️ Overlap';
+  position: absolute;
+  top: -9px;
+  right: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #f59e0b;
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  z-index: 2;
+}
+
+[data-theme="light"] .task-card.is-schedule-overlap {
+  background: rgba(245, 158, 11, 0.08) !important;
+}
+
+.schedule-conflict-card {
+  max-width: 420px;
+  width: 90%;
+  text-align: left;
+}
+
+.schedule-conflict-subtitle {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  margin: 6px 0 16px 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.conflict-tasks-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.conflict-task-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border-subtle);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.conflict-task-option.active {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.conflict-task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conflict-task-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.conflict-task-time {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #38bdf8;
+}
+
+.conflict-action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-conflict-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: 100%;
+}
+
+.btn-conflict-action .btn-conflict-main {
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.btn-conflict-action .btn-conflict-sub {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  line-height: 1.35;
+}
+
+.btn-conflict-shift {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+}
+
+.btn-conflict-shift:hover, .btn-conflict-shift:active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+}
+
+.btn-conflict-keep {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+}
+
+.btn-conflict-keep:hover, .btn-conflict-keep:active {
+  background: rgba(245, 158, 11, 0.25);
+  border-color: #f59e0b;
+}
+
 
