@@ -348,6 +348,47 @@ const betaStartMinutes = 10 * 60 + 45;
 const hasCollision = newEndMinutes > betaStartMinutes;
 assert(hasCollision === true, 'Dial adjustment extending Task Alpha to 10:50 collides with Task Beta starting at 10:45');
 
+console.log('\n--- 14. Testing Push Overlapping Task Lock State Preservation ---');
+store.saveTasks([]);
+store.saveCalendarEvents([]);
+
+const pushTaskA = store.addTask({
+  title: 'Focus A',
+  startTime: '09:00',
+  endTime: '10:00',
+  plannedDuration: 60,
+  isLocked: false
+});
+
+const pushTaskB = store.addTask({
+  title: 'Focus B',
+  startTime: '09:30',
+  endTime: '10:30',
+  plannedDuration: 60,
+  isLocked: false // unlocked initially
+});
+
+// Simulate Choice A: Push Other Task
+const targetStartTime = pushTaskA.endTime; // '10:00'
+const dur = pushTaskB.plannedDuration || 60;
+const startMin = 10 * 60;
+const endMin = (startMin + dur) % 1440;
+const targetEndTime = `${Math.floor(endMin / 60)}:${String(endMin % 60).padStart(2, '0')}`;
+
+const wasLocked = Boolean(pushTaskB.isLocked);
+store.updateTask(pushTaskB.id, {
+  fixedStartTime: wasLocked ? targetStartTime : null,
+  startTime: targetStartTime,
+  endTime: targetEndTime,
+  isLocked: wasLocked
+});
+
+const pushedTaskB = store.getTasks().find(t => t.id === pushTaskB.id);
+assert(pushedTaskB.startTime === '10:00', 'Pushed task starts when task A finishes at 10:00');
+assert(pushedTaskB.endTime === '11:00', 'Pushed task ends at 11:00');
+assert(pushedTaskB.isLocked === false, 'Pushed task preserved unlocked flexible lock state');
+assert(pushedTaskB.fixedStartTime === null, 'Pushed flexible task fixedStartTime is null');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

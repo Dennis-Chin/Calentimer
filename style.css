@@ -4540,6 +4540,28 @@ body {
   touch-action: pan-y; /* Allows smooth scrolling when finger starts on event card */
 }
 
+/* Subtle status backgrounds for day event cards */
+.day-event-card.is-event-completed {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+[data-theme="light"] .day-event-card.is-event-completed {
+  background: rgba(5, 150, 105, 0.12) !important;
+  border-color: rgba(5, 150, 105, 0.3) !important;
+}
+
+.day-event-card.is-event-current {
+  background: rgba(0, 240, 255, 0.16) !important;
+  border-color: rgba(0, 240, 255, 0.45) !important;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.22);
+}
+
+[data-theme="light"] .day-event-card.is-event-current {
+  background: rgba(14, 165, 233, 0.14) !important;
+  border-color: rgba(14, 165, 233, 0.38) !important;
+}
+
 /* Overlapping Event Card Positioning */
 .day-event-card.is-overlapping-earlier {
   left: 44px;
@@ -5425,9 +5447,12 @@ body {
    Schedule Overlap Indentation & Conflict Resolution Modal
    ========================================================================== */
 
+#scheduleConflictModalBackdrop {
+  z-index: 3000 !important;
+}
+
 .task-card.is-schedule-overlap {
   margin-left: 20px !important;
-  border-left: 3.5px solid #f59e0b !important;
   box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
   position: relative;
 }
@@ -5446,10 +5471,6 @@ body {
   padding: 1px 7px;
   border-radius: var(--radius-full);
   z-index: 2;
-}
-
-[data-theme="light"] .task-card.is-schedule-overlap {
-  background: rgba(245, 158, 11, 0.08) !important;
 }
 
 .schedule-conflict-card {

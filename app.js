@@ -159,6 +159,7 @@ function initApp() {
       hardStop: savedHardStop,
       tasks: tasks
     });
+    window.runtime = runtime;
     runtime.setHardStopEnabled(isHardStopEnabled);
     updateHardStopPillsUI(isHardStopEnabled);
 
@@ -173,6 +174,7 @@ function initApp() {
     setupScheduleConflictModal();
 
     taskStore.onChange(() => {
+      dismissedOverlapPairs.clear();
       if (runtime) {
         const storedTasks = taskStore.getTasks();
         const currentIds = (runtime.initialTasks || []).map(t => t.id).join(',');
@@ -196,8 +198,8 @@ function initApp() {
             renderClockTime(0);
             updateWheelProgress(0);
           }
-          checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
         }
+        checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
       }
       if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
         calendarView.render();
@@ -369,6 +371,9 @@ function setupRuntimeEvents() {
     updateActiveTaskDisplay();
     updateFinishEarlyButtonText(data.totalDurationSeconds);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   });
 
   runtime.on('taskSkipped', (data) => {
@@ -382,6 +387,9 @@ function setupRuntimeEvents() {
     updateWheelProgress(runtime.getProgress());
     updateFinishEarlyButtonText(durSec);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   });
 
   runtime.on('taskComplete', (data) => {
@@ -398,6 +406,9 @@ function setupRuntimeEvents() {
     });
     updateActiveTaskDisplay();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   });
 
   runtime.on('allTasksCompleted', () => {
@@ -407,6 +418,9 @@ function setupRuntimeEvents() {
     updateActiveTaskDisplay();
     updateResetButtonUI();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   });
 
   runtime.on('scheduleUpdate', (schedule) => {
@@ -466,6 +480,9 @@ function setupRuntimeEvents() {
     }
     updateResetButtonUI();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   });
 
   runtime.on('error', (err) => {
@@ -2485,7 +2502,7 @@ function setupScheduleConflictModal() {
     });
   }
 
-  // Choice A: Shift Overlapping Task
+  // Choice A: Push Overlapping Task
   if (btnShift) {
     btnShift.addEventListener('click', () => {
       if (!currentConflictData) {
@@ -2501,11 +2518,12 @@ function setupScheduleConflictModal() {
       const endMin = (startMin + dur) % 1440;
       const targetEndTime = formatMinutesToTime(endMin);
 
+      const wasLocked = Boolean(taskB.isLocked);
       taskStore.updateTask(taskB.id, {
-        fixedStartTime: targetStartTime,
+        fixedStartTime: wasLocked ? targetStartTime : null,
         startTime: targetStartTime,
         endTime: targetEndTime,
-        isLocked: true
+        isLocked: wasLocked
       });
 
       runtime.initialTasks = taskStore.getTasks();
@@ -2517,7 +2535,7 @@ function setupScheduleConflictModal() {
 
       closeScheduleConflictModal();
       mobileServices.hapticTap();
-      showToastNotification(`✓ Moved "${taskB.title}" to start at ${targetStartTime}`);
+      showToastNotification(`✓ Pushed "${taskB.title}" to start at ${targetStartTime}`);
 
       setTimeout(() => {
         const nextTasks = (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks();
@@ -2556,7 +2574,7 @@ function setupScheduleConflictModal() {
 
       closeScheduleConflictModal();
       mobileServices.hapticTap();
-      showToastNotification(`✓ Recording "${selectedTask.title}" on timer (overlap ignored)`);
+      showToastNotification(`✓ Ignored overlap; running "${selectedTask.title}" on timer`);
 
       setTimeout(() => {
         const nextTasks = (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks();
@@ -2570,6 +2588,9 @@ function setupScheduleConflictModal() {
       if (e.target === modalBackdrop) closeScheduleConflictModal();
     });
   }
+
+  window.checkAndPromptScheduleConflict = checkAndPromptScheduleConflict;
+  window.clearDismissedOverlapPairs = function() { dismissedOverlapPairs.clear(); };
 }
 
 function hexToRgba(hex, alpha) {

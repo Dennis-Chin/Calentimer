@@ -1679,11 +1679,36 @@ export class CalendarView {
         }
       }
 
+      // Check if event corresponds to completed or currently active timer task
+      let isDone = false;
+      let isCurrent = false;
+      if (ev.isCompleted) {
+        isDone = true;
+      }
+      const rt = (typeof window !== 'undefined' && window.runtime) ? window.runtime : (this.runtime || null);
+      if (isToday && rt) {
+        const activeTask = (typeof rt.getActiveTask === 'function') ? rt.getActiveTask() : null;
+        const isAllDone = rt.status === 'COMPLETED';
+        const schedTasks = (rt.currentSchedule && rt.currentSchedule.tasks) || [];
+        const taskIndex = schedTasks.findIndex(t => t.id === ev.id);
+
+        if (isAllDone || (taskIndex !== -1 && rt.activeTaskIndex > 0 && taskIndex < rt.activeTaskIndex)) {
+          isDone = true;
+        } else if (activeTask && activeTask.id === ev.id && rt.status !== 'COMPLETED') {
+          isCurrent = true;
+        }
+      }
+
       const card = document.createElement('div');
-      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''}`;
+      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
       card.style.top = `${topPx}px`;
       card.style.borderLeftColor = this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
+      if (isDone) {
+        card.style.background = 'rgba(16, 185, 129, 0.16)';
+      } else if (isCurrent) {
+        card.style.background = 'rgba(0, 240, 255, 0.16)';
+      }
       this._applyEventCardLayout(card, heightPx);
 
       // Top line purely for task title, line below for time span and duration
@@ -2528,6 +2553,15 @@ export class CalendarView {
         isLocked: Boolean(ev.isLocked)
       });
 
+      if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
+        window.clearDismissedOverlapPairs();
+      }
+      if (typeof window !== 'undefined' && typeof window.checkAndPromptScheduleConflict === 'function') {
+        setTimeout(() => {
+          window.checkAndPromptScheduleConflict();
+        }, 120);
+      }
+
       mobileServices.hapticTap();
       this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
       this.render();
@@ -3070,6 +3104,15 @@ export class CalendarView {
           fixedStartTime: dropTarget.startTime,
           isLocked: Boolean(ev.isLocked)
         });
+
+        if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
+          window.clearDismissedOverlapPairs();
+        }
+        if (typeof window !== 'undefined' && typeof window.checkAndPromptScheduleConflict === 'function') {
+          setTimeout(() => {
+            window.checkAndPromptScheduleConflict();
+          }, 120);
+        }
 
         mobileServices.hapticTap();
         this._showToast(`✓ Rescheduled to ${dropTarget.targetDateStr} (${dropTarget.startTime} - ${dropTarget.endTime})`);
