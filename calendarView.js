@@ -2971,9 +2971,6 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
-            if (ev.isLocked) {
-              triggerDayLockedWarning();
-            }
           }
         }
         return;
@@ -3044,9 +3041,6 @@ export class CalendarView {
             hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
-            if (ev.isLocked) {
-              triggerDayLockedWarning();
-            }
           }
           return;
         }
@@ -3554,9 +3548,6 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
-            if (ev.isLocked) {
-              triggerWeekLockedWarning();
-            }
           }
         }
         return;
@@ -3626,9 +3617,7 @@ export class CalendarView {
             hasMoved = true;
             clearTimeout(holdTimer);
             holdTimer = null;
-            if (ev.isLocked) {
-              triggerWeekLockedWarning();
-            } else {
+            if (!ev.isLocked) {
               startDragMode();
             }
           }
@@ -3988,9 +3977,6 @@ export class CalendarView {
             clearTimeout(holdTimer);
             holdTimer = null;
             this._activeDragCancelHandler = null;
-            if (ev.isLocked) {
-              triggerMonthLockedWarning();
-            }
           }
         }
         return;
@@ -4048,9 +4034,6 @@ export class CalendarView {
           if (holdTimer && Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
             clearTimeout(holdTimer);
             holdTimer = null;
-            if (ev.isLocked) {
-              triggerMonthLockedWarning();
-            }
           }
           return;
         }
@@ -4107,7 +4090,9 @@ export class CalendarView {
       if (el.calEventTitleLabel) {
         el.calEventTitleLabel.textContent = 'Break Name';
       }
-      if (el.eventDurationInput) el.eventDurationInput.value = '10';
+      if (isNew) {
+        if (el.eventDurationInput) el.eventDurationInput.value = '10';
+      }
       this.currentCategory = 'Break';
       if (el.eventCategoryInput) el.eventCategoryInput.value = 'Break';
       if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = false;
@@ -4129,7 +4114,9 @@ export class CalendarView {
       if (el.calEventTitleLabel) {
         el.calEventTitleLabel.textContent = 'Event Name';
       }
-      if (el.eventDurationInput) el.eventDurationInput.value = '60';
+      if (isNew) {
+        if (el.eventDurationInput) el.eventDurationInput.value = '60';
+      }
       this.currentCategory = 'Work';
       if (el.eventCategoryInput) el.eventCategoryInput.value = 'Work';
       if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = true;

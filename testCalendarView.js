@@ -876,6 +876,33 @@ assert(calendar.elements.calEventTitleLabel.textContent === 'Break Name', 'Title
 assert(calendar.elements.btnSaveCalEvent.textContent === 'Save Break', 'Save button says Save Break');
 calendar.closeEventInspector();
 
+// Scenario E: Editing existing work event preserves duration when switching to break
+const existingWorkEvent = {
+  id: 'evt-work-45',
+  title: 'Design Review',
+  category: 'Work',
+  plannedDuration: 45,
+  emoji: '💼',
+  startTime: '14:00',
+  endTime: '14:45',
+  date: '2026-10-25'
+};
+calendar.openEventInspector(existingWorkEvent);
+assert(calendar.currentEventType === 'work', 'Existing work event recognized as work');
+assert(calendar.elements.eventDurationInput.value === '45', 'Initial work duration is 45m');
+
+// Turn work event into break
+calendar.elements.calTypeSegmentBreak.dispatchSimulatedEvent('click');
+assert(calendar.currentEventType === 'break', 'Switched existing work event to break');
+assert(calendar.elements.eventDurationInput.value === '45', 'Duration is preserved at 45m when turning work event into break');
+assert(calendar.elements.eventEndTimeInput.value === '14:45', 'End time matches preserved duration (14:00 + 45m)');
+
+// Turn back to work
+calendar.elements.calTypeSegmentWork.dispatchSimulatedEvent('click');
+assert(calendar.currentEventType === 'work', 'Switched back to work');
+assert(calendar.elements.eventDurationInput.value === '45', 'Duration remains preserved at 45m when switching back to work');
+calendar.closeEventInspector();
+
 console.log('\n--- 12. Testing Locked Event Pulsing, Default Today View on Open & Smooth Arrow Navigation ---');
 
 // 1. Locked Event Toast & Glow in Day View
@@ -901,33 +928,31 @@ assert(testDayLockedCard !== null && testDayLockedCard !== undefined, 'Locked da
 // Verify no static orange border inline or on day-event-card
 assert(testDayLockedCard.style.borderLeftColor !== '#f59e0b', 'Locked day card does not have static orange border');
 
-// Attempt to drag locked card by holding 200ms
+// Swiping in any direction across locked day card should NOT trigger warning or pulse
 let toastShown = '';
 calendar._showToast = function(msg) { toastShown = msg; };
 
 testDayLockedCard.dispatchSimulatedEvent('touchstart', {
   touches: [{ clientX: 100, clientY: 200 }]
 });
-await new Promise(function(resolve) { setTimeout(resolve, 220); });
+testDayLockedCard.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 100, clientY: 215 }] // deltaY = 15 > 8px (swiping)
+});
+assert(toastShown === '', 'Swiping (> 8px) past locked day card does NOT trigger toast alert');
+assert(!testDayLockedCard.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on day card');
 
-assert(toastShown === '🔒 Unlock event before moving', 'Toast pop-up notifies user to unlock event before moving');
-assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Day card pulses with glowing orange border (lock-pulse-glow)');
-const lockBtnInside = testDayLockedCard.querySelector('.cal-event-lock-btn');
-assert(lockBtnInside && lockBtnInside.classList.contains('pulse-glow'), 'Padlock icon pulses with glow (pulse-glow)');
-
-// Attempt to move locked day card immediately with finger drag movement (> 8px)
-toastShown = '';
-testDayLockedCard.classList.remove('lock-pulse-glow');
+// Locked warning and pulse ONLY trigger when user press-holds for 200ms
 testDayLockedCard.dispatchSimulatedEvent('touchstart', {
   touches: [{ clientX: 100, clientY: 200 }]
 });
-testDayLockedCard.dispatchSimulatedEvent('touchmove', {
-  touches: [{ clientX: 100, clientY: 215 }] // deltaY = 15 > 8px
-});
-assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked day card triggers toast alert');
-assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on day card');
+await new Promise(function(resolve) { setTimeout(resolve, 220); });
 
-// Attempt to move locked week card immediately with finger drag movement (> 8px)
+assert(toastShown === '🔒 Unlock event before moving', 'Toast pop-up notifies user to unlock event before moving when press-held');
+assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Day card pulses with glowing orange border on press-hold');
+const lockBtnInside = testDayLockedCard.querySelector('.cal-event-lock-btn');
+assert(lockBtnInside && lockBtnInside.classList.contains('pulse-glow'), 'Padlock icon pulses with glow on press-hold');
+
+// Week View: Swiping vs Press-Hold
 calendar.switchView('week');
 calendar.render();
 const weekColsListTest = calendar.elements.weekGridBody.children.filter(function(c) {
@@ -948,11 +973,19 @@ if (lockedWeekCardTest) {
   lockedWeekCardTest.dispatchSimulatedEvent('touchmove', {
     touches: [{ clientX: 135, clientY: 200 }] // deltaX = 15 > 8px
   });
-  assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked week card triggers toast alert');
-  assert(lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on week card');
+  assert(toastShown === '', 'Swiping (> 8px) past locked week card does NOT trigger toast alert');
+  assert(!lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on week card');
+
+  // Press-hold week card
+  lockedWeekCardTest.dispatchSimulatedEvent('touchstart', {
+    touches: [{ clientX: 120, clientY: 200 }]
+  });
+  await new Promise(function(resolve) { setTimeout(resolve, 220); });
+  assert(toastShown === '🔒 Unlock event before moving', 'Press-holding locked week card triggers toast alert');
+  assert(lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Press-holding triggers lock-pulse-glow on week card');
 }
 
-// Attempt to move locked month pill immediately with finger drag movement (> 8px)
+// Month View: Swiping vs Press-Hold
 calendar.switchView('month');
 calendar.render();
 let lockedMonthPillTest = null;
@@ -978,8 +1011,16 @@ if (lockedMonthPillTest) {
   lockedMonthPillTest.dispatchSimulatedEvent('touchmove', {
     touches: [{ clientX: 120, clientY: 150 }] // deltaX = 20 > 8px
   });
-  assert(toastShown === '🔒 Unlock event before moving', 'Immediate finger drag (> 8px) on locked month pill triggers toast alert');
-  assert(lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Immediate drag triggers lock-pulse-glow on month pill');
+  assert(toastShown === '', 'Swiping (> 8px) past locked month pill does NOT trigger toast alert');
+  assert(!lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on month pill');
+
+  // Press-hold month pill
+  lockedMonthPillTest.dispatchSimulatedEvent('touchstart', {
+    touches: [{ clientX: 100, clientY: 150 }]
+  });
+  await new Promise(function(resolve) { setTimeout(resolve, 220); });
+  assert(toastShown === '🔒 Unlock event before moving', 'Press-holding locked month pill triggers toast alert');
+  assert(lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Press-holding triggers lock-pulse-glow on month pill');
 }
 
 // 2. Calendar Tab defaults to today's date and user's chosen view upon opening
