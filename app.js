@@ -1765,6 +1765,8 @@ function setupControls() {
   const btnDrawerToggle = document.getElementById('btnDrawerToggle');
   const btnModeChronological = document.getElementById('btnModeChronological');
   const btnModeSequential = document.getElementById('btnModeSequential');
+  const btnCalModeChronological = document.getElementById('btnCalModeChronological');
+  const btnCalModeSequential = document.getElementById('btnCalModeSequential');
 
   function updateTimespansButtonUI() {
     const isChronological = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
@@ -1776,6 +1778,14 @@ function setupControls() {
     if (btnModeSequential) {
       btnModeSequential.classList.toggle('active', !isChronological);
     }
+    const calModeChrono = document.getElementById('btnCalModeChronological') || btnCalModeChronological;
+    const calModeSeq = document.getElementById('btnCalModeSequential') || btnCalModeSequential;
+    if (calModeChrono) {
+      calModeChrono.classList.toggle('active', isChronological);
+    }
+    if (calModeSeq) {
+      calModeSeq.classList.toggle('active', !isChronological);
+    }
   }
 
   function setScheduleMode(isChronological) {
@@ -1786,6 +1796,7 @@ function setupControls() {
     if (runtime) {
       runtime.recalculate();
       renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      renderCalendarModal();
       updateScheduleUI(runtime.currentSchedule);
       updateActiveTaskDisplay();
     }
@@ -1802,6 +1813,20 @@ function setupControls() {
 
   if (btnModeSequential) {
     btnModeSequential.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setScheduleMode(false);
+    });
+  }
+
+  if (btnCalModeChronological) {
+    btnCalModeChronological.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setScheduleMode(true);
+    });
+  }
+
+  if (btnCalModeSequential) {
+    btnCalModeSequential.addEventListener('click', (e) => {
       e.stopPropagation();
       setScheduleMode(false);
     });
@@ -2246,10 +2271,19 @@ function setupInteractiveTaskDrag(container) {
     const drawer = container.closest('#taskDrawer');
     if (drawer && drawer.classList.contains('collapsed')) return;
 
-    // Drag can begin on the 3x2 dots drag handle OR the left gutter area of the card!
+    // Drag can begin on the 3x2 dots drag handle OR the left gutter area of the card (left of dots up to task border)
     const isEmoji = e.target.closest('.task-emoji-btn, .calendar-emoji-btn, [data-action="pick-emoji"], [data-action="pick-calendar-emoji"]');
     if (isEmoji) return;
-    const handle = e.target.closest('[data-action="drag-handle"], .calendar-block-left');
+    let handle = e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, .calendar-block-left');
+    if (!handle) {
+      const cardEl = e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block');
+      if (cardEl) {
+        const rect = cardEl.getBoundingClientRect();
+        if (e.clientX - rect.left <= 44) {
+          handle = cardEl.querySelector('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, .calendar-block-left');
+        }
+      }
+    }
     if (!handle) return;
 
     const card = e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block');
@@ -2289,6 +2323,7 @@ function setupInteractiveTaskDrag(container) {
         mobileServices.hapticWarning();
         showToastNotification('🔒 This task is locked and cannot be moved.');
         if (handle) handle.classList.remove('is-holding');
+        draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
         return;
       }
 
@@ -2298,6 +2333,7 @@ function setupInteractiveTaskDrag(container) {
         mobileServices.hapticWarning();
         showToastNotification('Active task is running. Pause timer to reorder.');
         if (handle) handle.classList.remove('is-holding');
+        draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
         return;
       }
 
@@ -2306,12 +2342,15 @@ function setupInteractiveTaskDrag(container) {
         mobileServices.hapticWarning();
         showToastNotification('Deselect the padlock to unlock active task first.');
         if (handle) handle.classList.remove('is-holding');
+        draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
         return;
       }
 
       isDragActive = true;
       isDraggingTask = true;
       if (handle) handle.classList.add('is-holding');
+      const dotsEl = draggedCard.querySelector('[data-action="drag-handle"], .drag-handle, .drag-handle-compact');
+      if (dotsEl) dotsEl.classList.add('is-holding');
 
       try {
         handle.setPointerCapture(activePointerId);
@@ -2358,6 +2397,7 @@ function setupInteractiveTaskDrag(container) {
             holdTimer = null;
           }
           if (handle) handle.classList.remove('is-holding');
+          draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
         }
         return;
       }
@@ -2429,6 +2469,7 @@ function setupInteractiveTaskDrag(container) {
         holdTimer = null;
       }
       if (handle) handle.classList.remove('is-holding');
+      draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
 
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -3889,6 +3930,7 @@ function openCalendar() {
   renderCalendarModal();
   updateScheduleUI(runtime.currentSchedule);
   updateActiveTaskDisplay();
+  updateTimespansButtonUI();
   checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
@@ -3974,15 +4016,59 @@ function renderCalendarModal() {
   if (!calendarTimelineList) return;
   calendarTimelineList.innerHTML = '';
 
+  const finishLine = document.getElementById('calendarFinishLine');
   const tasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || [];
   if (tasks.length === 0) {
     calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
+    if (finishLine) finishLine.style.display = 'none';
     return;
   }
 
   const activeIdx = runtime && runtime.activeTaskIndex >= 0 ? runtime.activeTaskIndex : 0;
   const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
+
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+
+  // In sequential mode: compute dynamic sequence times
+  const seqTimeSpans = [];
+  if (!isTimespans) {
+    const now = new Date();
+    let rollingMin = (now.getHours() * 60) + now.getMinutes();
+
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      const dur = Math.max(1, Math.round(t.allocatedDuration || t.plannedDuration || 1));
+      let tStart = rollingMin;
+      let tEnd = rollingMin + dur;
+
+      if (isRunning || isPaused) {
+        if (i < activeIdx) {
+          tStart = rollingMin - dur;
+          tEnd = rollingMin;
+        } else if (i === activeIdx) {
+          const remMin = Math.max(1, Math.ceil((runtime.getRemainingSeconds ? runtime.getRemainingSeconds() : dur * 60) / 60));
+          tStart = rollingMin;
+          tEnd = rollingMin + remMin;
+          rollingMin = tEnd;
+        } else {
+          tStart = rollingMin;
+          tEnd = rollingMin + dur;
+          rollingMin = tEnd;
+        }
+      } else {
+        tStart = rollingMin;
+        tEnd = rollingMin + dur;
+        rollingMin = tEnd;
+      }
+      seqTimeSpans.push({
+        start: formatMinutesToTime(tStart % 1440),
+        end: formatMinutesToTime(tEnd % 1440)
+      });
+    }
+  }
 
   tasks.forEach((task, idx) => {
     const isImmovable = Boolean(task.isLocked);
@@ -4054,7 +4140,7 @@ function renderCalendarModal() {
           <span class="calendar-duration-badge">${task.allocatedDuration || task.plannedDuration}m</span>
         </div>
         <div class="calendar-main-line2">
-          <span class="calendar-time-range">${task.startTime || '--:--'} → ${task.endTime || '--:--'}</span>
+          <span class="calendar-time-range">${isTimespans ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'}` : `${seqTimeSpans[idx] ? `${seqTimeSpans[idx].start} → ${seqTimeSpans[idx].end}` : ''}`}</span>
           <span class="calendar-category-pill" style="background:${catColor.bg};border:1px solid ${catColor.border};color:${catColor.text};">${escapeHtml(task.category || 'General')}</span>
         </div>
       </div>
@@ -4178,8 +4264,13 @@ function renderCalendarModal() {
 
     const handleTaskTouchStart = (e) => {
       // Ignore interactions originating directly from the drag handle, left gutter area, or emoji button
-      if (e.target.closest('[data-action="drag-handle"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
         return;
+      }
+      const rect = item.getBoundingClientRect();
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      if (clientX - rect.left <= 44) {
+        return; // Left zone before/at 3x2 dots: reserved for press-hold reordering, NOT delete!
       }
 
       hasMoved = false;
@@ -4202,11 +4293,15 @@ function renderCalendarModal() {
     };
 
     const handleTaskTouchMove = (e) => {
-      if (e.target.closest('[data-action="drag-handle"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
+        return;
+      }
+      const rect = item.getBoundingClientRect();
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      if (clientX - rect.left <= 44) {
         return;
       }
 
-      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
       const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
       const diffX = clientX - touchStartX;
       const diffY = clientY - touchStartY;
@@ -4323,6 +4418,10 @@ function renderCalendarModal() {
     wrapper.appendChild(item);
     calendarTimelineList.appendChild(wrapper);
   });
+
+  if (finishLine) {
+    finishLine.style.display = isTimespans ? 'flex' : 'none';
+  }
 }
 
 // Global window aliases

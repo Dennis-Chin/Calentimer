@@ -468,8 +468,13 @@ const styleCssContent = readFileSync(path.resolve('./style.css'), 'utf8');
 
 assert(indexHtmlContent.includes('<div class="cal-drag-handle-bar" aria-hidden="true"></div>') && indexHtmlContent.includes('id="calendarModal"'), 'index.html contains .cal-drag-handle-bar inside #calendarModal');
 assert(indexHtmlContent.includes('id="btnCloseCalendar"') && indexHtmlContent.includes('cal-close-icon-arrow'), '#calendarModal close button includes morphing cal-close-icon-arrow');
+assert(indexHtmlContent.includes('id="calendarScheduleModeSegment"'), 'index.html contains #calendarScheduleModeSegment inside #calendarModal');
+assert(indexHtmlContent.includes('id="btnCalModeChronological"'), 'index.html contains #btnCalModeChronological');
+assert(indexHtmlContent.includes('id="btnCalModeSequential"'), 'index.html contains #btnCalModeSequential');
+assert(styleCssContent.includes('.drag-handle-compact.is-holding'), 'style.css highlights .drag-handle-compact green on is-holding');
 assert(appJsContent.includes('function setupCalendarModalPullToDismiss'), 'app.js defines setupCalendarModalPullToDismiss()');
 assert(appJsContent.includes('function attachLockedDragHoldWarning'), 'app.js defines attachLockedDragHoldWarning()');
+assert(appJsContent.includes('clientX - rect.left <= 44'), 'app.js includes left border-to-dots area for press-hold reorder without triggering delete');
 assert(styleCssContent.includes('.calendar-modal.will-minimise .cal-close-icon-arrow'), 'style.css morphs #calendarModal close icon into down arrow on .will-minimise');
 assert(appJsContent.includes('task-timing-indicator'), 'app.js renders dynamic indicative timespan in sequential mode');
 
