@@ -27,9 +27,13 @@ class MobileServices {
   async _initServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
-        this.swRegistration = await navigator.serviceWorker.register('/sw.js');
+        this.swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
       } catch (err) {
-        console.warn('Service worker registration failed:', err);
+        try {
+          this.swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        } catch (fallbackErr) {
+          console.warn('Service worker registration failed:', fallbackErr);
+        }
       }
     }
   }

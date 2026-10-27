@@ -7,9 +7,17 @@
   <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Hard-Stop Study Timer</title>
+  <meta name="apple-mobile-web-app-title" content="Calentimer">
+  <meta name="application-name" content="Calentimer">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="description" content="Calentimer - Hard-Stop Focus Timer and dynamic schedule planner">
+  <title>Calentimer - Hard-Stop Focus Timer</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
   <link rel="apple-touch-icon" href="icon-512.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icon.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -301,6 +309,14 @@
     </nav>
 
     <div class="nav-drawer-footer">
+      <button class="nav-item nav-install-item" id="navItemInstall" title="Install Calentimer as App">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span class="nav-item-label" id="navInstallLabel">Install App</span>
+      </button>
       <button class="nav-item nav-settings-item" id="navItemSettings">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
@@ -372,6 +388,15 @@
             <svg class="setting-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
+          </div>
+
+          <!-- 5. Install App (Browser PWA Installation) -->
+          <div class="setting-row setting-row-clickable" id="settingRowInstall" title="Install Calentimer as an app on your device">
+            <div class="setting-info">
+              <span class="setting-label">📲 Install App</span>
+              <span class="setting-desc" id="settingInstallDesc">Install on your phone or desktop for full-screen focus and offline use.</span>
+            </div>
+            <button type="button" class="btn-setting-action" id="btnSettingInstall">Install</button>
           </div>
         </div>
       </div>
@@ -1537,6 +1562,37 @@
       <div class="confirm-modal-actions">
         <button type="button" class="btn-confirm-cancel" id="btnCancelExitApp">Cancel</button>
         <button type="button" class="btn-confirm-danger" id="btnConfirmExitApp">Exit App</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Install App Guidance Modal -->
+  <div class="modal-backdrop hidden" id="installAppModalBackdrop">
+    <div class="install-app-modal" id="installAppModal">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span class="modal-title">Install Calentimer</span>
+        </div>
+        <button class="btn-close-modal" id="btnCloseInstallModal" title="Close">✕</button>
+      </div>
+      <div class="modal-body install-modal-body">
+        <div class="install-app-preview">
+          <img src="icon.svg" width="60" height="60" alt="Calentimer Icon" class="install-preview-icon">
+          <div class="install-preview-text">
+            <span class="install-preview-title">Calentimer</span>
+            <span class="install-preview-desc">Hard-Stop Focus Timer & Schedule</span>
+            <span class="install-preview-url">calentimer.com</span>
+          </div>
+        </div>
+        <div class="install-instructions" id="installInstructionsContainer">
+          <!-- Populated dynamically with platform instructions -->
+        </div>
+        <button type="button" class="btn-install-prompt-action" id="btnTriggerBrowserInstall">Install App</button>
       </div>
     </div>
   </div>

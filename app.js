@@ -6390,6 +6390,193 @@ function setupNavigationAndModals() {
   }
 
   // ==========================================
+  // Browser PWA Installation & Guidance
+  // ==========================================
+  let deferredInstallPrompt = null;
+
+  function isStandaloneApp() {
+    return Boolean(
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      (window.navigator && window.navigator.standalone === true) ||
+      (document.referrer && document.referrer.indexOf('android-app://') !== -1)
+    );
+  }
+
+  function updateInstallUI() {
+    const isInstalled = isStandaloneApp();
+    const navLabel = document.getElementById('navInstallLabel');
+    const navItem = document.getElementById('navItemInstall');
+    const btnSettingInstall = document.getElementById('btnSettingInstall');
+    const settingInstallDesc = document.getElementById('settingInstallDesc');
+
+    if (isInstalled) {
+      if (navLabel) navLabel.textContent = '✓ Installed';
+      if (navItem) navItem.title = 'Calentimer is running as an installed app';
+      if (btnSettingInstall) {
+        btnSettingInstall.textContent = 'Installed';
+        btnSettingInstall.classList.add('is-installed');
+      }
+      if (settingInstallDesc) {
+        settingInstallDesc.textContent = 'Calentimer is running in standalone app mode.';
+      }
+    } else {
+      if (navLabel) navLabel.textContent = 'Install App';
+      if (navItem) navItem.title = 'Install Calentimer as App';
+      if (btnSettingInstall) {
+        btnSettingInstall.textContent = 'Install';
+        btnSettingInstall.classList.remove('is-installed');
+      }
+      if (settingInstallDesc) {
+        settingInstallDesc.textContent = 'Install on your phone or desktop for full-screen focus and offline use.';
+      }
+    }
+  }
+
+  function openInstallModal() {
+    const modal = document.getElementById('installAppModalBackdrop');
+    const container = document.getElementById('installInstructionsContainer');
+    const btnTrigger = document.getElementById('btnTriggerBrowserInstall');
+    if (!modal || !container || !btnTrigger) return;
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    if (isIOS) {
+      container.innerHTML = `
+        <div class="install-step">
+          <span class="install-step-badge">1</span>
+          <span class="install-step-text">Tap the <strong>Share</strong> button <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" style="vertical-align:-2px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> in Safari's bottom toolbar.</span>
+        </div>
+        <div class="install-step">
+          <span class="install-step-badge">2</span>
+          <span class="install-step-text">Scroll down the menu and tap <strong>Add to Home Screen</strong> ➕.</span>
+        </div>
+        <div class="install-step">
+          <span class="install-step-badge">3</span>
+          <span class="install-step-text">Tap <strong>Add</strong> in the top-right corner to install.</span>
+        </div>
+      `;
+      btnTrigger.textContent = 'Got It';
+      btnTrigger.onclick = closeInstallModal;
+    } else if (deferredInstallPrompt) {
+      container.innerHTML = `
+        <div class="install-step">
+          <span class="install-step-badge">1</span>
+          <span class="install-step-text">Tap <strong>Install App</strong> below to launch the browser installer.</span>
+        </div>
+        <div class="install-step">
+          <span class="install-step-badge">2</span>
+          <span class="install-step-text">Confirm when prompted to install <strong>Calentimer</strong> on your home screen or desktop.</span>
+        </div>
+      `;
+      btnTrigger.textContent = 'Install App';
+      btnTrigger.onclick = () => {
+        closeInstallModal();
+        if (deferredInstallPrompt) {
+          deferredInstallPrompt.prompt();
+          deferredInstallPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult && choiceResult.outcome === 'accepted') {
+              showToastNotification('✓ Installing Calentimer...');
+            }
+            deferredInstallPrompt = null;
+          }).catch(() => {});
+        }
+      };
+    } else {
+      container.innerHTML = `
+        <div class="install-step">
+          <span class="install-step-badge">1</span>
+          <span class="install-step-text">Click the <strong>Install</strong> icon ⊕ in the browser address bar (right side of calentimer.com).</span>
+        </div>
+        <div class="install-step">
+          <span class="install-step-badge">2</span>
+          <span class="install-step-text">Or open browser menu (<strong>⋮</strong>) and click <strong>Install Calentimer...</strong></span>
+        </div>
+      `;
+      btnTrigger.textContent = 'Got It';
+      btnTrigger.onclick = closeInstallModal;
+    }
+
+    ensureHistoryBuffer();
+    modal.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  function closeInstallModal() {
+    const modal = document.getElementById('installAppModalBackdrop');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function triggerAppInstall() {
+    if (isStandaloneApp()) {
+      showToastNotification('✓ Calentimer is already running as an installed app');
+      return;
+    }
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult && choiceResult.outcome === 'accepted') {
+          showToastNotification('✓ Installing Calentimer...');
+        }
+        deferredInstallPrompt = null;
+      }).catch(() => {});
+    } else {
+      openInstallModal();
+    }
+  }
+
+  function setupPWAInstallHandlers() {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      updateInstallUI();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      updateInstallUI();
+      showToastNotification('✓ Calentimer successfully installed!');
+    });
+
+    const navItemInstall = document.getElementById('navItemInstall');
+    if (navItemInstall) {
+      navItemInstall.addEventListener('click', () => {
+        closeDrawer();
+        triggerAppInstall();
+      });
+    }
+
+    const settingRowInstall = document.getElementById('settingRowInstall');
+    const btnSettingInstall = document.getElementById('btnSettingInstall');
+    if (settingRowInstall) {
+      settingRowInstall.addEventListener('click', (e) => {
+        if (e.target === btnSettingInstall) return;
+        triggerAppInstall();
+      });
+    }
+    if (btnSettingInstall) {
+      btnSettingInstall.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerAppInstall();
+      });
+    }
+
+    const btnCloseInstallModal = document.getElementById('btnCloseInstallModal');
+    const installModalBackdrop = document.getElementById('installAppModalBackdrop');
+    if (btnCloseInstallModal) {
+      btnCloseInstallModal.addEventListener('click', closeInstallModal);
+    }
+    if (installModalBackdrop) {
+      installModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === installModalBackdrop) closeInstallModal();
+      });
+    }
+
+    updateInstallUI();
+  }
+
+  setupPWAInstallHandlers();
+
+  // ==========================================
   // Confirm Exit App Modal & Mobile Back Button
   // ==========================================
   const confirmExitAppModalBackdrop = document.getElementById('confirmExitAppModalBackdrop');
@@ -6475,6 +6662,7 @@ function setupNavigationAndModals() {
 
     // 2. Innermost Dialogs & Pickers (close the child modal first before closing any parent tab)
     const subModals = [
+      'installAppModalBackdrop',
       'confirmDeleteTodoModalBackdrop',
       'durationDialModalBackdrop',
       'emojiPickerModalBackdrop',

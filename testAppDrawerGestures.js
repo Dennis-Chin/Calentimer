@@ -310,7 +310,8 @@ const seedHiddenModals = [
   'calendarEventModalBackdrop',
   'addTodoModalBackdrop',
   'addTaskModalBackdrop',
-  'taskEditModalBackdrop'
+  'taskEditModalBackdrop',
+  'installAppModalBackdrop'
 ];
 seedHiddenModals.forEach(id => {
   getOrCreateMockElement(id).className = 'modal-backdrop hidden';

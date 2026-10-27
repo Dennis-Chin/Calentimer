@@ -5873,4 +5873,209 @@ body {
   color: #7e22ce;
 }
 
+/* ==========================================================================
+   PWA Browser Installation UI (Nav Item, Setting Row & Guidance Modal)
+   ========================================================================== */
+
+.nav-install-item {
+  color: var(--accent-cyan);
+}
+
+.nav-install-item:hover, .nav-install-item:active {
+  background: rgba(0, 240, 255, 0.1);
+  color: #00f0ff;
+}
+
+[data-theme="light"] .nav-install-item {
+  color: #0284c7;
+}
+
+[data-theme="light"] .nav-install-item:hover, [data-theme="light"] .nav-install-item:active {
+  background: rgba(2, 132, 199, 0.08);
+  color: #0369a1;
+}
+
+.btn-setting-action {
+  background: rgba(0, 240, 255, 0.14);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: var(--accent-cyan);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.btn-setting-action:active {
+  background: rgba(0, 240, 255, 0.28);
+  transform: scale(0.96);
+}
+
+.btn-setting-action.is-installed {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--primary);
+  cursor: default;
+}
+
+[data-theme="light"] .btn-setting-action {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.3);
+  color: #0284c7;
+}
+
+[data-theme="light"] .btn-setting-action.is-installed {
+  background: rgba(5, 150, 105, 0.12);
+  border-color: rgba(5, 150, 105, 0.3);
+  color: #059669;
+}
+
+/* Install Modal */
+.install-app-modal {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  animation: modalEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.install-modal-body {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.install-app-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.install-preview-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.install-preview-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.install-preview-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.2px;
+}
+
+.install-preview-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.install-preview-url {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+}
+
+[data-theme="light"] .install-app-preview {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .install-preview-url {
+  color: #0284c7;
+}
+
+.install-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--text-main);
+}
+
+.install-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 240, 255, 0.14);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: var(--accent-cyan);
+  font-size: 0.74rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+[data-theme="light"] .install-step-badge {
+  background: rgba(2, 132, 199, 0.12);
+  border-color: rgba(2, 132, 199, 0.3);
+  color: #0284c7;
+}
+
+.install-step-text strong {
+  color: var(--primary);
+}
+
+[data-theme="light"] .install-step-text strong {
+  color: #059669;
+}
+
+.btn-install-prompt-action {
+  background: var(--primary);
+  border: none;
+  color: #0c0e14;
+  font-weight: 700;
+  font-size: 0.94rem;
+  padding: 12px 18px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.18s ease;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-install-prompt-action:active {
+  background: var(--primary-hover);
+  transform: scale(0.98);
+}
+
 
