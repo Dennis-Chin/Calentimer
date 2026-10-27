@@ -248,8 +248,13 @@ export class TimerRuntime {
         return;
       }
 
-      this.activeTaskIndex = 0;
-      this._startTask(0);
+      if (this.activeTaskIndex < 0) {
+        const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+          ? taskStore.getTimespansEnabled()
+          : true;
+        this.activeTaskIndex = isTimespans ? this.getActiveTaskIndexByTime(this.currentSchedule.tasks) : 0;
+      }
+      this._startTask(this.activeTaskIndex);
     } else if (this.status === TimerStatus.PAUSED) {
       // Resume
       this.lastResumeTimestamp = Date.now();
@@ -911,10 +916,47 @@ export class TimerRuntime {
   // Public Accessors & Helpers
   // ==========================================
 
+  getActiveTaskIndexByTime(scheduleTasks, referenceMinutes) {
+    if (!scheduleTasks || scheduleTasks.length === 0) return 0;
+    const currentMinutes = typeof referenceMinutes === 'number'
+      ? referenceMinutes
+      : ((new Date().getHours() * 60) + new Date().getMinutes());
+
+    for (let i = 0; i < scheduleTasks.length; i++) {
+      const t = scheduleTasks[i];
+      if (t.startTime && t.endTime) {
+        const s = parseTimeToMinutes(t.startTime);
+        let e = parseTimeToMinutes(t.endTime);
+        if (e <= s) e += 1440;
+        if (currentMinutes >= s && currentMinutes < e) {
+          return i;
+        }
+      }
+    }
+
+    for (let i = 0; i < scheduleTasks.length; i++) {
+      const t = scheduleTasks[i];
+      if (t.endTime) {
+        const e = parseTimeToMinutes(t.endTime);
+        if (e > currentMinutes) {
+          return i;
+        }
+      }
+    }
+
+    return 0;
+  }
+
   getActiveTask() {
     if (!this.currentSchedule || !this.currentSchedule.tasks || this.currentSchedule.tasks.length === 0) return null;
     if (this.status === TimerStatus.COMPLETED) return null;
-    const index = this.activeTaskIndex >= 0 ? this.activeTaskIndex : 0;
+    let index = this.activeTaskIndex;
+    if (index < 0) {
+      const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+        ? taskStore.getTimespansEnabled()
+        : true;
+      index = isTimespans ? this.getActiveTaskIndexByTime(this.currentSchedule.tasks) : 0;
+    }
     return this.currentSchedule.tasks[index] || null;
   }
 

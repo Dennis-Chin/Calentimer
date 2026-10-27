@@ -1264,7 +1264,7 @@ export class CalendarView {
 
     // If day view and viewing today, auto-scroll to current hour
     if (this.activeView === 'day' && this._isViewingToday()) {
-      setTimeout(() => this._scrollToCurrentTime(), 60);
+      this._scrollToCurrentTime();
     }
   }
 
@@ -1343,7 +1343,7 @@ export class CalendarView {
     this.render();
 
     if (viewName === 'day' && this._isViewingToday()) {
-      setTimeout(() => this._scrollToCurrentTime(), 60);
+      this._scrollToCurrentTime();
     }
   }
 
@@ -1688,16 +1688,27 @@ export class CalendarView {
       if (ev.isCompleted) {
         isDone = true;
       }
+      if (isToday) {
+        const now = new Date();
+        const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+        const evStart = this._parseTimeToMinutes(ev.startTime);
+        let evEnd = this._parseTimeToMinutes(ev.endTime);
+        if (evEnd <= evStart) evEnd += 1440;
+
+        if (currentMinutes >= evEnd) {
+          isDone = true;
+        } else if (currentMinutes >= evStart && currentMinutes < evEnd) {
+          isCurrent = true;
+        }
+      }
       const rt = (typeof window !== 'undefined' && window.runtime) ? window.runtime : (this.runtime || null);
       if (isToday && rt) {
         const activeTask = (typeof rt.getActiveTask === 'function') ? rt.getActiveTask() : null;
         const isAllDone = rt.status === 'COMPLETED';
-        const schedTasks = (rt.currentSchedule && rt.currentSchedule.tasks) || [];
-        const taskIndex = schedTasks.findIndex(t => t.id === ev.id);
 
-        if (isAllDone || (taskIndex !== -1 && rt.activeTaskIndex > 0 && taskIndex < rt.activeTaskIndex)) {
+        if (isAllDone) {
           isDone = true;
-        } else if (activeTask && activeTask.id === ev.id && rt.status !== 'COMPLETED') {
+        } else if (!isDone && activeTask && activeTask.id === ev.id && rt.status !== 'COMPLETED') {
           isCurrent = true;
         }
       }
@@ -1708,9 +1719,9 @@ export class CalendarView {
       card.style.borderLeftColor = this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
       if (isDone) {
-        card.style.background = 'rgba(16, 185, 129, 0.16)';
+        card.style.background = 'rgba(16, 185, 129, 0.22)';
       } else if (isCurrent) {
-        card.style.background = 'rgba(0, 240, 255, 0.16)';
+        card.style.background = 'rgba(0, 240, 255, 0.2)';
       }
       this._applyEventCardLayout(card, heightPx);
 
@@ -1767,6 +1778,10 @@ export class CalendarView {
       this._setupDayEventDrag(card, ev);
 
       body.appendChild(card);
+    }
+
+    if (isToday) {
+      this._scrollToCurrentTime();
     }
   }
 
@@ -2155,8 +2170,19 @@ export class CalendarView {
     }
 
     const hourHeight = this.dayHourHeight || 56;
-    const topPx = 14 + (((Math.max(startHour * 60, minFromMidnight) - (startHour * 60)) / 60) * hourHeight);
-    scrollEl.scrollTop = Math.max(0, topPx - 100);
+    let focusMin = minFromMidnight;
+    const activeCard = scrollEl.querySelector('.day-event-card.is-event-current');
+    if (activeCard) {
+      const cardTop = parseInt(activeCard.style.top, 10);
+      if (!isNaN(cardTop)) {
+        const contHeight = scrollEl.clientHeight || 500;
+        scrollEl.scrollTop = Math.max(0, cardTop - (contHeight / 2) + ((parseInt(activeCard.style.height, 10) || 40) / 2));
+        return;
+      }
+    }
+    const topPx = 14 + (((Math.max(startHour * 60, focusMin) - (startHour * 60)) / 60) * hourHeight);
+    const contHeight = scrollEl.clientHeight || 500;
+    scrollEl.scrollTop = Math.max(0, topPx - (contHeight / 2));
   }
 
   _isViewingToday() {
@@ -4119,8 +4145,8 @@ export class CalendarView {
       }
       this.currentCategory = 'Work';
       if (el.eventCategoryInput) el.eventCategoryInput.value = 'Work';
-      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = true;
-      if (el.piggyIcon) el.piggyIcon.classList.add('active');
+      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = isNew ? false : true;
+      if (el.piggyIcon) el.piggyIcon.classList.toggle('active', !isNew);
       if (el.btnSaveCalEvent) {
         el.btnSaveCalEvent.classList.remove('is-break-btn');
         el.btnSaveCalEvent.textContent = isNew ? 'Save Event' : 'Save Event';
@@ -4154,15 +4180,17 @@ export class CalendarView {
         el.eventDateInput.value = defaultDateStr || this._formatDateISO(new Date());
       }
       if (el.eventStartTimeInput) {
-        el.eventStartTimeInput.value = defaultStartTime || '10:00';
+        el.eventStartTimeInput.value = defaultStartTime || '';
       }
       if (el.eventEndTimeInput) {
-        el.eventEndTimeInput.value = defaultEndTime || '11:00';
+        el.eventEndTimeInput.value = defaultEndTime || '';
       }
       if (el.eventDurationInput) el.eventDurationInput.value = '60';
       this.updateEndTimeFromDuration();
       if (el.eventToggleLock) el.eventToggleLock.checked = false;
       if (el.lockIcon) el.lockIcon.classList.remove('active');
+      if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = false;
+      if (el.piggyIcon) el.piggyIcon.classList.remove('active');
     } else {
       this.currentEventType = isBreakEvent ? 'break' : 'work';
       if (el.calTypeSegmentWork) el.calTypeSegmentWork.classList.toggle('active', !isBreakEvent);
@@ -4339,12 +4367,12 @@ export class CalendarView {
     if (!title) return;
 
     const date = el.eventDateInput ? el.eventDateInput.value : this._formatDateISO(new Date());
-    const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value : '10:00';
-    const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value : '11:00';
+    const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value.trim() : '';
+    const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value.trim() : '';
     const durationMin = el.eventDurationInput ? (parseInt(el.eventDurationInput.value, 10) || 60) : 60;
     const category = el.eventCategoryInput ? (el.eventCategoryInput.value.trim() || 'Work') : 'Work';
-    const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : true;
-    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : true;
+    const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : false;
+    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : false;
     const eventId = el.eventIdInput ? el.eventIdInput.value : '';
 
     if (category) {
@@ -4391,12 +4419,12 @@ export class CalendarView {
     const title = el.eventTitleInput ? el.eventTitleInput.value.trim() : '';
     if (!title) return;
 
-    const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value : '10:00';
-    const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value : '11:00';
+    const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value.trim() : '';
+    const endTime = el.eventEndTimeInput ? el.eventEndTimeInput.value.trim() : '';
     const durationMin = el.eventDurationInput ? (parseInt(el.eventDurationInput.value, 10) || 60) : 60;
     const category = el.eventCategoryInput ? (el.eventCategoryInput.value.trim() || 'Work') : 'Work';
-    const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : true;
-    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : true;
+    const isLocked = el.eventToggleLock ? el.eventToggleLock.checked : false;
+    const useTimeBank = el.eventTimeBankToggle ? el.eventTimeBankToggle.checked : false;
 
     // Add task directly to Today's TaskStore
     taskStore.addTask({

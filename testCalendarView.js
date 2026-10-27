@@ -316,9 +316,9 @@ assert(touchstartError === null, 'touchstart executes cleanly without throwing R
 
 let tapInspectorOpened = false;
 const originalOpenInspector = calendar.openEventInspector.bind(calendar);
-calendar.openEventInspector = function(ev) {
+calendar.openEventInspector = function(ev, defaultDateStr, defaultStartTime, defaultEndTime) {
   tapInspectorOpened = true;
-  originalOpenInspector(ev);
+  originalOpenInspector(ev, defaultDateStr, defaultStartTime, defaultEndTime);
 };
 
 // Simulate quick tap (touchend before 200ms hold timer)
@@ -330,6 +330,7 @@ try {
 }
 assert(touchendError === null, 'touchend executes cleanly without ReferenceError');
 assert(tapInspectorOpened === true, 'Quick tap on day event card opens event inspector');
+calendar.openEventInspector = originalOpenInspector;
 
 console.log('\n--- 4. Testing Day View Hold-to-Drag & Smooth Day Pan ---');
 // Trigger touchstart and advance hold timer
@@ -834,7 +835,10 @@ assert(!calendar.elements.calTypeSegmentBreak.classList.contains('active'), 'Bre
 assert(calendar.elements.eventDurationInput.value === '60', 'Default work duration is 60m');
 assert(calendar.elements.calEventTitleLabel.textContent === 'Event Name', 'Title label says Event Name');
 assert(calendar.elements.btnSaveCalEvent.textContent === 'Save Event', 'Save button says Save Event');
-assert(calendar.elements.eventTimeBankToggle.checked === true, 'Time bank toggle is checked for work by default');
+assert(calendar.elements.eventTimeBankToggle.checked === false, 'Time bank toggle is unchecked for new event by default');
+assert(calendar.elements.eventToggleLock.checked === false, 'Padlock toggle is unchecked for new event by default');
+assert(calendar.elements.eventStartTimeInput.value === '', 'Start time input is blank by default for new event');
+assert(calendar.elements.eventEndTimeInput.value === '', 'End time input is blank by default for new event');
 
 // Scenario B: Switching to Break
 calendar.elements.calTypeSegmentBreak.dispatchSimulatedEvent('click');
@@ -855,7 +859,7 @@ assert(calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work 
 assert(calendar.elements.eventDurationInput.value === '60', 'Work duration restored to 60m');
 assert(calendar.currentEmoji === '💼', 'Work emoji is 💼');
 assert(!calendar.elements.btnSaveCalEvent.classList.contains('is-break-btn'), 'Save button removes is-break-btn class');
-assert(calendar.elements.eventTimeBankToggle.checked === true, 'Time bank toggle re-enabled for work');
+assert(calendar.elements.eventTimeBankToggle.checked === false, 'Time bank toggle remains unchecked for new work event');
 
 // Scenario D: Opening existing break event loads as break
 const existingBreakEvent = {

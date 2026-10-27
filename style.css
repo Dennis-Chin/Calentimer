@@ -1208,6 +1208,8 @@ body {
 
 .task-card.task-completed .task-card-title {
   color: #a7f3d0;
+  text-decoration: line-through;
+  opacity: 0.85;
 }
 
 .task-card.task-current {
@@ -4731,6 +4733,37 @@ body {
   text-overflow: clip; /* NO ellipsis ..., just display maximum characters that fit */
   line-height: 1.2;
   width: 100%;
+}
+
+.day-event-card.is-event-completed .day-event-title {
+  text-decoration: line-through;
+  opacity: 0.82;
+}
+
+.btn-toggle-timespans {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.btn-toggle-timespans:active {
+  transform: scale(0.96);
+}
+
+.btn-toggle-timespans.is-plan-mode {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.12);
 }
 
 .day-event-card .day-event-meta-line {

@@ -147,6 +147,27 @@ assert(idleRt.getRemainingSeconds() === 15 * 60, 'getRemainingSeconds reflects s
 idleRt.seek(600);
 assert(idleRt.getRemainingSeconds() === 10 * 60, 'getRemainingSeconds continues from scrubbed position (600s)');
 
+console.log('\n--- 8. Testing getActiveTaskIndexByTime with Timespans ---');
+const sampleTasks = [
+  { id: 'past', title: 'Past Task', plannedDuration: 60, startTime: '06:00', endTime: '07:00' },
+  { id: 'curr', title: 'Current Task', plannedDuration: 60, startTime: '10:00', endTime: '11:00' },
+  { id: 'fut', title: 'Future Task', plannedDuration: 60, startTime: '14:00', endTime: '15:00' }
+];
+
+const timeRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: sampleTasks
+});
+
+const idxDuringCurrent = timeRt.getActiveTaskIndexByTime(sampleTasks, 10 * 60 + 30); // 10:30
+assert(idxDuringCurrent === 1, 'Locates index of task currently in progress at 10:30');
+
+const idxBeforeAll = timeRt.getActiveTaskIndexByTime(sampleTasks, 5 * 60); // 05:00
+assert(idxBeforeAll === 0, 'Locates first upcoming task when before all tasks');
+
+const idxBetweenTasks = timeRt.getActiveTaskIndexByTime(sampleTasks, 12 * 60); // 12:00
+assert(idxBetweenTasks === 2, 'Locates next upcoming task (14:00) when between tasks at 12:00');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

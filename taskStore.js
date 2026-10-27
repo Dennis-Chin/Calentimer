@@ -18,7 +18,8 @@ const STORAGE_KEYS = {
   CAL_RANGE_ENABLED: 'calentimer_cal_range_enabled_v1',
   CAL_START_TIME: 'calentimer_cal_start_time_v1',
   CAL_END_TIME: 'calentimer_cal_end_time_v1',
-  DELETED_IDS: 'calentimer_deleted_ids_v1'
+  DELETED_IDS: 'calentimer_deleted_ids_v1',
+  TIMESPANS_ENABLED: 'calentimer_timespans_enabled_v1'
 };
 
 const memoryStorage = {};
@@ -244,8 +245,8 @@ export class TaskStore {
       id: (task && task.id) ? task.id : `task-${now}-${Math.random().toString(36).substr(2, 4)}`,
       title: (task && task.title) ? task.title : 'Untitled Task',
       plannedDuration: Math.max(1, parseInt(task && task.plannedDuration, 10) || 25),
-      isLocked: Boolean(task && task.isLocked),
-      useTimeBank: (task && task.useTimeBank !== undefined) ? Boolean(task.useTimeBank) : true,
+      isLocked: (task && task.isLocked !== undefined) ? Boolean(task.isLocked) : false,
+      useTimeBank: (task && task.useTimeBank !== undefined) ? Boolean(task.useTimeBank) : false,
       fixedStartTime: (task && task.fixedStartTime) ? task.fixedStartTime : null,
       startTime: (task && task.startTime) ? task.startTime : null,
       endTime: (task && task.endTime) ? task.endTime : null,
@@ -951,11 +952,11 @@ export class TaskStore {
       id: (eventData && eventData.id) ? eventData.id : `cal-event-${now}-${Math.random().toString(36).substr(2, 5)}`,
       title: (eventData && eventData.title) ? String(eventData.title).trim() : 'New Event',
       date: (eventData && eventData.date) ? eventData.date : this.getTodayDateString(),
-      startTime: (eventData && eventData.startTime) ? eventData.startTime : '09:00',
-      endTime: (eventData && eventData.endTime) ? eventData.endTime : '10:00',
+      startTime: (eventData && eventData.startTime) ? eventData.startTime : null,
+      endTime: (eventData && eventData.endTime) ? eventData.endTime : null,
       plannedDuration: (eventData && typeof eventData.plannedDuration === 'number') ? eventData.plannedDuration : 60,
-      isLocked: (eventData && typeof eventData.isLocked === 'boolean') ? eventData.isLocked : true,
-      useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : true,
+      isLocked: (eventData && typeof eventData.isLocked === 'boolean') ? eventData.isLocked : false,
+      useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : false,
       emoji: (eventData && eventData.emoji) ? eventData.emoji : '📅',
       category: (eventData && eventData.category) ? eventData.category : 'General',
       source: (eventData && eventData.source) ? eventData.source : 'local',
@@ -1351,6 +1352,19 @@ export class TaskStore {
       safeSetItem(STORAGE_KEYS.CAL_END_TIME, timeStr);
       this._notify();
     }
+  }
+
+  getTimespansEnabled() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.TIMESPANS_ENABLED);
+      if (v !== null) return v === 'true';
+    } catch (_) {}
+    return true;
+  }
+
+  setTimespansEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.TIMESPANS_ENABLED, Boolean(enabled) ? 'true' : 'false');
+    this._notify();
   }
 }
 

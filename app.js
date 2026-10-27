@@ -211,6 +211,7 @@ function initApp() {
     updateScheduleUI(runtime.currentSchedule);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || tasks);
     updateActiveTaskDisplay();
+    if (typeof updateTimespansButtonUI === 'function') updateTimespansButtonUI();
     updateResetButtonUI();
     updateNotifToggleUI();
     updateTimeBankDisplay();
@@ -415,6 +416,7 @@ function setupRuntimeEvents() {
     mobileServices.disableWakeLock();
     mobileServices.clearLiveNotification();
     updateActiveTaskDisplay();
+    if (typeof updateTimespansButtonUI === 'function') updateTimespansButtonUI();
     updateResetButtonUI();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
@@ -724,6 +726,15 @@ function updateScheduleUI(schedule) {
   if (!schedule || !schedule.success) return;
 
   if (warningAlertCard) warningAlertCard.classList.add('hidden');
+
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+
+  const todayFinishLine = document.getElementById('todayFinishLine');
+  if (todayFinishLine) {
+    todayFinishLine.style.display = isTimespans ? 'block' : 'none';
+  }
 
   if (schedule.isCompressed) {
     if (statusBanner) statusBanner.classList.add('compressed');
@@ -1718,6 +1729,34 @@ function setupControls() {
 
   const taskDrawerBackdrop = document.getElementById('taskDrawerBackdrop');
   const btnDrawerToggle = document.getElementById('btnDrawerToggle');
+  const btnToggleTimespans = document.getElementById('btnToggleTimespans');
+  const timespansLabel = document.getElementById('timespansLabel');
+
+  function updateTimespansButtonUI() {
+    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+      ? taskStore.getTimespansEnabled()
+      : true;
+    if (btnToggleTimespans) {
+      btnToggleTimespans.classList.toggle('is-plan-mode', !isTimespans);
+      btnToggleTimespans.title = isTimespans
+        ? 'Clock Times Active: Click to switch to Plan Mode'
+        : 'Plan Mode Active: Click to switch to Clock Times';
+    }
+    if (timespansLabel) {
+      timespansLabel.textContent = isTimespans ? 'Times: On' : 'Plan Mode';
+    }
+  }
+
+  function scrollToCenterActiveTask() {
+    const drawerContent = document.getElementById('drawerContent');
+    if (!drawerContent) return;
+    const activeCard = drawerContent.querySelector('.task-card.task-current') || drawerContent.querySelector('.task-card');
+    if (!activeCard) return;
+    const cHeight = drawerContent.clientHeight || 400;
+    const cardTop = activeCard.offsetTop;
+    const cardHeight = activeCard.offsetHeight || 60;
+    drawerContent.scrollTop = Math.max(0, cardTop - (cHeight / 2) + (cardHeight / 2));
+  }
 
   openTaskDrawer = function() {
     ensureHistoryBuffer();
@@ -1728,10 +1767,12 @@ function setupControls() {
     renderCalendarModal();
     updateScheduleUI(runtime.currentSchedule);
     updateActiveTaskDisplay();
+    updateTimespansButtonUI();
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.remove('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
+    scrollToCenterActiveTask();
     mobileServices.hapticTap();
     checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   };
@@ -1760,6 +1801,20 @@ function setupControls() {
     btnDrawerToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleTaskDrawer();
+    });
+  }
+  if (btnToggleTimespans) {
+    btnToggleTimespans.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const next = !taskStore.getTimespansEnabled();
+      taskStore.setTimespansEnabled(next);
+      updateTimespansButtonUI();
+      runtime.recalculate();
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      updateScheduleUI(runtime.currentSchedule);
+      updateActiveTaskDisplay();
+      mobileServices.hapticTap();
+      showToastNotification(next ? '🕒 Clock Times enabled' : '📋 Sequential Plan Mode enabled');
     });
   }
   if (taskDrawerBackdrop) taskDrawerBackdrop.addEventListener('click', closeTaskDrawer);
@@ -2692,13 +2747,33 @@ function renderTaskList(tasks) {
     const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
     const isOverlap = overlapIndices.has(idx);
 
+    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+      ? taskStore.getTimespansEnabled()
+      : true;
+    let isPastTask = false;
+    let isCurrentTask = false;
+
+    if (isTimespans && task.endTime) {
+      const now = new Date();
+      const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+      const sMin = parseTimeToMinutes(task.startTime);
+      let eMin = parseTimeToMinutes(task.endTime);
+      if (eMin <= sMin) eMin += 1440;
+
+      if (currentMinutes >= eMin) {
+        isPastTask = true;
+      } else if (currentMinutes >= sMin && currentMinutes < eMin) {
+        isCurrentTask = true;
+      }
+    }
+
     let statusClass = 'task-pending';
     let statusBadge = '';
 
-    if (isAllCompleted || (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
+    if (isAllCompleted || isPastTask || (!isTimespans && (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex))) {
       statusClass = 'task-completed';
       statusBadge = '<span class="task-status-pill completed">✓ Done</span>';
-    } else if (idx === activeIdx && !isAllCompleted) {
+    } else if ((isCurrentTask || idx === activeIdx) && !isAllCompleted) {
       statusClass = 'task-current';
       statusBadge = '<span class="task-status-pill current">▶ Active</span>';
     } else {
@@ -2786,7 +2861,7 @@ function renderTaskList(tasks) {
 
       <!-- Bottom Row: Timing duration in blue text on a single line -->
       <div class="task-card-bottom-row">
-        <span class="task-timing-blue">${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}</span>
+        <span class="task-timing-blue">${isTimespans ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}` : `⏱️ ${durationText}`}</span>
         <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
       </div>
     `;
@@ -3305,7 +3380,7 @@ function setAddTaskType(type) {
     if (durationInput) durationInput.value = '30';
     if (categoryInput && categoryInput.value === 'Break') categoryInput.value = 'Study';
     const bankInput = document.getElementById('addModalTimeBank');
-    if (bankInput) bankInput.checked = true;
+    if (bankInput) bankInput.checked = false;
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
       c.classList.toggle('active', c.getAttribute('data-min') === '30');
@@ -3338,7 +3413,7 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
   if (inputFixed) inputFixed.value = '';
   if (inputStart) inputStart.value = '';
   if (inputEnd) inputEnd.value = '';
-  if (toggleBank) toggleBank.checked = defaultType !== 'break';
+  if (toggleBank) toggleBank.checked = false;
   if (toggleLock) toggleLock.checked = false;
 
   setAddTaskType(defaultType);
@@ -5039,7 +5114,7 @@ function setupNavigationAndModals() {
     const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
 
     const bankInput = document.getElementById('addModalTimeBank');
-    const useTimeBank = bankInput ? bankInput.checked : true;
+    const useTimeBank = bankInput ? bankInput.checked : false;
 
     const lockInput = document.getElementById('addModalIsLocked');
     const isLocked = Boolean(lockInput && lockInput.checked);

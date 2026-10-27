@@ -394,7 +394,7 @@ export function calculateSchedule(config) {
     const allocated = allocatedDurations[idx];
 
     let taskStart = currentClockMinutes;
-    const specifiedStart = task.fixedStartTime || task.startTime;
+    const specifiedStart = task.fixedStartTime || (task.isLocked ? task.startTime : null);
     if (specifiedStart) {
       try {
         const parsedStart = parseTimeToMinutes(specifiedStart);
@@ -414,7 +414,7 @@ export function calculateSchedule(config) {
       tags: Array.isArray(task.tags) ? [...task.tags] : [],
       emoji: task.emoji || '📌',
       isLocked: Boolean(task.isLocked),
-      useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : true,
+      useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : false,
       fixedStartTime: task.fixedStartTime || null,
       isImmovable: Boolean(task.isLocked),
       plannedDuration: Math.round(task.plannedDuration),
