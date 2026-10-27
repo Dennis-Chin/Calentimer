@@ -358,10 +358,13 @@ export class CalendarView {
     let touchStartX = 0;
     let touchStartTime = 0;
     let isPullingDown = false;
+    let didPullDown = false;
 
     const onTouchStart = (e) => {
       if (this.isDraggingEvent || this.activeResizeCard) return;
-      if (e.target.closest('button, select, input, .cal-event-lock-btn, .time-clock-addon-btn, .event-resize-handle')) return;
+      // Do not block header controls (Day dropdown, Today/arrow buttons, Close X button).
+      // Only block dedicated task drag handles or bottom action buttons.
+      if (e.target.closest('.event-resize-handle, .cal-event-lock-btn, .time-clock-addon-btn, #btnFullCalAddEvent, #calResolutionSelect')) return;
       if (!e.touches || e.touches.length !== 1) return;
 
       const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
@@ -369,13 +372,14 @@ export class CalendarView {
         : ((this.activeView === 'week' && this.elements.weekGridScroll) ? this.elements.weekGridScroll : null);
 
       const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-      const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar'));
+      const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar, #calSubToolbar, #calViewDropdownWrapper, #calNavButtonsGroup'));
 
       if (isAtTop || isHeaderTouch) {
         touchStartY = e.touches[0].clientY;
         touchStartX = e.touches[0].clientX;
         touchStartTime = Date.now();
         isPullingDown = false;
+        didPullDown = false;
       }
     };
 
@@ -401,10 +405,12 @@ export class CalendarView {
           : ((this.activeView === 'week' && this.elements.weekGridScroll) ? this.elements.weekGridScroll : null);
 
         const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-        const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar'));
+        const isHeaderTouch = Boolean(e.target.closest('.full-calendar-header, .cal-drag-handle-bar, .cal-sub-toolbar, #calSubToolbar, #calViewDropdownWrapper, #calNavButtonsGroup'));
 
         if (isAtTop || isHeaderTouch) {
           isPullingDown = true;
+          didPullDown = true;
+          if (e.cancelable) e.preventDefault();
           // Apply firm 0.28 resistance damping for deliberate pull feeling
           const rubberbandY = Math.min(deltaY * 0.28, 140);
           modal.style.transition = 'none';
@@ -424,9 +430,22 @@ export class CalendarView {
     };
 
     const onTouchEnd = (e) => {
+      if (didPullDown) {
+        const suppressClick = (clickEv) => {
+          clickEv.stopPropagation();
+          clickEv.preventDefault();
+          window.removeEventListener('click', suppressClick, true);
+        };
+        window.addEventListener('click', suppressClick, true);
+        setTimeout(() => {
+          window.removeEventListener('click', suppressClick, true);
+        }, 350);
+      }
+
       if (!isPullingDown) {
         touchStartY = 0;
         touchStartX = 0;
+        didPullDown = false;
         modal.classList.remove('will-minimise');
         return;
       }
@@ -459,7 +478,7 @@ export class CalendarView {
     };
 
     modal.addEventListener('touchstart', onTouchStart, { passive: true });
-    modal.addEventListener('touchmove', onTouchMove, { passive: true });
+    modal.addEventListener('touchmove', onTouchMove, { passive: false });
     modal.addEventListener('touchend', onTouchEnd, { passive: true });
     modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
   }
@@ -1479,14 +1498,20 @@ export class CalendarView {
     this._renderRangeLabel();
 
     if (this.activeView === 'day') {
+      const currentScroll = (typeof preserveScrollTop === 'number')
+        ? preserveScrollTop
+        : (this.elements.dayTimelineScroll ? this.elements.dayTimelineScroll.scrollTop : null);
       this._renderDayView();
-      if (typeof preserveScrollTop === 'number' && preserveScrollTop > 0 && this.elements.dayTimelineScroll) {
-        this.elements.dayTimelineScroll.scrollTop = preserveScrollTop;
+      if (typeof currentScroll === 'number' && this.elements.dayTimelineScroll) {
+        this.elements.dayTimelineScroll.scrollTop = currentScroll;
       }
     } else if (this.activeView === 'week') {
+      const currentScroll = (typeof preserveScrollTop === 'number')
+        ? preserveScrollTop
+        : (this.elements.weekGridScroll ? this.elements.weekGridScroll.scrollTop : null);
       this._renderWeekView();
-      if (typeof preserveScrollTop === 'number' && preserveScrollTop > 0 && this.elements.weekGridScroll) {
-        this.elements.weekGridScroll.scrollTop = preserveScrollTop;
+      if (typeof currentScroll === 'number' && this.elements.weekGridScroll) {
+        this.elements.weekGridScroll.scrollTop = currentScroll;
       }
     } else if (this.activeView === 'month') {
       this._renderMonthView();
@@ -1778,10 +1803,6 @@ export class CalendarView {
       this._setupDayEventDrag(card, ev);
 
       body.appendChild(card);
-    }
-
-    if (isToday) {
-      this._scrollToCurrentTime();
     }
   }
 
@@ -2793,7 +2814,8 @@ export class CalendarView {
         silhouette.parentNode.removeChild(silhouette);
         silhouette = null;
       }
-      this.render();
+      const savedScrollTop = container ? container.scrollTop : 0;
+      this.render(savedScrollTop);
     };
 
     const triggerDayLockedWarning = () => {
@@ -2898,7 +2920,8 @@ export class CalendarView {
           silhouette.parentNode.removeChild(silhouette);
           silhouette = null;
         }
-        this.render();
+        const savedScrollTop = container ? container.scrollTop : 0;
+        this.render(savedScrollTop);
         const renderedCard = this.elements.dayTimelineBody ? this.elements.dayTimelineBody.querySelector(`[data-event-id="${ev.id}"]`) : null;
         if (renderedCard) {
           this._attachResizeHandles(renderedCard, ev, 'day');
@@ -2946,7 +2969,8 @@ export class CalendarView {
 
       mobileServices.hapticTap();
       this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
-      this.render();
+      const finalScrollTop = container ? container.scrollTop : 0;
+      this.render(finalScrollTop);
     };
 
     // Touch events for mobile dragging

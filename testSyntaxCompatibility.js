@@ -129,7 +129,9 @@ const appRequiredTopLevelDeclarations = [
   'isScrubbingGreenLine',
   'isDraggingOuterDial',
   'openTaskDrawer',
-  'closeTaskDrawer'
+  'closeTaskDrawer',
+  'updateTimespansButtonUI',
+  'setScheduleMode'
 ];
 
 appRequiredTopLevelDeclarations.forEach(function(varName) {

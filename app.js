@@ -104,6 +104,47 @@ let openTaskDrawer = null;
 let closeTaskDrawer = null;
 let toggleTaskDrawer = null;
 
+// Schedule Mode & Timespans Toggle UI (Module Scope to prevent ReferenceErrors on openCalendar)
+let updateTimespansButtonUI = function() {
+  const isChronological = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+  const btnModeChronological = document.getElementById('btnModeChronological');
+  const btnModeSequential = document.getElementById('btnModeSequential');
+  const calModeChrono = document.getElementById('btnCalModeChronological');
+  const calModeSeq = document.getElementById('btnCalModeSequential');
+  if (btnModeChronological) {
+    btnModeChronological.classList.toggle('active', isChronological);
+  }
+  if (btnModeSequential) {
+    btnModeSequential.classList.toggle('active', !isChronological);
+  }
+  if (calModeChrono) {
+    calModeChrono.classList.toggle('active', isChronological);
+  }
+  if (calModeSeq) {
+    calModeSeq.classList.toggle('active', !isChronological);
+  }
+};
+window.updateTimespansButtonUI = updateTimespansButtonUI;
+
+let setScheduleMode = function(isChronological) {
+  if (typeof taskStore !== 'undefined' && typeof taskStore.setTimespansEnabled === 'function') {
+    taskStore.setTimespansEnabled(isChronological);
+  }
+  updateTimespansButtonUI();
+  if (runtime) {
+    runtime.recalculate();
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+    renderCalendarModal();
+    updateScheduleUI(runtime.currentSchedule);
+    updateActiveTaskDisplay();
+  }
+  mobileServices.hapticTap();
+  showToastNotification(isChronological ? '🕒 Chronological mode active' : '📋 Sequential plan mode active');
+};
+window.setScheduleMode = setScheduleMode;
+
 // Initialize Timer Runtime
 let runtime = null;
 
@@ -1768,41 +1809,7 @@ function setupControls() {
   const btnCalModeChronological = document.getElementById('btnCalModeChronological');
   const btnCalModeSequential = document.getElementById('btnCalModeSequential');
 
-  function updateTimespansButtonUI() {
-    const isChronological = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-      ? taskStore.getTimespansEnabled()
-      : true;
-    if (btnModeChronological) {
-      btnModeChronological.classList.toggle('active', isChronological);
-    }
-    if (btnModeSequential) {
-      btnModeSequential.classList.toggle('active', !isChronological);
-    }
-    const calModeChrono = document.getElementById('btnCalModeChronological') || btnCalModeChronological;
-    const calModeSeq = document.getElementById('btnCalModeSequential') || btnCalModeSequential;
-    if (calModeChrono) {
-      calModeChrono.classList.toggle('active', isChronological);
-    }
-    if (calModeSeq) {
-      calModeSeq.classList.toggle('active', !isChronological);
-    }
-  }
-
-  function setScheduleMode(isChronological) {
-    if (typeof taskStore !== 'undefined' && typeof taskStore.setTimespansEnabled === 'function') {
-      taskStore.setTimespansEnabled(isChronological);
-    }
-    updateTimespansButtonUI();
-    if (runtime) {
-      runtime.recalculate();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
-      renderCalendarModal();
-      updateScheduleUI(runtime.currentSchedule);
-      updateActiveTaskDisplay();
-    }
-    mobileServices.hapticTap();
-    showToastNotification(isChronological ? '🕒 Chronological mode active' : '📋 Sequential plan mode active');
-  }
+  updateTimespansButtonUI();
 
   if (btnModeChronological) {
     btnModeChronological.addEventListener('click', (e) => {
@@ -2022,6 +2029,18 @@ function setupControls() {
       }
     }
 
+    if (isDrawerPullingUp || isDrawerPullingDown) {
+      const suppressClick = (clickEv) => {
+        clickEv.stopPropagation();
+        clickEv.preventDefault();
+        window.removeEventListener('click', suppressClick, true);
+      };
+      window.addEventListener('click', suppressClick, true);
+      setTimeout(() => {
+        window.removeEventListener('click', suppressClick, true);
+      }, 350);
+    }
+
     taskDrawer.classList.remove('will-minimise', 'will-open');
     isDrawerTouching = false;
     isDrawerPullingDown = false;
@@ -2172,19 +2191,27 @@ function setupCalendarModalPullToDismiss() {
   let touchStartY = 0;
   let touchStartX = 0;
   let isPullingDown = false;
+  let didPullDown = false;
 
   const onTouchStart = (e) => {
-    if (e.target.closest('button, select, input, [data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-emoji-btn, .btn-icon-action')) return;
+    // Only exclude in-task reordering drag handles, locked warnings, emoji badges, action buttons and delete button
+    if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .drag-handle, .drag-handle-compact, .drag-handle-locked-compact, .calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input')) return;
+    const cardEl = e.target.closest('.calendar-block, .calendar-item-wrapper');
+    if (cardEl) {
+      const rect = cardEl.getBoundingClientRect();
+      if (e.touches && e.touches[0] && (e.touches[0].clientX - rect.left <= 44)) return; // Left gutter reorder zone
+    }
     if (!e.touches || e.touches.length !== 1) return;
 
     const activeScroll = modal.querySelector('.modal-body');
     const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-    const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar'));
+    const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar, #calendarScheduleModeSegment, .schedule-mode-segment-control'));
 
     if (isAtTop || isHeaderTouch) {
       touchStartY = e.touches[0].clientY;
       touchStartX = e.touches[0].clientX;
       isPullingDown = false;
+      didPullDown = false;
     }
   };
 
@@ -2198,10 +2225,12 @@ function setupCalendarModalPullToDismiss() {
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
       const activeScroll = modal.querySelector('.modal-body');
       const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-      const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar'));
+      const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar, #calendarScheduleModeSegment, .schedule-mode-segment-control'));
 
       if (isAtTop || isHeaderTouch) {
         isPullingDown = true;
+        didPullDown = true;
+        if (e.cancelable) e.preventDefault();
         const rubberbandY = Math.min(deltaY * 0.28, 140);
         modal.style.transition = 'none';
         modal.style.transform = `translate3d(0, ${rubberbandY}px, 0)`;
@@ -2218,9 +2247,22 @@ function setupCalendarModalPullToDismiss() {
   };
 
   const onTouchEnd = () => {
+    if (didPullDown) {
+      const suppressClick = (clickEv) => {
+        clickEv.stopPropagation();
+        clickEv.preventDefault();
+        window.removeEventListener('click', suppressClick, true);
+      };
+      window.addEventListener('click', suppressClick, true);
+      setTimeout(() => {
+        window.removeEventListener('click', suppressClick, true);
+      }, 350);
+    }
+
     if (!isPullingDown) {
       touchStartY = 0;
       touchStartX = 0;
+      didPullDown = false;
       modal.classList.remove('will-minimise');
       return;
     }
@@ -2251,7 +2293,7 @@ function setupCalendarModalPullToDismiss() {
   };
 
   modal.addEventListener('touchstart', onTouchStart, { passive: true });
-  modal.addEventListener('touchmove', onTouchMove, { passive: true });
+  modal.addEventListener('touchmove', onTouchMove, { passive: false });
   modal.addEventListener('touchend', onTouchEnd, { passive: true });
   modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
 }
