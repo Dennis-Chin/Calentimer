@@ -2883,7 +2883,6 @@ export class CalendarView {
     const finishDrag = () => {
       if (!isDragging) return;
       isDragging = false;
-      this.isDraggingEvent = false;
       this._activeDragCancelHandler = null;
 
       if (dayNavTimer) {
@@ -2913,6 +2912,7 @@ export class CalendarView {
       card.style.removeProperty('transition');
 
       if (!hasMoved) {
+        this.isDraggingEvent = false;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
         }
@@ -2963,9 +2963,27 @@ export class CalendarView {
         isLocked: Boolean(ev.isLocked)
       });
 
-      if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
-        window.clearDismissedOverlapPairs();
+      // Check if newly placed event still overlaps with other events on targetDateStr
+      let stillOverlaps = false;
+      const allCalEvents = taskStore.getCalendarEvents(targetDateStr) || [];
+      for (let ci = 0; ci < allCalEvents.length; ci++) {
+        const other = allCalEvents[ci];
+        if (other.id === ev.id) continue;
+        if (!other.startTime || !other.endTime) continue;
+        const oStart = this._parseTimeToMinutes(other.startTime);
+        let oEnd = this._parseTimeToMinutes(other.endTime);
+        if (oEnd <= oStart) oEnd += 1440;
+        if (newStartMin < oEnd && newEndTotal > oStart) {
+          stillOverlaps = true;
+          break;
+        }
       }
+
+      if (!stillOverlaps && typeof window !== 'undefined' && typeof window.dismissOverlapForTask === 'function') {
+        window.dismissOverlapForTask(ev.id);
+      }
+
+      this.isDraggingEvent = false;
 
       mobileServices.hapticTap();
       this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
@@ -3465,7 +3483,6 @@ export class CalendarView {
     const finishDrag = (clientX, clientY) => {
       if (!isDragging) return;
       isDragging = false;
-      this.isDraggingEvent = false;
       this._activeDragCancelHandler = null;
 
       const dropTarget = currentSnappedTarget;
@@ -3512,6 +3529,7 @@ export class CalendarView {
       currentOverCol = null;
 
       if (!hasMoved) {
+        this.isDraggingEvent = false;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
         }
@@ -3530,23 +3548,46 @@ export class CalendarView {
       }
 
       if (dropTarget && dropTarget.targetCol) {
+        const targetDate = dropTarget.targetDateStr || ev.date;
+        const dur = dropTarget.dur;
+        const sMin = this._parseTimeToMinutes(dropTarget.startTime);
+        const eMin = sMin + dur;
+
         taskStore.updateCalendarEvent(ev.id, {
-          date: dropTarget.targetDateStr || ev.date,
+          date: targetDate,
           startTime: dropTarget.startTime,
           endTime: dropTarget.endTime,
-          plannedDuration: dropTarget.dur,
+          plannedDuration: dur,
           fixedStartTime: dropTarget.startTime,
           isLocked: Boolean(ev.isLocked)
         });
 
-        if (typeof window !== 'undefined' && typeof window.clearDismissedOverlapPairs === 'function') {
-          window.clearDismissedOverlapPairs();
+        // Check if newly placed event still overlaps with other events on targetDate
+        let stillOverlaps = false;
+        const allCalEvents = taskStore.getCalendarEvents(targetDate) || [];
+        for (let ci = 0; ci < allCalEvents.length; ci++) {
+          const other = allCalEvents[ci];
+          if (other.id === ev.id) continue;
+          if (!other.startTime || !other.endTime) continue;
+          const oStart = this._parseTimeToMinutes(other.startTime);
+          let oEnd = this._parseTimeToMinutes(other.endTime);
+          if (oEnd <= oStart) oEnd += 1440;
+          if (sMin < oEnd && eMin > oStart) {
+            stillOverlaps = true;
+            break;
+          }
         }
 
+        if (!stillOverlaps && typeof window !== 'undefined' && typeof window.dismissOverlapForTask === 'function') {
+          window.dismissOverlapForTask(ev.id);
+        }
+
+        this.isDraggingEvent = false;
         mobileServices.hapticTap();
-        this._showToast(`✓ Rescheduled to ${dropTarget.targetDateStr} (${dropTarget.startTime} - ${dropTarget.endTime})`);
+        this._showToast(`✓ Rescheduled to ${targetDate} (${dropTarget.startTime} - ${dropTarget.endTime})`);
         this.render();
       } else {
+        this.isDraggingEvent = false;
         this.render();
       }
     };
@@ -3932,7 +3973,6 @@ export class CalendarView {
     const finishDrag = (clientX, clientY) => {
       if (!isDragging) return;
       isDragging = false;
-      this.isDraggingEvent = false;
       this._activeDragCancelHandler = null;
 
       if (monthNavTimer) {
@@ -3983,12 +4023,14 @@ export class CalendarView {
             endTime: ev.endTime,
             plannedDuration: ev.plannedDuration
           });
+          this.isDraggingEvent = false;
           mobileServices.hapticTap();
           this._showToast(`✓ Moved to ${targetDateStr} (${ev.startTime} - ${ev.endTime})`);
           this.render();
           return;
         }
       }
+      this.isDraggingEvent = false;
       this.render();
     };
 

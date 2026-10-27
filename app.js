@@ -37,6 +37,8 @@ const statusBanner = document.getElementById('statusBanner');
 const statusText = document.getElementById('statusText');
 
 let isDraggingTask = false;
+let isSwipingCardToDelete = false;
+let isCalendarModalPullingDown = false;
 
 const btnNotifToggle = document.getElementById('btnNotifToggle');
 const notifStatusText = document.getElementById('notifStatusText');
@@ -239,7 +241,11 @@ function initApp() {
             updateWheelProgress(0);
           }
         }
-        checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
+        if (calendarView && typeof calendarView.isOpen === 'function' && (calendarView.isOpen() || calendarView.isDraggingEvent)) {
+          // Do not interrupt active calendar view or dragging event with conflict popup
+        } else {
+          checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
+        }
       }
       if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
         calendarView.render();
@@ -2194,13 +2200,10 @@ function setupCalendarModalPullToDismiss() {
   let didPullDown = false;
 
   const onTouchStart = (e) => {
-    // Only exclude in-task reordering drag handles, locked warnings, emoji badges, action buttons and delete button
-    if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .drag-handle, .drag-handle-compact, .drag-handle-locked-compact, .calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input')) return;
-    const cardEl = e.target.closest('.calendar-block, .calendar-item-wrapper');
-    if (cardEl) {
-      const rect = cardEl.getBoundingClientRect();
-      if (e.touches && e.touches[0] && (e.touches[0].clientX - rect.left <= 44)) return; // Left gutter reorder zone
-    }
+    // If user is actively dragging to reorder tasks or swiping horizontally to delete, do not start pull-down
+    if (isDraggingTask || isSwipingCardToDelete) return;
+    // Exclude emoji badges, action buttons, delete action button, and interactive inputs
+    if (e.target.closest('.calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input, textarea, select')) return;
     if (!e.touches || e.touches.length !== 1) return;
 
     const activeScroll = modal.querySelector('.modal-body');
@@ -2217,10 +2220,30 @@ function setupCalendarModalPullToDismiss() {
 
   const onTouchMove = (e) => {
     if (!touchStartY || !e.touches || e.touches.length !== 1) return;
+    if (isDraggingTask || isSwipingCardToDelete) {
+      if (isPullingDown) {
+        modal.style.removeProperty('transform');
+        modal.classList.remove('will-minimise');
+        isPullingDown = false;
+        isCalendarModalPullingDown = false;
+      }
+      return;
+    }
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
     const deltaY = currentY - touchStartY;
     const deltaX = currentX - touchStartX;
+
+    // If gesture is horizontal (user swiping on a task card to open delete button), abort pull-down
+    if (Math.abs(deltaX) > 8 && Math.abs(deltaX) * 1.2 >= Math.abs(deltaY)) {
+      if (isPullingDown) {
+        modal.style.removeProperty('transform');
+        modal.classList.remove('will-minimise');
+        isPullingDown = false;
+        isCalendarModalPullingDown = false;
+      }
+      return;
+    }
 
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
       const activeScroll = modal.querySelector('.modal-body');
@@ -2230,6 +2253,7 @@ function setupCalendarModalPullToDismiss() {
       if (isAtTop || isHeaderTouch) {
         isPullingDown = true;
         didPullDown = true;
+        isCalendarModalPullingDown = true;
         if (e.cancelable) e.preventDefault();
         const rubberbandY = Math.min(deltaY * 0.28, 140);
         modal.style.transition = 'none';
@@ -2247,6 +2271,7 @@ function setupCalendarModalPullToDismiss() {
   };
 
   const onTouchEnd = () => {
+    isCalendarModalPullingDown = false;
     if (didPullDown) {
       const suppressClick = (clickEv) => {
         clickEv.stopPropagation();
@@ -2309,9 +2334,10 @@ function setupInteractiveTaskDrag(container) {
     // Only accept primary pointer (left mouse click or touch)
     if (e.button !== undefined && e.button !== 0) return;
 
-    // Reject all drag interactions if drawer is collapsed
+    // Reject all drag interactions if drawer is collapsed or modal is pulling down to dismiss
     const drawer = container.closest('#taskDrawer');
     if (drawer && drawer.classList.contains('collapsed')) return;
+    if (isCalendarModalPullingDown || isDrawerPullingDown || isSwipingCardToDelete) return;
 
     // Drag can begin on the 3x2 dots drag handle OR the left gutter area of the card (left of dots up to task border)
     const isEmoji = e.target.closest('.task-emoji-btn, .calendar-emoji-btn, [data-action="pick-emoji"], [data-action="pick-calendar-emoji"]');
@@ -2432,6 +2458,15 @@ function setupInteractiveTaskDrag(container) {
       if (moveEv.pointerId !== activePointerId) return;
 
       if (!isDragActive) {
+        if (isCalendarModalPullingDown || isDrawerPullingDown || isSwipingCardToDelete) {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          if (handle) handle.classList.remove('is-holding');
+          draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
+          return;
+        }
         // Cancel hold if finger moves before 200ms (user is swiping/scrolling)
         if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
           if (holdTimer) {
@@ -2724,6 +2759,11 @@ let currentConflictData = null;
 
 function checkAndPromptScheduleConflict(tasks) {
   if (!tasks || tasks.length < 2) return;
+  if (typeof calendarView !== 'undefined' && calendarView) {
+    if ((typeof calendarView.isOpen === 'function' && calendarView.isOpen()) || calendarView.isDraggingEvent) {
+      return;
+    }
+  }
   const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
   if (!modalBackdrop) return;
 
@@ -2959,6 +2999,16 @@ function setupScheduleConflictModal() {
 
   window.checkAndPromptScheduleConflict = checkAndPromptScheduleConflict;
   window.clearDismissedOverlapPairs = function() { dismissedOverlapPairs.clear(); };
+  window.dismissOverlapForTask = function(taskId) {
+    if (!taskId) return;
+    const allTasks = taskStore.getTasks();
+    for (let i = 0; i < allTasks.length; i++) {
+      const otherId = allTasks[i].id;
+      if (otherId === taskId) continue;
+      dismissedOverlapPairs.add(taskId + '_' + otherId);
+      dismissedOverlapPairs.add(otherId + '_' + taskId);
+    }
+  };
 }
 
 function hexToRgba(hex, alpha) {
@@ -4148,7 +4198,10 @@ function renderCalendarModal() {
 
     if (statusClass === 'pending') {
       const catHex = getCategoryHexColor(task.category);
-      item.style.background = hexToRgba(catHex, 0.12);
+      const tint = hexToRgba(catHex, 0.12);
+      const isLight = (document.documentElement && document.documentElement.getAttribute('data-theme') === 'light') || (document.body && document.body.getAttribute('data-theme') === 'light');
+      const baseBg = isLight ? '#ffffff' : '#141822';
+      item.style.background = `linear-gradient(${tint}, ${tint}), ${baseBg}`;
       item.style.borderColor = hexToRgba(catHex, 0.35);
       item.style.borderLeft = `4px solid ${catHex}`;
     }
@@ -4305,6 +4358,9 @@ function renderCalendarModal() {
     };
 
     const handleTaskTouchStart = (e) => {
+      if (isCalendarModalPullingDown) {
+        return;
+      }
       // Ignore interactions originating directly from the drag handle, left gutter area, or emoji button
       if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
         return;
@@ -4325,7 +4381,7 @@ function renderCalendarModal() {
 
       // Holding task (including in piggy bank or padlock area) reveals the red X!
       holdTimer = setTimeout(() => {
-        if (!hasMoved && !isSwiping) {
+        if (!hasMoved && !isSwiping && !isCalendarModalPullingDown) {
           wrapper.classList.add('has-swiped-open');
           item.classList.add('swiped-open');
           item.style.removeProperty('transform');
@@ -4335,6 +4391,10 @@ function renderCalendarModal() {
     };
 
     const handleTaskTouchMove = (e) => {
+      if (isCalendarModalPullingDown) {
+        clearHold();
+        return;
+      }
       if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
         return;
       }
@@ -4356,6 +4416,7 @@ function renderCalendarModal() {
       // Check if predominantly horizontal swipe
       if (Math.abs(diffX) > 8 && Math.abs(diffX) * 1.3 >= Math.abs(diffY)) {
         isSwiping = true;
+        isSwipingCardToDelete = true;
         wrapper.classList.add('is-swiping');
         const itemW = item.offsetWidth || 300;
         const deltaPct = (diffX / itemW) * 100;
@@ -4375,6 +4436,7 @@ function renderCalendarModal() {
 
     const handleTaskTouchEnd = (e) => {
       clearHold();
+      isSwipingCardToDelete = false;
       if (isSwiping) {
         wrapper.classList.remove('is-swiping');
         item.style.transition = '';
@@ -4398,12 +4460,14 @@ function renderCalendarModal() {
     item.addEventListener('touchend', handleTaskTouchEnd, { passive: true });
     item.addEventListener('touchcancel', () => {
       clearHold();
+      isSwipingCardToDelete = false;
       item.style.transition = '';
       item.style.transform = '';
     });
 
     item.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (isCalendarModalPullingDown) return;
       handleTaskTouchStart(e);
 
       const onMouseMove = (moveEv) => handleTaskTouchMove(moveEv);
