@@ -446,6 +446,18 @@ assert(taskDrawer.classList.contains('collapsed'), '1st back press cleanly dismi
 window.dispatchSimulatedEvent('popstate', {});
 assert(taskDrawer.classList.contains('collapsed'), 'Timer screen remains steady and ready for native browser back navigation');
 
+console.log('\n--- 7. Testing Chronological vs Sequential Plan Mode Segmented Toggle ---');
+const btnModeChronological = getOrCreateMockElement('btnModeChronological');
+const btnModeSequential = getOrCreateMockElement('btnModeSequential');
+
+btnModeSequential.dispatchSimulatedEvent('click');
+assert(btnModeSequential.classList.contains('active'), 'Clicking Sequential activates sequential segment');
+assert(!btnModeChronological.classList.contains('active'), 'Chronological segment deactivated');
+
+btnModeChronological.dispatchSimulatedEvent('click');
+assert(btnModeChronological.classList.contains('active'), 'Clicking Chronological activates chronological segment');
+assert(!btnModeSequential.classList.contains('active'), 'Sequential segment deactivated');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

@@ -168,6 +168,40 @@ assert(idxBeforeAll === 0, 'Locates first upcoming task when before all tasks');
 const idxBetweenTasks = timeRt.getActiveTaskIndexByTime(sampleTasks, 12 * 60); // 12:00
 assert(idxBetweenTasks === 2, 'Locates next upcoming task (14:00) when between tasks at 12:00');
 
+console.log('\n--- 9. Testing Locked Task Real Duration (End Time - Start Time) on Start ---');
+const now = new Date();
+const currentTotalMin = (now.getHours() * 60) + now.getMinutes();
+const sTotalMin = Math.max(0, currentTotalMin - 15);
+const eTotalMin = Math.min(1439, sTotalMin + 60);
+
+const startStr = `${String(Math.floor(sTotalMin / 60)).padStart(2, '0')}:${String(sTotalMin % 60).padStart(2, '0')}`;
+const endStr = `${String(Math.floor(eTotalMin / 60)).padStart(2, '0')}:${String(eTotalMin % 60).padStart(2, '0')}`;
+const elapsedExpectedSec = (currentTotalMin - sTotalMin) * 60;
+const remainingExpectedSec = (eTotalMin - currentTotalMin) * 60;
+
+const lockedTaskRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: [
+    {
+      id: 'locked-active',
+      title: 'Current Window Meeting',
+      plannedDuration: 30, // Planned was 30m, but window is 60m!
+      startTime: startStr,
+      endTime: endStr,
+      fixedStartTime: startStr,
+      isLocked: true
+    }
+  ]
+});
+
+lockedTaskRt.start();
+// Real duration should be end - start = 60 minutes (3600 seconds)
+assert(lockedTaskRt.taskDurationMs === 60 * 60 * 1000, 'Real duration is 60m (end time - start time) instead of planned 30m');
+// Elapsed since start time
+assert(lockedTaskRt.accumulatedElapsedMs === elapsedExpectedSec * 1000, `Elapsed accumulated since start time is ${elapsedExpectedSec}s`);
+// Remaining seconds until end time
+assert(lockedTaskRt.getRemainingSeconds() === remainingExpectedSec, `Remaining seconds is ${remainingExpectedSec}s until end time`);
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

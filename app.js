@@ -601,6 +601,25 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     return;
   }
 
+  // Padlocked task with defined start and end time within current clock window:
+  // Timer ignores planned duration and calculates real duration as (endTime - startTime)
+  const isLockedTask = Boolean(activeTask.isLocked || activeTask.fixedStartTime);
+  if (isLockedTask && activeTask.startTime && activeTask.endTime) {
+    const sMin = parseTimeToMinutes(activeTask.startTime);
+    let eMin = parseTimeToMinutes(activeTask.endTime);
+    if (eMin <= sMin) eMin += 1440;
+    const now = new Date();
+    const nowMin = (now.getHours() * 60) + now.getMinutes();
+    if (nowMin >= sMin && nowMin < eMin) {
+      const realDurMin = eMin - sMin;
+      activeTaskTimeSpan.textContent = `${activeTask.startTime} → ${activeTask.endTime}`;
+      if (totalDurEl) {
+        totalDurEl.textContent = `(${realDurMin}m)`;
+      }
+      return;
+    }
+  }
+
   const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
 
   let startMinutes;
@@ -1729,22 +1748,48 @@ function setupControls() {
 
   const taskDrawerBackdrop = document.getElementById('taskDrawerBackdrop');
   const btnDrawerToggle = document.getElementById('btnDrawerToggle');
-  const btnToggleTimespans = document.getElementById('btnToggleTimespans');
-  const timespansLabel = document.getElementById('timespansLabel');
+  const btnModeChronological = document.getElementById('btnModeChronological');
+  const btnModeSequential = document.getElementById('btnModeSequential');
 
   function updateTimespansButtonUI() {
-    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    const isChronological = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
       ? taskStore.getTimespansEnabled()
       : true;
-    if (btnToggleTimespans) {
-      btnToggleTimespans.classList.toggle('is-plan-mode', !isTimespans);
-      btnToggleTimespans.title = isTimespans
-        ? 'Clock Times Active: Click to switch to Plan Mode'
-        : 'Plan Mode Active: Click to switch to Clock Times';
+    if (btnModeChronological) {
+      btnModeChronological.classList.toggle('active', isChronological);
     }
-    if (timespansLabel) {
-      timespansLabel.textContent = isTimespans ? 'Times: On' : 'Plan Mode';
+    if (btnModeSequential) {
+      btnModeSequential.classList.toggle('active', !isChronological);
     }
+  }
+
+  function setScheduleMode(isChronological) {
+    if (typeof taskStore !== 'undefined' && typeof taskStore.setTimespansEnabled === 'function') {
+      taskStore.setTimespansEnabled(isChronological);
+    }
+    updateTimespansButtonUI();
+    if (runtime) {
+      runtime.recalculate();
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      updateScheduleUI(runtime.currentSchedule);
+      updateActiveTaskDisplay();
+    }
+    mobileServices.hapticTap();
+    showToastNotification(isChronological ? '🕒 Chronological mode active' : '📋 Sequential plan mode active');
+  }
+
+  if (btnModeChronological) {
+    btnModeChronological.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setScheduleMode(true);
+    });
+  }
+
+  if (btnModeSequential) {
+    btnModeSequential.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setScheduleMode(false);
+    });
   }
 
   function scrollToCenterActiveTask() {
@@ -1801,20 +1846,6 @@ function setupControls() {
     btnDrawerToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleTaskDrawer();
-    });
-  }
-  if (btnToggleTimespans) {
-    btnToggleTimespans.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const next = !taskStore.getTimespansEnabled();
-      taskStore.setTimespansEnabled(next);
-      updateTimespansButtonUI();
-      runtime.recalculate();
-      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
-      updateScheduleUI(runtime.currentSchedule);
-      updateActiveTaskDisplay();
-      mobileServices.hapticTap();
-      showToastNotification(next ? '🕒 Clock Times enabled' : '📋 Sequential Plan Mode enabled');
     });
   }
   if (taskDrawerBackdrop) taskDrawerBackdrop.addEventListener('click', closeTaskDrawer);
@@ -2055,32 +2086,6 @@ function setupInteractiveTaskDrag(container) {
     const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
     const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
 
-    // In RUNNING state: current active task cannot be moved, but FUTURE tasks can be moved!
-    if (isRunning && fromIndex <= activeIdx) {
-      e.preventDefault();
-      e.stopPropagation();
-      mobileServices.hapticWarning();
-      showToastNotification('Active task is running. Pause timer to reorder.');
-      return;
-    }
-
-    // In PAUSED state: if task is locked, notify user to deselect the padlock first
-    if (isPaused && fromIndex === activeIdx && (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task'))) {
-      e.preventDefault();
-      e.stopPropagation();
-      mobileServices.hapticWarning();
-      showToastNotification('Deselect the padlock to unlock active task first.');
-      return;
-    }
-
-    if (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task')) {
-      e.preventDefault();
-      e.stopPropagation();
-      mobileServices.hapticWarning();
-      showToastNotification('🔒 This task is locked and cannot be moved.');
-      return;
-    }
-
     const activePointerId = e.pointerId;
     const startX = e.clientX;
     const startY = e.clientY;
@@ -2095,11 +2100,39 @@ function setupInteractiveTaskDrag(container) {
     const draggedCard = dragCard;
     const draggedTaskId = draggedCard.getAttribute('data-id') || (() => { const _q = draggedCard.querySelector("[data-id]"); return _q ? _q.getAttribute("data-id") : null; })();
 
-    // 200ms HOLD REQUIRED before dragging engages!
+    // 200ms HOLD REQUIRED before drag or locked/running warnings engage!
+    // Simply swiping across or touching the 3x2 dots does NOT block scrolling or show warnings.
     holdTimer = setTimeout(() => {
       holdTimer = null;
+
+      // 1. If task is locked, notify user on press-hold
+      if (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task')) {
+        mobileServices.hapticWarning();
+        showToastNotification('🔒 This task is locked and cannot be moved.');
+        if (handle) handle.classList.remove('is-holding');
+        return;
+      }
+
+      // 2. In RUNNING state: current active task or past tasks cannot be moved!
+      // Future tasks (> activeIdx) that don't affect the current active task ARE allowed to be moved!
+      if (isRunning && fromIndex <= activeIdx) {
+        mobileServices.hapticWarning();
+        showToastNotification('Active task is running. Pause timer to reorder.');
+        if (handle) handle.classList.remove('is-holding');
+        return;
+      }
+
+      // 3. In PAUSED state: if active task is locked, notify user to deselect padlock first
+      if (isPaused && fromIndex === activeIdx && (dragCard.querySelector('.is-locked-task') || dragCard.classList.contains('is-locked-task'))) {
+        mobileServices.hapticWarning();
+        showToastNotification('Deselect the padlock to unlock active task first.');
+        if (handle) handle.classList.remove('is-holding');
+        return;
+      }
+
       isDragActive = true;
       isDraggingTask = true;
+      if (handle) handle.classList.add('is-holding');
 
       try {
         handle.setPointerCapture(activePointerId);
@@ -2145,6 +2178,7 @@ function setupInteractiveTaskDrag(container) {
             clearTimeout(holdTimer);
             holdTimer = null;
           }
+          if (handle) handle.classList.remove('is-holding');
         }
         return;
       }
@@ -2215,6 +2249,7 @@ function setupInteractiveTaskDrag(container) {
         clearTimeout(holdTimer);
         holdTimer = null;
       }
+      if (handle) handle.classList.remove('is-holding');
 
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -2239,6 +2274,7 @@ function setupInteractiveTaskDrag(container) {
         const b = c.querySelector('.calendar-block');
         if (b) b.classList.remove('is-live-dragging');
       });
+      if (handle) handle.classList.remove('is-holding');
 
       if (draggedTaskId && targetTaskId && draggedTaskId !== targetTaskId) {
         taskStore.reorderTaskById(draggedTaskId, targetTaskId);

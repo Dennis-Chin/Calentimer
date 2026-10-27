@@ -669,6 +669,26 @@ export class TimerRuntime {
     const task = tasks[index];
     this.taskDurationMs = (task.allocatedDuration || 1) * 60 * 1000;
     this.accumulatedElapsedMs = 0;
+
+    // Locked task with defined start & end times within current clock window:
+    // Timer calculates real duration as (endTime - startTime)
+    const origTask = (this.initialTasks && task && this.initialTasks.find(t => t.id === task.id)) || task;
+    const isLockedTask = Boolean(origTask && (origTask.isLocked || origTask.fixedStartTime));
+    const startTimeVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (task && (task.fixedStartTime || task.startTime));
+    const endTimeVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (task && (task.fixedEndTime || task.endTime));
+
+    if (isLockedTask && startTimeVal && endTimeVal) {
+      const sMin = parseTimeToMinutes(startTimeVal);
+      let eMin = parseTimeToMinutes(endTimeVal);
+      if (eMin <= sMin) eMin += 1440;
+      const now = new Date();
+      const nowMin = (now.getHours() * 60) + now.getMinutes();
+      if (nowMin >= sMin && nowMin < eMin) {
+        const realDurationMin = eMin - sMin;
+        this.taskDurationMs = realDurationMin * 60 * 1000;
+        this.accumulatedElapsedMs = (nowMin - sMin) * 60 * 1000;
+      }
+    }
     this.taskStartedAt = Date.now();
     this.lastResumeTimestamp = this.taskStartedAt;
     this.isOverrunning = false;
@@ -976,6 +996,22 @@ export class TimerRuntime {
     if (this.status === TimerStatus.COMPLETED) return 0;
     if (this.status === TimerStatus.IDLE) {
       const activeTask = this.getActiveTask();
+      const origTask = (this.initialTasks && activeTask && this.initialTasks.find(t => t.id === activeTask.id)) || activeTask;
+      const isLocked = Boolean(origTask && (origTask.isLocked || origTask.fixedStartTime));
+      const sVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (activeTask && (activeTask.fixedStartTime || activeTask.startTime));
+      const eVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (activeTask && (activeTask.fixedEndTime || activeTask.endTime));
+      if (isLocked && sVal && eVal) {
+        const sMin = parseTimeToMinutes(sVal);
+        let eMin = parseTimeToMinutes(eVal);
+        if (eMin <= sMin) eMin += 1440;
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        if (nowMin >= sMin && nowMin < eMin) {
+          const totalSec = (eMin - sMin) * 60;
+          const elapsedSec = (nowMin - sMin) * 60;
+          return Math.max(0, totalSec - elapsedSec);
+        }
+      }
       const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 30;
       const totalSeconds = this.taskDurationMs > 0
         ? Math.floor(this.taskDurationMs / 1000)
@@ -987,6 +1023,25 @@ export class TimerRuntime {
   }
 
   getProgress() {
+    if (this.status === TimerStatus.IDLE) {
+      const activeTask = this.getActiveTask();
+      const origTask = (this.initialTasks && activeTask && this.initialTasks.find(t => t.id === activeTask.id)) || activeTask;
+      const isLocked = Boolean(origTask && (origTask.isLocked || origTask.fixedStartTime));
+      const sVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (activeTask && (activeTask.fixedStartTime || activeTask.startTime));
+      const eVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (activeTask && (activeTask.fixedEndTime || activeTask.endTime));
+      if (isLocked && sVal && eVal) {
+        const sMin = parseTimeToMinutes(sVal);
+        let eMin = parseTimeToMinutes(eVal);
+        if (eMin <= sMin) eMin += 1440;
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        if (nowMin >= sMin && nowMin < eMin) {
+          const totalSec = (eMin - sMin) * 60;
+          const elapsedSec = (nowMin - sMin) * 60;
+          return Math.min(1, Math.max(0, elapsedSec / totalSec));
+        }
+      }
+    }
     const totalMs = this.taskDurationMs;
     if (totalMs <= 0) return 0;
     return Math.min(1, Math.max(0, this.getElapsedMilliseconds() / totalMs));
