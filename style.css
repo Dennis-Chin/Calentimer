@@ -5417,7 +5417,7 @@ body {
   transition: none !important;
 }
 
-/* Pull Down to Minimise Indicator for Full Calendar Modal */
+/* Pull Down to Minimise Indicator for Full Calendar Modal & Today's Schedule Modal */
 .cal-close-icon-arrow {
   display: none;
 }
@@ -5427,11 +5427,13 @@ body {
   line-height: 1;
 }
 
-.modal-full-calendar.will-minimise .cal-close-icon-x {
+.modal-full-calendar.will-minimise .cal-close-icon-x,
+.calendar-modal.will-minimise .cal-close-icon-x {
   display: none !important;
 }
 
-.modal-full-calendar.will-minimise .cal-close-icon-arrow {
+.modal-full-calendar.will-minimise .cal-close-icon-arrow,
+.calendar-modal.will-minimise .cal-close-icon-arrow {
   display: inline-flex !important;
   color: var(--accent-cyan);
   transform: translateY(1px);

@@ -601,16 +601,31 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     return;
   }
 
-  // Padlocked task with defined start and end time within current clock window:
-  // Timer ignores planned duration and calculates real duration as (endTime - startTime)
+  // Padlocked task with defined start and end time in Chronological mode:
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
   const isLockedTask = Boolean(activeTask.isLocked || activeTask.fixedStartTime);
-  if (isLockedTask && activeTask.startTime && activeTask.endTime) {
+  if (isTimespans && isLockedTask && activeTask.startTime && activeTask.endTime) {
     const sMin = parseTimeToMinutes(activeTask.startTime);
     let eMin = parseTimeToMinutes(activeTask.endTime);
     if (eMin <= sMin) eMin += 1440;
     const now = new Date();
     const nowMin = (now.getHours() * 60) + now.getMinutes();
-    if (nowMin >= sMin && nowMin < eMin) {
+    const isRunningOrPaused = runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED);
+
+    if (isRunningOrPaused && nowMin > sMin && nowMin < eMin) {
+      // In chronological mode, when timer is started past the scheduled start time:
+      // Start time switches to current time, and duration is endTime - currentTime!
+      const startMinutesVal = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
+      const remDurMin = eMin - startMinutesVal;
+      const startStr = formatMinutesToTime(startMinutesVal);
+      activeTaskTimeSpan.textContent = `${startStr} → ${activeTask.endTime}`;
+      if (totalDurEl) {
+        totalDurEl.textContent = `(${remDurMin}m)`;
+      }
+      return;
+    } else if (nowMin >= sMin && nowMin < eMin) {
       const realDurMin = eMin - sMin;
       activeTaskTimeSpan.textContent = `${activeTask.startTime} → ${activeTask.endTime}`;
       if (totalDurEl) {
@@ -2053,6 +2068,170 @@ function addBreakTask(duration = 10) {
 }
 
 // ==========================================
+// Locked Drag Attempt Press-Hold Handler
+// ==========================================
+function attachLockedDragHoldWarning(lockedDrag) {
+  if (!lockedDrag) return;
+  let holdTimer = null;
+  let startX = 0;
+  let startY = 0;
+
+  const clear = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  };
+
+  const onHoldSuccess = () => {
+    clear();
+    mobileServices.hapticWarning();
+    showToastNotification('🔒 This task is locked and cannot be moved.');
+  };
+
+  lockedDrag.addEventListener('touchstart', (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    clear();
+    holdTimer = setTimeout(onHoldSuccess, 220);
+  }, { passive: true });
+
+  lockedDrag.addEventListener('touchmove', (e) => {
+    if (!holdTimer || !e.touches || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.hypot(dx, dy) > 8) {
+      clear();
+    }
+  }, { passive: true });
+
+  lockedDrag.addEventListener('touchend', clear, { passive: true });
+  lockedDrag.addEventListener('touchcancel', clear, { passive: true });
+
+  lockedDrag.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    clear();
+    holdTimer = setTimeout(onHoldSuccess, 220);
+
+    const onMove = (me) => {
+      if (Math.hypot(me.clientX - startX, me.clientY - startY) > 8) {
+        clear();
+      }
+    };
+    const onUp = () => {
+      clear();
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+
+  lockedDrag.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+  });
+}
+
+// ==========================================
+// Today's Schedule Modal Pull-to-Dismiss Gesture
+// ==========================================
+function setupCalendarModalPullToDismiss() {
+  const modal = document.getElementById('calendarModal');
+  const backdrop = document.getElementById('calendarModalBackdrop');
+  if (!modal || !backdrop) return;
+
+  let touchStartY = 0;
+  let touchStartX = 0;
+  let isPullingDown = false;
+
+  const onTouchStart = (e) => {
+    if (e.target.closest('button, select, input, [data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-emoji-btn, .btn-icon-action')) return;
+    if (!e.touches || e.touches.length !== 1) return;
+
+    const activeScroll = modal.querySelector('.modal-body');
+    const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+    const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar'));
+
+    if (isAtTop || isHeaderTouch) {
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      isPullingDown = false;
+    }
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchStartY || !e.touches || e.touches.length !== 1) return;
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const deltaY = currentY - touchStartY;
+    const deltaX = currentX - touchStartX;
+
+    if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
+      const activeScroll = modal.querySelector('.modal-body');
+      const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+      const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar'));
+
+      if (isAtTop || isHeaderTouch) {
+        isPullingDown = true;
+        const rubberbandY = Math.min(deltaY * 0.28, 140);
+        modal.style.transition = 'none';
+        modal.style.transform = `translate3d(0, ${rubberbandY}px, 0)`;
+
+        if (deltaY >= 110) {
+          modal.classList.add('will-minimise');
+        } else {
+          modal.classList.remove('will-minimise');
+        }
+      }
+    } else if (deltaY <= 0 && isPullingDown) {
+      modal.classList.remove('will-minimise');
+    }
+  };
+
+  const onTouchEnd = () => {
+    if (!isPullingDown) {
+      touchStartY = 0;
+      touchStartX = 0;
+      modal.classList.remove('will-minimise');
+      return;
+    }
+    isPullingDown = false;
+    const willMinimise = modal.classList.contains('will-minimise');
+    modal.classList.remove('will-minimise');
+
+    touchStartY = 0;
+    touchStartX = 0;
+
+    if (willMinimise) {
+      modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      modal.style.transform = 'translate3d(0, 100vh, 0)';
+      mobileServices.hapticBuzz();
+      setTimeout(() => {
+        modal.style.removeProperty('transform');
+        modal.style.removeProperty('transition');
+        closeCalendar();
+      }, 270);
+    } else {
+      modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      modal.style.transform = 'translate3d(0, 0, 0)';
+      setTimeout(() => {
+        modal.style.removeProperty('transform');
+        modal.style.removeProperty('transition');
+      }, 250);
+    }
+  };
+
+  modal.addEventListener('touchstart', onTouchStart, { passive: true });
+  modal.addEventListener('touchmove', onTouchMove, { passive: true });
+  modal.addEventListener('touchend', onTouchEnd, { passive: true });
+  modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
+}
+
+// ==========================================
 // Interactive Live Drag Reordering (Mobile Touch + Desktop Pointer)
 // ==========================================
 function setupInteractiveTaskDrag(container) {
@@ -2774,6 +2953,48 @@ function renderTaskList(tasks) {
     }
   }
 
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+
+  // For Sequential mode: calculate dynamic timespans starting from current time
+  const seqTimeSpans = [];
+  if (!isTimespans) {
+    const now = new Date();
+    let rollingMin = (now.getHours() * 60) + now.getMinutes();
+
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      const dur = Math.max(1, Math.round(t.allocatedDuration || t.plannedDuration || 1));
+      let tStart = rollingMin;
+      let tEnd = rollingMin + dur;
+
+      if (isRunning || isPaused) {
+        if (i < activeIdx) {
+          tStart = rollingMin - dur;
+          tEnd = rollingMin;
+        } else if (i === activeIdx) {
+          const remMin = Math.max(1, Math.ceil((runtime.getRemainingSeconds ? runtime.getRemainingSeconds() : dur * 60) / 60));
+          tStart = rollingMin;
+          tEnd = rollingMin + remMin;
+          rollingMin = tEnd;
+        } else {
+          tStart = rollingMin;
+          tEnd = rollingMin + dur;
+          rollingMin = tEnd;
+        }
+      } else {
+        tStart = rollingMin;
+        tEnd = rollingMin + dur;
+        rollingMin = tEnd;
+      }
+      seqTimeSpans.push({
+        start: formatMinutesToTime(tStart % 1440),
+        end: formatMinutesToTime(tEnd % 1440)
+      });
+    }
+  }
+
   tasks.forEach((task, idx) => {
     const card = document.createElement('div');
     const isImmovable = Boolean(task.isLocked);
@@ -2897,7 +3118,10 @@ function renderTaskList(tasks) {
 
       <!-- Bottom Row: Timing duration in blue text on a single line -->
       <div class="task-card-bottom-row">
-        <span class="task-timing-blue">${isTimespans ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}` : `⏱️ ${durationText}`}</span>
+        <span class="task-timing-blue">${isTimespans
+          ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}`
+          : `⏱️ ${durationText} <span class="task-timing-indicator" style="opacity: 0.65; font-size: 0.72rem; margin-left: 6px; font-weight: 500;">(${seqTimeSpans[idx] ? `${seqTimeSpans[idx].start} → ${seqTimeSpans[idx].end}` : ''})</span>`
+        }</span>
         <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
       </div>
     `;
@@ -2994,11 +3218,7 @@ function renderTaskList(tasks) {
     // Locked drag handle tap notification
     const lockedDrag = card.querySelector('[data-action="locked-drag-attempt"]');
     if (lockedDrag) {
-      lockedDrag.addEventListener('click', (e) => {
-        e.stopPropagation();
-        mobileServices.hapticWarning();
-        showToastNotification('🔒 This task is locked and cannot be moved.');
-      });
+      attachLockedDragHoldWarning(lockedDrag);
     }
 
     // Time bank toggle event
@@ -3934,14 +4154,10 @@ function renderCalendarModal() {
       });
     }
 
-    // Click on locked drag handle
+    // Click on locked drag handle (press-hold only)
     const lockedDrag = item.querySelector('[data-action="locked-drag-attempt"]');
     if (lockedDrag) {
-      lockedDrag.addEventListener('click', (e) => {
-        e.stopPropagation();
-        mobileServices.hapticWarning();
-        showToastNotification('🔒 This task is locked and cannot be moved.');
-      });
+      attachLockedDragHoldWarning(lockedDrag);
     }
 
     // Swipe & Gesture Zone: The full task block (except drag handle, left gutter, and emoji button)
@@ -5711,13 +5927,14 @@ function setupNavigationAndModals() {
     }
   }, 1000);
 
-  // Calendar modal buttons
+  // Calendar modal buttons & swipe-down to minimise
   if (btnCloseCalendar) btnCloseCalendar.addEventListener('click', closeCalendar);
   if (calendarModalBackdrop) {
     calendarModalBackdrop.addEventListener('click', (e) => {
       if (e.target === calendarModalBackdrop) closeCalendar();
     });
   }
+  setupCalendarModalPullToDismiss();
 
   const btnCalendarAddTask = document.getElementById('btnCalendarAddTask');
   const btnCalendarAddBreak = document.getElementById('btnCalendarAddBreak');

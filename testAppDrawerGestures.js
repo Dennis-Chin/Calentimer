@@ -11,6 +11,9 @@
  * - Gesture coordination when isNavSwiping is active.
  */
 
+import { readFileSync } from 'fs';
+import path from 'path';
+
 const mockStorage = {};
 global.localStorage = {
   getItem: (k) => (mockStorage[k] !== undefined ? mockStorage[k] : null),
@@ -457,6 +460,18 @@ assert(!btnModeChronological.classList.contains('active'), 'Chronological segmen
 btnModeChronological.dispatchSimulatedEvent('click');
 assert(btnModeChronological.classList.contains('active'), 'Clicking Chronological activates chronological segment');
 assert(!btnModeSequential.classList.contains('active'), 'Sequential segment deactivated');
+
+console.log('\n--- 8. Testing Today\'s Schedule (Menu Bar) Pull-Down & Press-Hold Guard ---');
+const indexHtmlContent = readFileSync(path.resolve('./index.html'), 'utf8');
+const appJsContent = readFileSync(path.resolve('./app.js'), 'utf8');
+const styleCssContent = readFileSync(path.resolve('./style.css'), 'utf8');
+
+assert(indexHtmlContent.includes('<div class="cal-drag-handle-bar" aria-hidden="true"></div>') && indexHtmlContent.includes('id="calendarModal"'), 'index.html contains .cal-drag-handle-bar inside #calendarModal');
+assert(indexHtmlContent.includes('id="btnCloseCalendar"') && indexHtmlContent.includes('cal-close-icon-arrow'), '#calendarModal close button includes morphing cal-close-icon-arrow');
+assert(appJsContent.includes('function setupCalendarModalPullToDismiss'), 'app.js defines setupCalendarModalPullToDismiss()');
+assert(appJsContent.includes('function attachLockedDragHoldWarning'), 'app.js defines attachLockedDragHoldWarning()');
+assert(styleCssContent.includes('.calendar-modal.will-minimise .cal-close-icon-arrow'), 'style.css morphs #calendarModal close icon into down arrow on .will-minimise');
+assert(appJsContent.includes('task-timing-indicator'), 'app.js renders dynamic indicative timespan in sequential mode');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
