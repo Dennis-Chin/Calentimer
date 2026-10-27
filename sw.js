@@ -56,6 +56,10 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   // Ignore chrome-extension:// and non-http schemes
   if (!event.request.url || !event.request.url.startsWith('http')) return;
+  // Search engine crawlers: let robots.txt and sitemap.xml pass directly to network
+  if (event.request.url.indexOf('/robots.txt') !== -1 || event.request.url.indexOf('/sitemap.xml') !== -1) {
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)
