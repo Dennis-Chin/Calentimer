@@ -168,6 +168,9 @@ assert(idxBeforeAll === 0, 'Locates first upcoming task when before all tasks');
 const idxBetweenTasks = timeRt.getActiveTaskIndexByTime(sampleTasks, 12 * 60); // 12:00
 assert(idxBetweenTasks === 2, 'Locates next upcoming task (14:00) when between tasks at 12:00');
 
+const idxAfterAll = timeRt.getActiveTaskIndexByTime(sampleTasks, 16 * 60); // 16:00
+assert(idxAfterAll === -1, 'Returns -1 when all tasks are in the past');
+
 console.log('\n--- 9. Testing Locked Task Duration Shortening in Chronological Mode on Start ---');
 const now = new Date();
 const currentTotalMin = (now.getHours() * 60) + now.getMinutes();

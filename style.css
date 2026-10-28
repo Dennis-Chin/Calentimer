@@ -3165,7 +3165,8 @@ body {
   position: fixed;
   bottom: 30px;
   left: 50%;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(-50%) translateY(20px);
+  opacity: 0;
   background: rgba(14, 28, 22, 0.94);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -3182,7 +3183,12 @@ body {
   gap: 8px;
   pointer-events: auto;
   cursor: pointer;
-  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-notification.is-visible {
+  opacity: 1 !important;
+  transform: translateX(-50%) translateY(0) !important;
 }
 
 [data-theme="light"] .toast-notification {
@@ -4433,7 +4439,7 @@ body {
   height: 72px;
   background: linear-gradient(to bottom, transparent 0%, rgba(20, 24, 34, 0.5) 30%, var(--bg-surface) 75%, var(--bg-surface) 100%);
   pointer-events: none;
-  z-index: 10 !important; /* Below floating controls (z-index: 50) */
+  z-index: 25 !important; /* Above page slide transitions (z-index: 12), below floating controls (z-index: 50) */
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
 }

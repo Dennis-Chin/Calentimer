@@ -636,6 +636,10 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   const activeTask = (runtime ? runtime.getActiveTask() : null);
   const totalDurEl = document.getElementById('activeTaskTotalDuration');
 
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+
   if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
     // Idle/No task state: Live digital clock start time, end time = now + 30m
     const d = new Date();
@@ -643,89 +647,116 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     const endMinutes = (startMinutes + 30) % 1440;
     const startStr = formatMinutesToTime(startMinutes);
     const endStr = formatMinutesToTime(endMinutes);
-    activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
-    if (totalDurEl) totalDurEl.textContent = '(30m)';
+    if (isTimespans) {
+      activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+      if (totalDurEl) totalDurEl.textContent = '(30m)';
+    } else {
+      activeTaskTimeSpan.textContent = '30m';
+      if (totalDurEl) totalDurEl.textContent = `(${startStr} → ${endStr})`;
+    }
     return;
   }
 
-  // Padlocked task with defined start and end time in Chronological mode:
-  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-    ? taskStore.getTimespansEnabled()
-    : true;
-  const isLockedTask = Boolean(activeTask.isLocked || activeTask.fixedStartTime);
-  if (isTimespans && isLockedTask && activeTask.startTime && activeTask.endTime) {
-    const sMin = parseTimeToMinutes(activeTask.startTime);
-    let eMin = parseTimeToMinutes(activeTask.endTime);
-    if (eMin <= sMin) eMin += 1440;
-    const now = new Date();
-    const nowMin = (now.getHours() * 60) + now.getMinutes();
-    const isRunningOrPaused = runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED);
-
-    if (isRunningOrPaused && nowMin > sMin && nowMin < eMin) {
-      // In chronological mode, when timer is started past the scheduled start time:
-      // Start time switches to current time, and duration is endTime - currentTime!
-      const startMinutesVal = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
-      const remDurMin = eMin - startMinutesVal;
-      const startStr = formatMinutesToTime(startMinutesVal);
-      activeTaskTimeSpan.textContent = `${startStr} → ${activeTask.endTime}`;
-      if (totalDurEl) {
-        totalDurEl.textContent = `(${remDurMin}m)`;
-      }
-      return;
-    } else if (nowMin >= sMin && nowMin < eMin) {
-      const realDurMin = eMin - sMin;
-      activeTaskTimeSpan.textContent = `${activeTask.startTime} → ${activeTask.endTime}`;
-      if (totalDurEl) {
-        totalDurEl.textContent = `(${realDurMin}m)`;
-      }
-      return;
-    }
-  }
-
+  const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+  const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
   const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
 
-  let startMinutes;
-  if (!isIdle && runtime.taskStartedAt) {
-    const d = new Date(runtime.taskStartedAt);
-    startMinutes = d.getHours() * 60 + d.getMinutes();
-  } else if (activeTask.fixedStartTime && activeTask.startTime) {
-    startMinutes = parseTimeToMinutes(activeTask.startTime);
-  } else {
-    // Before timer has started: dynamic live start time matching current clock!
-    const d = new Date();
-    startMinutes = d.getHours() * 60 + d.getMinutes();
-  }
+  if (isTimespans) {
+    // Chronological Mode
+    const isLockedTask = Boolean(activeTask.isLocked);
+    if (isLockedTask && activeTask.startTime && activeTask.endTime) {
+      const sMin = parseTimeToMinutes(activeTask.startTime);
+      let eMin = parseTimeToMinutes(activeTask.endTime);
+      if (eMin <= sMin) eMin += 1440;
+      const now = new Date();
+      const nowMin = (now.getHours() * 60) + now.getMinutes();
 
-  let totalMinutes;
-  if (isIdle) {
-    if (remainingSec !== undefined) {
-      totalMinutes = Math.max(1, Math.round(remainingSec / 60));
-    } else if (runtime && runtime.taskDurationMs > 0) {
-      totalMinutes = Math.max(1, Math.round(runtime.taskDurationMs / 60000));
+      if ((isRunning || isPaused) && nowMin > sMin && nowMin < eMin) {
+        const startMinutesVal = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
+        const remDurMin = Math.max(1, eMin - startMinutesVal);
+        activeTaskTimeSpan.textContent = `${formatMinutesToTime(startMinutesVal)} → ${activeTask.endTime}`;
+        if (totalDurEl) totalDurEl.textContent = `(${remDurMin}m)`;
+        return;
+      } else {
+        const fullDur = activeTask.allocatedDuration || activeTask.plannedDuration || (eMin - sMin);
+        activeTaskTimeSpan.textContent = `${activeTask.startTime} → ${activeTask.endTime}`;
+        if (totalDurEl) totalDurEl.textContent = `(${fullDur}m)`;
+        return;
+      }
+    }
+
+    // Padlock NOT enabled in Chronological mode:
+    // Start time is current time dynamically changing, end time is fixed, duration dynamically changing
+    const now = new Date();
+    const nowMin = (now.getHours() * 60) + now.getMinutes();
+    const startStr = formatMinutesToTime(nowMin);
+
+    let endStr = activeTask.endTime;
+    let endMin;
+    if (endStr) {
+      endMin = parseTimeToMinutes(endStr);
     } else {
-      totalMinutes = Math.max(1, (activeTask.allocatedDuration || activeTask.plannedDuration || 30));
+      const baseDur = activeTask.allocatedDuration || activeTask.plannedDuration || 30;
+      endMin = (nowMin + baseDur) % 1440;
+      endStr = formatMinutesToTime(endMin);
+    }
+
+    const sMinVal = activeTask.startTime ? parseTimeToMinutes(activeTask.startTime) : -1;
+    let diffMin = endMin - nowMin;
+    if (diffMin <= 0 && sMinVal > endMin) diffMin += 1440;
+    const dynDurMin = Math.max(1, diffMin);
+
+    if (isIdle) {
+      activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+      if (totalDurEl) totalDurEl.textContent = `(${dynDurMin}m)`;
+      if (remainingSec === undefined) {
+        renderClockTime(dynDurMin * 60);
+      }
+    } else {
+      const taskStartMin = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
+      const runningStartStr = formatMinutesToTime(taskStartMin);
+      const remSec = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
+      const remMin = Math.max(1, Math.round(remSec / 60));
+      activeTaskTimeSpan.textContent = `${runningStartStr} → ${endStr}`;
+      if (totalDurEl) totalDurEl.textContent = `(${remMin}m)`;
     }
   } else {
-    const elapsedSec = (runtime.getElapsedSeconds && typeof runtime.getElapsedSeconds === 'function')
-      ? runtime.getElapsedSeconds()
-      : 0;
-    const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
-    const totalSec = Math.max(60, elapsedSec + rem);
-    totalMinutes = Math.max(1, Math.round(totalSec / 60));
-  }
+    // Sequential Mode: duration first, dynamic timespan in brackets
+    let totalMinutes;
+    if (isIdle) {
+      if (remainingSec !== undefined) {
+        totalMinutes = Math.max(1, Math.round(remainingSec / 60));
+      } else if (runtime && runtime.taskDurationMs > 0) {
+        totalMinutes = Math.max(1, Math.round(runtime.taskDurationMs / 60000));
+      } else {
+        totalMinutes = Math.max(1, (activeTask.allocatedDuration || activeTask.plannedDuration || 30));
+      }
+    } else {
+      const elapsedSec = (runtime.getElapsedSeconds && typeof runtime.getElapsedSeconds === 'function')
+        ? runtime.getElapsedSeconds()
+        : 0;
+      const rem = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
+      const totalSec = Math.max(60, elapsedSec + rem);
+      totalMinutes = Math.max(1, Math.round(totalSec / 60));
+    }
 
-  let endMinutes;
-  if (activeTask.fixedEndTime && activeTask.endTime) {
-    endMinutes = parseTimeToMinutes(activeTask.endTime);
-  } else {
-    endMinutes = (startMinutes + totalMinutes) % 1440;
-  }
+    const now = new Date();
+    let startMinutes;
+    if (!isIdle && runtime.taskStartedAt) {
+      const d = new Date(runtime.taskStartedAt);
+      startMinutes = d.getHours() * 60 + d.getMinutes();
+    } else {
+      startMinutes = now.getHours() * 60 + now.getMinutes();
+    }
 
-  const startStr = formatMinutesToTime(startMinutes);
-  const endStr = formatMinutesToTime(endMinutes);
-  activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
-  if (totalDurEl) {
-    totalDurEl.textContent = `(${totalMinutes}m)`;
+    const endMinutes = (startMinutes + totalMinutes) % 1440;
+    const startStr = formatMinutesToTime(startMinutes);
+    const endStr = formatMinutesToTime(endMinutes);
+
+    activeTaskTimeSpan.textContent = `${totalMinutes}m`;
+    if (totalDurEl) {
+      totalDurEl.textContent = `(${startStr} → ${endStr})`;
+    }
   }
 }
 
@@ -752,7 +783,7 @@ function updateTimerQuickToggles(isOverrunning = false) {
     piggyBtn.title = 'Time Bank disabled (tap to enable)';
   }
 
-  const isLocked = activeTask ? Boolean(activeTask.isLocked || activeTask.fixedStartTime) : false;
+  const isLocked = activeTask ? Boolean(activeTask.isLocked) : false;
   lockIcon.classList.remove('hidden');
   lockIcon.classList.toggle('locked', isLocked);
   lockIcon.classList.toggle('unlocked', !isLocked);
@@ -1289,6 +1320,7 @@ function resetWholeDay() {
   mobileServices.disableWakeLock();
   mobileServices.clearLiveNotification();
   runtime.reset();
+  runtime.activeTaskIndex = 0;
   // Reset clears Time Bank back to zero (strictly on reset, not on exit)
   taskStore.setTimeBankSeconds(0);
   updateTimeBankDisplay();
@@ -1476,7 +1508,7 @@ function setupControls() {
       return;
     }
     mobileServices.hapticTap();
-    const currentLocked = Boolean(activeTask.isLocked || activeTask.fixedStartTime);
+    const currentLocked = Boolean(activeTask.isLocked);
     const nextLock = !currentLocked;
     const fixedStartTime = nextLock ? (activeTask.fixedStartTime || activeTask.startTime || null) : null;
     activeTask.isLocked = nextLock;
@@ -2069,26 +2101,36 @@ function setupControls() {
 // ==========================================
 // Toast Notification System
 // ==========================================
-let toastTimeout = null;
+let toastShowTimer = null;
+let toastExitTimer = null;
 function showToastNotification(msg) {
   const toast = document.getElementById('toastNotification');
   if (!toast) return;
+  if (toastShowTimer) {
+    clearTimeout(toastShowTimer);
+    toastShowTimer = null;
+  }
+  if (toastExitTimer) {
+    clearTimeout(toastExitTimer);
+    toastExitTimer = null;
+  }
   toast.style.removeProperty('background');
   toast.style.removeProperty('color');
   toast.textContent = msg;
+  toast.classList.remove('is-visible');
   toast.classList.remove('hidden');
-  toast.style.opacity = '1';
-  toast.style.transform = 'translateX(-50%) translateY(0)';
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(-50%) translateY(10px)';
-    setTimeout(() => {
+  void toast.offsetHeight;
+  toast.classList.add('is-visible');
+  toastShowTimer = setTimeout(() => {
+    toast.classList.remove('is-visible');
+    toastExitTimer = setTimeout(() => {
       toast.classList.add('hidden');
       toast.style.removeProperty('background');
       toast.style.removeProperty('color');
-    }, 220);
-  }, 2200);
+      toastExitTimer = null;
+    }, 280);
+    toastShowTimer = null;
+  }, 1400);
 }
 window.showToastNotification = showToastNotification;
 
@@ -2321,6 +2363,104 @@ function setupCalendarModalPullToDismiss() {
   modal.addEventListener('touchmove', onTouchMove, { passive: false });
   modal.addEventListener('touchend', onTouchEnd, { passive: true });
   modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
+}
+
+// ==========================================
+// Today's Schedule Horizontal Swipe Toggle (Chronological <-> Sequential)
+// ==========================================
+function setupScheduleHorizontalSwipeToggle(container) {
+  if (!container || container._hasHSwipeToggle) return;
+  container._hasHSwipeToggle = true;
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isHSwiping = false;
+  let touchOnTask = false;
+
+  container.addEventListener('touchstart', (e) => {
+    if (isDraggingTask) return;
+    if (!e.touches || e.touches.length !== 1) return;
+    // If touch originates on a task card, ignore so user can swipe-to-delete or cancel without toggling mode
+    if (e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block, .todo-block, .todo-item-wrapper')) {
+      touchOnTask = true;
+      isHSwiping = false;
+      return;
+    }
+    touchOnTask = false;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isHSwiping = false;
+  }, { passive: true });
+
+  container.addEventListener('touchmove', (e) => {
+    if (isDraggingTask || touchOnTask) {
+      isHSwiping = false;
+      return;
+    }
+    if (!e.touches || e.touches.length !== 1) return;
+    const diffX = e.touches[0].clientX - touchStartX;
+    const diffY = e.touches[0].clientY - touchStartY;
+
+    if (Math.abs(diffX) >= 35 && Math.abs(diffX) > Math.abs(diffY) * 1.3) {
+      isHSwiping = true;
+    }
+  }, { passive: true });
+
+  container.addEventListener('touchend', (e) => {
+    if (!isHSwiping || isDraggingTask || touchOnTask) {
+      isHSwiping = false;
+      touchOnTask = false;
+      return;
+    }
+    const touch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+    if (!touch) {
+      isHSwiping = false;
+      return;
+    }
+    const diffX = touch.clientX - touchStartX;
+    const diffY = touch.clientY - touchStartY;
+
+    if (Math.abs(diffX) >= 40 && Math.abs(diffX) > Math.abs(diffY) * 1.3) {
+      const isChrono = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+        ? taskStore.getTimespansEnabled()
+        : true;
+
+      // In chronological mode (left toggle): swiping RIGHT (diffX >= 40) toggles sequential. Swiping left does nothing.
+      // In sequential mode (right toggle): swiping LEFT (diffX <= -40) toggles chronological. Swiping right does nothing.
+      if (isChrono && diffX >= 40) {
+        const suppressClick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener('click', suppressClick, true);
+        };
+        window.addEventListener('click', suppressClick, true);
+        setTimeout(() => {
+          window.removeEventListener('click', suppressClick, true);
+        }, 350);
+
+        setScheduleMode(false);
+      } else if (!isChrono && diffX <= -40) {
+        const suppressClick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener('click', suppressClick, true);
+        };
+        window.addEventListener('click', suppressClick, true);
+        setTimeout(() => {
+          window.removeEventListener('click', suppressClick, true);
+        }, 350);
+
+        setScheduleMode(true);
+      }
+    }
+    isHSwiping = false;
+    touchOnTask = false;
+  }, { passive: true });
+
+  container.addEventListener('touchcancel', () => {
+    isHSwiping = false;
+    touchOnTask = false;
+  }, { passive: true });
 }
 
 // ==========================================
@@ -6125,9 +6265,9 @@ function setupNavigationAndModals() {
   const editTaskIsLocked = document.getElementById('editTaskIsLocked');
   if (editTaskIsLocked) editTaskIsLocked.addEventListener('change', syncModalToggleIcons);
 
-  // Live Digital Clock ticker: dynamic time span before timer starts
+  // Live Digital Clock ticker: dynamic time span before timer starts or when paused
   setInterval(() => {
-    if (!runtime || !runtime.getActiveTask() || runtime.status === TimerStatus.IDLE) {
+    if (!runtime || !runtime.getActiveTask() || runtime.status === TimerStatus.IDLE || runtime.status === TimerStatus.PAUSED) {
       updateActiveTaskTimeSpanDynamic();
     }
   }, 1000);
@@ -6140,6 +6280,8 @@ function setupNavigationAndModals() {
     });
   }
   setupCalendarModalPullToDismiss();
+  setupScheduleHorizontalSwipeToggle(document.getElementById('taskDrawer'));
+  setupScheduleHorizontalSwipeToggle(document.getElementById('calendarModal'));
 
   const btnCalendarAddTask = document.getElementById('btnCalendarAddTask');
   const btnCalendarAddBreak = document.getElementById('btnCalendarAddBreak');

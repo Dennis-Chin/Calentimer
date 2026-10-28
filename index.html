@@ -1714,20 +1714,21 @@
           loc = ' (' + (fn ? fn + ':' : '') + e.lineno + (e.colno ? ':' + e.colno : '') + ')';
         }
         toast.textContent = '⚠️ Script Error' + loc + ': ' + (e.message || 'Unknown error');
-        toast.classList.remove('hidden');
-        toast.style.opacity = '1';
         toast.style.background = '#dc2626';
         toast.style.color = '#ffffff';
         toast.style.cursor = 'pointer';
+        toast.classList.remove('hidden');
+        void toast.offsetHeight;
+        toast.classList.add('is-visible');
 
         if (errorToastTimeout) clearTimeout(errorToastTimeout);
         errorToastTimeout = setTimeout(function() {
-          toast.style.opacity = '0';
+          toast.classList.remove('is-visible');
           setTimeout(function() {
             toast.classList.add('hidden');
             toast.style.removeProperty('background');
             toast.style.removeProperty('color');
-          }, 300);
+          }, 280);
         }, 4000);
       }
     });
@@ -1735,13 +1736,13 @@
     var toastEl = document.getElementById('toastNotification');
     if (toastEl) {
       toastEl.addEventListener('click', function() {
-        this.style.opacity = '0';
+        this.classList.remove('is-visible');
         var self = this;
         setTimeout(function() {
           self.classList.add('hidden');
           self.style.removeProperty('background');
           self.style.removeProperty('color');
-        }, 200);
+        }, 280);
       });
     }
   </script>

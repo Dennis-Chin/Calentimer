@@ -732,15 +732,30 @@ export class CalendarView {
       const hourHeight = this.dayHourHeight || 56;
       scrollEl.style.setProperty('--cal-day-hour-height', `${hourHeight}px`);
 
+      const resolution = this.currentResolution || 15;
       for (let h = startHour; h < endHour; h++) {
         const slot = document.createElement('div');
         slot.className = 'day-timeline-hour-slot';
+        slot.setAttribute('data-hour', String(h));
         const timeLabel = document.createElement('div');
         timeLabel.className = 'day-time-label';
         timeLabel.textContent = `${String(h).padStart(2, '0')}:00`;
         slot.appendChild(timeLabel);
         const slotContent = document.createElement('div');
         slotContent.className = 'day-slot-content';
+
+        // Render subtle dashed sub-interval lines inside slotContent so they match bold lines exactly
+        if (resolution < 60) {
+          const stepCount = 60 / resolution;
+          for (let s = 1; s < stepCount; s++) {
+            const subLine = document.createElement('div');
+            subLine.className = 'day-sub-interval-line';
+            const pct = (s / stepCount) * 100;
+            subLine.style.top = `${pct}%`;
+            slotContent.appendChild(subLine);
+          }
+        }
+
         slot.appendChild(slotContent);
         body.appendChild(slot);
       }
@@ -770,8 +785,18 @@ export class CalendarView {
         this._renderCurrentTimeLine(body);
       }
 
-      for (let j = 0; j < eventsForDay.length; j++) {
-        const ev = eventsForDay[j];
+      const isTargetToday = targetStr === todayStr;
+
+      const visibleEvents = eventsForDay.filter(e => {
+        const s = this._parseTimeToMinutes(e.startTime);
+        const en = this._parseTimeToMinutes(e.endTime);
+        return !(s >= endHour * 60 || en <= startHour * 60);
+      }).sort((a, b) => {
+        return this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+      });
+
+      for (let j = 0; j < visibleEvents.length; j++) {
+        const ev = visibleEvents[j];
         const startMin = this._parseTimeToMinutes(ev.startTime);
         const endMin = this._parseTimeToMinutes(ev.endTime);
         let dur = ev.plannedDuration;
@@ -779,12 +804,49 @@ export class CalendarView {
           dur = endMin - startMin;
           if (dur <= 0) dur = 60;
         }
-        const topPx = 14 + (Math.max(0, startMin - (startHour * 60)) / 60) * hourHeight;
+        const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
         const heightPx = Math.max(26, (dur / 60) * hourHeight);
+
+        let isLaterOverlap = false;
+        for (let k = 0; k < j; k++) {
+          const other = visibleEvents[k];
+          const otherStart = this._parseTimeToMinutes(other.startTime);
+          const otherEnd = this._parseTimeToMinutes(other.endTime);
+          if (startMin < otherEnd && endMin > otherStart) {
+            isLaterOverlap = true;
+            const earlierCard = body.querySelector(`[data-event-id="${other.id}"]`);
+            if (earlierCard) {
+              earlierCard.classList.add('is-overlapping-earlier');
+              this._applyEventCardLayout(earlierCard, parseInt(earlierCard.style.height, 10) || 40);
+            }
+            break;
+          }
+        }
+
+        let isDone = Boolean(ev.isCompleted);
+        let isCurrent = false;
+        if (isTargetToday) {
+          const now = new Date();
+          const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+          let evEnd = endMin;
+          if (evEnd <= startMin) evEnd += 1440;
+          if (currentMinutes >= evEnd) {
+            isDone = true;
+          } else if (currentMinutes >= startMin && currentMinutes < evEnd) {
+            isCurrent = true;
+          }
+        }
+
         const card = document.createElement('div');
-        card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''}`;
+        card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
         card.style.top = `${topPx}px`;
         card.style.borderLeftColor = this._getCategoryColor(ev.category);
+        card.setAttribute('data-event-id', ev.id);
+        if (isDone) {
+          card.style.background = 'rgba(16, 185, 129, 0.22)';
+        } else if (isCurrent) {
+          card.style.background = 'rgba(0, 240, 255, 0.2)';
+        }
         this._applyEventCardLayout(card, heightPx);
         card.innerHTML = `
           <span class="day-event-emoji">${ev.emoji || '📅'}</span>

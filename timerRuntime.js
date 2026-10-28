@@ -248,11 +248,19 @@ export class TimerRuntime {
         return;
       }
 
-      if (this.activeTaskIndex < 0) {
-        const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-          ? taskStore.getTimespansEnabled()
-          : true;
-        this.activeTaskIndex = isTimespans ? this.getActiveTaskIndexByTime(this.currentSchedule.tasks) : 0;
+      const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+        ? taskStore.getTimespansEnabled()
+        : true;
+      if (isTimespans) {
+        const targetIdx = this.getActiveTaskIndexByTime(this.currentSchedule.tasks);
+        if (targetIdx < 0) {
+          this._setStatus(TimerStatus.COMPLETED);
+          this._emit('allTasksCompleted', {});
+          return { success: false, reason: 'ALL_TASKS_PAST' };
+        }
+        this.activeTaskIndex = targetIdx;
+      } else if (this.activeTaskIndex < 0) {
+        this.activeTaskIndex = 0;
       }
       this._startTask(this.activeTaskIndex);
     } else if (this.status === TimerStatus.PAUSED) {
@@ -338,7 +346,7 @@ export class TimerRuntime {
   reset() {
     this._stopTicker();
     this.status = TimerStatus.IDLE;
-    this.activeTaskIndex = -1;
+    this.activeTaskIndex = 0;
     this.accumulatedElapsedMs = 0;
     this.lastResumeTimestamp = null;
     this.taskStartedAt = null;
@@ -678,7 +686,7 @@ export class TimerRuntime {
       // Locked task with defined start & end times in Chronological mode:
       // If the time is past the start time defined, the duration shortens such that start time switches to current time and duration is end time - current time
       const origTask = (this.initialTasks && task && this.initialTasks.find(t => t.id === task.id)) || task;
-      const isLockedTask = Boolean(origTask && (origTask.isLocked || origTask.fixedStartTime));
+      const isLockedTask = Boolean(origTask && origTask.isLocked);
       const startTimeVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (task && (task.fixedStartTime || task.startTime));
       const endTimeVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (task && (task.fixedEndTime || task.endTime));
 
@@ -703,6 +711,18 @@ export class TimerRuntime {
           this.accumulatedElapsedMs = 0;
           task.allocatedDuration = fullDurationMin;
         }
+      } else if (!isLockedTask && endTimeVal) {
+        // Chronological mode, unlocked: end time is fixed, start time becomes current time
+        const eMin = parseTimeToMinutes(endTimeVal);
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        let diffMin = eMin - nowMin;
+        if (diffMin <= 0 && eMin < 360) diffMin += 1440;
+        const remainingDurationMin = Math.max(1, diffMin);
+        this.taskDurationMs = remainingDurationMin * 60 * 1000;
+        this.accumulatedElapsedMs = 0;
+        task.startTime = formatMinutesToTime(nowMin);
+        task.allocatedDuration = remainingDurationMin;
       }
     } else {
       // Sequential mode: tasks start sequentially with planned duration.
@@ -959,7 +979,7 @@ export class TimerRuntime {
   // ==========================================
 
   getActiveTaskIndexByTime(scheduleTasks, referenceMinutes) {
-    if (!scheduleTasks || scheduleTasks.length === 0) return 0;
+    if (!scheduleTasks || scheduleTasks.length === 0) return -1;
     const currentMinutes = typeof referenceMinutes === 'number'
       ? referenceMinutes
       : ((new Date().getHours() * 60) + new Date().getMinutes());
@@ -979,25 +999,62 @@ export class TimerRuntime {
     for (let i = 0; i < scheduleTasks.length; i++) {
       const t = scheduleTasks[i];
       if (t.endTime) {
-        const e = parseTimeToMinutes(t.endTime);
+        const s = t.startTime ? parseTimeToMinutes(t.startTime) : 0;
+        let e = parseTimeToMinutes(t.endTime);
+        if (e <= s) e += 1440;
         if (e > currentMinutes) {
           return i;
         }
       }
     }
 
-    return 0;
+    return -1;
   }
 
   getActiveTask() {
     if (!this.currentSchedule || !this.currentSchedule.tasks || this.currentSchedule.tasks.length === 0) return null;
     if (this.status === TimerStatus.COMPLETED) return null;
+    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+      ? taskStore.getTimespansEnabled()
+      : true;
+
+    if (isTimespans) {
+      const nowMin = (new Date().getHours() * 60) + new Date().getMinutes();
+      const allTasks = this.currentSchedule.tasks;
+
+      const candidate = (this.activeTaskIndex >= 0 && this.activeTaskIndex < allTasks.length)
+        ? allTasks[this.activeTaskIndex]
+        : null;
+
+      let isCandidatePast = false;
+      if (candidate && candidate.endTime) {
+        const sMin = candidate.startTime ? parseTimeToMinutes(candidate.startTime) : 0;
+        let eMin = parseTimeToMinutes(candidate.endTime);
+        if (eMin <= sMin) eMin += 1440;
+        if (nowMin >= eMin) {
+          isCandidatePast = true;
+        }
+      }
+
+      // If current candidate exists and is not past, use it
+      if (candidate && !isCandidatePast) {
+        return candidate;
+      }
+
+      // If no valid candidate or candidate is past, find active or upcoming task
+      const nextIdx = this.getActiveTaskIndexByTime(allTasks, nowMin);
+      if (nextIdx >= 0 && nextIdx < allTasks.length) {
+        if (this.status === TimerStatus.IDLE) {
+          this.activeTaskIndex = nextIdx;
+        }
+        return allTasks[nextIdx];
+      }
+      return null;
+    }
+
     let index = this.activeTaskIndex;
     if (index < 0) {
-      const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-        ? taskStore.getTimespansEnabled()
-        : true;
-      index = isTimespans ? this.getActiveTaskIndexByTime(this.currentSchedule.tasks) : 0;
+      index = 0;
     }
     return this.currentSchedule.tasks[index] || null;
   }
@@ -1022,19 +1079,30 @@ export class TimerRuntime {
         : true;
       const activeTask = this.getActiveTask();
       const origTask = (this.initialTasks && activeTask && this.initialTasks.find(t => t.id === activeTask.id)) || activeTask;
-      const isLocked = Boolean(origTask && (origTask.isLocked || origTask.fixedStartTime));
+      const isLocked = Boolean(origTask && origTask.isLocked);
       const sVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (activeTask && (activeTask.fixedStartTime || activeTask.startTime));
       const eVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (activeTask && (activeTask.fixedEndTime || activeTask.endTime));
-      if (isTimespans && isLocked && sVal && eVal) {
-        const sMin = parseTimeToMinutes(sVal);
-        let eMin = parseTimeToMinutes(eVal);
-        if (eMin <= sMin) eMin += 1440;
-        const now = new Date();
-        const nowMin = (now.getHours() * 60) + now.getMinutes();
-        if (nowMin > sMin && nowMin < eMin) {
-          return (eMin - nowMin) * 60;
-        } else if (nowMin <= sMin) {
-          return (eMin - sMin) * 60;
+      if (this.taskDurationMs <= 0 && this.accumulatedElapsedMs === 0) {
+        if (isTimespans && isLocked && sVal && eVal) {
+          const sMin = parseTimeToMinutes(sVal);
+          let eMin = parseTimeToMinutes(eVal);
+          if (eMin <= sMin) eMin += 1440;
+          const now = new Date();
+          const nowMin = (now.getHours() * 60) + now.getMinutes();
+          if (nowMin > sMin && nowMin < eMin) {
+            return (eMin - nowMin) * 60;
+          } else if (nowMin <= sMin) {
+            return (eMin - sMin) * 60;
+          }
+        } else if (isTimespans && !isLocked && eVal) {
+          const sMin = sVal ? parseTimeToMinutes(sVal) : 0;
+          let eMin = parseTimeToMinutes(eVal);
+          if (eMin <= sMin) eMin += 1440;
+          const now = new Date();
+          const nowMin = (now.getHours() * 60) + now.getMinutes();
+          if (nowMin < eMin) {
+            return (eMin - nowMin) * 60;
+          }
         }
       }
       const allocatedMin = (activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 30;
