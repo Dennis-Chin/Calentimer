@@ -455,6 +455,85 @@ if (typeof global.document === 'undefined') {
   assert(runtimeInstance.activeTaskIndex === 0, 'activeTaskIndex remains strictly 0 after recalculate() during PAUSED');
   assert(Boolean(runtimeInstance.getActiveTask() && runtimeInstance.getActiveTask().id === 'run-t1'), 'getActiveTask() retains Task 1 when PAUSED');
 
+  console.log('\n--- 16. Testing Microsoft Calendar Adapter Features & Parity with Google ---');
+  const {
+    microsoftCalendarAdapter,
+    MICROSOFT_CATEGORY_COLORS,
+    MICROSOFT_CATEGORY_NAME_MAP,
+    MICROSOFT_CALENDAR_COLORS
+  } = await import('./microsoftCalendarAdapter.js');
+  const { OAUTH_CONFIG } = await import('./oauthConfig.js');
+
+  // 1. Verify Microsoft Client ID
+  assert(OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId === '15001074-5d3f-42d1-97fd-f61ea17c5be9', 'OAUTH_CONFIG has updated Microsoft Application ID 15001074-5d3f-42d1-97fd-f61ea17c5be9');
+  assert(microsoftCalendarAdapter.clientId === '15001074-5d3f-42d1-97fd-f61ea17c5be9', 'microsoftCalendarAdapter initialized with new Client ID');
+
+  // 2. Verify Microsoft Color Dictionaries
+  assert(MICROSOFT_CATEGORY_COLORS['preset0'] === '#d13438', 'MICROSOFT_CATEGORY_COLORS preset0 is #d13438');
+  assert(MICROSOFT_CATEGORY_NAME_MAP['blue category'] === '#0078d4', 'MICROSOFT_CATEGORY_NAME_MAP resolves blue category');
+  assert(MICROSOFT_CALENDAR_COLORS['lightGreen'] === '#107c41', 'MICROSOFT_CALENDAR_COLORS lightGreen is #107c41');
+
+  // 3. Test Microsoft Event Mapping: Color matching from categories
+  const rawMsEvent1 = {
+    id: 'ms-evt-1',
+    subject: 'Biology Lecture',
+    categories: ['Green category'],
+    start: { dateTime: '2026-10-28T10:00:00.0000000' },
+    end: { dateTime: '2026-10-28T11:30:00.0000000' },
+    bodyPreview: 'Review cells and mitosis chapters'
+  };
+  const mappedMs1 = microsoftCalendarAdapter.mapToCalentimerEvent(rawMsEvent1, '#0078d4');
+  assert(Boolean(mappedMs1), 'Microsoft event mapped successfully');
+  assert(mappedMs1.id === 'cal-ms-ms-evt-1', 'Event id prefixed with cal-ms-');
+  assert(mappedMs1.provider === 'microsoft', 'Provider is microsoft');
+  assert(mappedMs1.isLocked === true, 'Imported Microsoft event is locked');
+  assert(mappedMs1.color === '#107c41', 'Green category correctly mapped to #107c41');
+  assert(mappedMs1.plannedDuration === 90, 'Planned duration calculated as 90m');
+  assert(Boolean(mappedMs1.emoji), 'Semantic emoji assigned to Biology Lecture: ' + mappedMs1.emoji);
+
+  // 4. Test Deterministic Classification Parity: Identical titles receive identical emojis
+  const rawMsEvent2 = {
+    id: 'ms-evt-2',
+    subject: 'Biology Lecture',
+    start: { dateTime: '2026-10-29T14:00:00.0000000' },
+    end: { dateTime: '2026-10-29T15:00:00.0000000' }
+  };
+  const mappedMs2 = microsoftCalendarAdapter.mapToCalentimerEvent(rawMsEvent2);
+  assert(mappedMs1.emoji === mappedMs2.emoji, 'Identical Microsoft event titles receive identical default emoji');
+  assert(mappedMs1.category === mappedMs2.category, 'Identical Microsoft event titles receive identical default category');
+
+  // 5. Test All-Day Event Mapping
+  const rawMsAllDay = {
+    id: 'ms-evt-allday',
+    subject: 'Annual Conference',
+    isAllDay: true,
+    start: { dateTime: '2026-11-01T00:00:00.0000000' },
+    end: { dateTime: '2026-11-02T00:00:00.0000000' }
+  };
+  const mappedMsAllDay = microsoftCalendarAdapter.mapToCalentimerEvent(rawMsAllDay);
+  assert(mappedMsAllDay.startTime === '09:00', 'All-day event default start time is 09:00');
+  assert(mappedMsAllDay.endTime === '17:00', 'All-day event default end time is 17:00');
+  assert(mappedMsAllDay.plannedDuration === 480, 'All-day event duration is 480m');
+
+  // 6. Test Outbound Payload Mapping
+  const calentimerTask = {
+    title: 'Client Strategy Meeting',
+    category: 'Work',
+    date: '2026-10-30',
+    startTime: '13:00',
+    endTime: '14:00'
+  };
+  const msPayload = microsoftCalendarAdapter.mapToMicrosoftPayload(calentimerTask);
+  assert(msPayload.subject === 'Client Strategy Meeting', 'Outbound payload subject matches');
+  assert(msPayload.start.dateTime === '2026-10-30T13:00:00', 'Outbound start dateTime matches');
+  assert(msPayload.end.dateTime === '2026-10-30T14:00:00', 'Outbound end dateTime matches');
+  assert(Array.isArray(msPayload.categories) && msPayload.categories[0] === 'Work', 'Outbound categories contains Work');
+
+  // 7. Test fetchCalendarList API
+  const calList = await microsoftCalendarAdapter.fetchCalendarList();
+  assert(Array.isArray(calList) && calList.length >= 1, 'fetchCalendarList returns active calendars');
+  assert(Boolean(calList[0].hexColor || calList[0].backgroundColor), 'Calendar has theme color');
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

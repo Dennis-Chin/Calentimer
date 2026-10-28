@@ -244,6 +244,16 @@ assert(calContent.includes('eventCols[cB - 1] === 1') || calContent.includes('ev
 // Complete curated emojis palette matching classifier emojis
 assert(appContent.includes('CURATED_EMOJIS') && appContent.includes('🎓') && appContent.includes('🩺') && appContent.includes('✈️') && appContent.includes('🍽️') && appContent.includes('🍕'), 'CURATED_EMOJIS contains all classifier domain emojis');
 
+console.log('\n--- 7. Testing Microsoft Calendar Integration & Feature Parity ---');
+const msAdapterContent = fs.readFileSync(path.resolve(process.cwd(), 'microsoftCalendarAdapter.js'), 'utf8');
+const oauthConfigContent = fs.readFileSync(path.resolve(process.cwd(), 'oauthConfig.js'), 'utf8');
+assert(oauthConfigContent.includes('15001074-5d3f-42d1-97fd-f61ea17c5be9'), 'oauthConfig.js contains configured Microsoft Client ID');
+assert(msAdapterContent.includes('MICROSOFT_CATEGORY_COLORS'), 'microsoftCalendarAdapter.js defines MICROSOFT_CATEGORY_COLORS');
+assert(msAdapterContent.includes('MICROSOFT_CALENDAR_COLORS'), 'microsoftCalendarAdapter.js defines MICROSOFT_CALENDAR_COLORS');
+assert(msAdapterContent.includes('fetchCalendarList('), 'microsoftCalendarAdapter.js implements fetchCalendarList()');
+assert(msAdapterContent.includes('_resolveEventColor('), 'microsoftCalendarAdapter.js implements _resolveEventColor()');
+assert(msAdapterContent.includes('classifyEvent('), 'microsoftCalendarAdapter.js implements semantic word classification');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

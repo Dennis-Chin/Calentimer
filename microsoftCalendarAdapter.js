@@ -2,7 +2,9 @@
  * microsoftCalendarAdapter.js
  * 
  * Microsoft Outlook / 365 Graph API Client-Side Adapter for Calentimer.
- * Uses MSAL / Graph REST endpoints for two-way synchronization.
+ * Uses MSAL Browser SDK and Microsoft Graph REST endpoints for two-way synchronization.
+ * Supports multi-calendar retrieval, delta pagination, rich color matching,
+ * intelligent semantic classification (emojis & categories), and Wall-Clock schedule locks.
  * Strictly zero optional chaining and zero nullish coalescing operators.
  */
 
@@ -11,13 +13,75 @@ import { OAUTH_CONFIG } from './oauthConfig.js';
 import { classifyEvent } from './eventClassifier.js';
 
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
-const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000000';
+const DEFAULT_CLIENT_ID = '15001074-5d3f-42d1-97fd-f61ea17c5be9';
 const SCOPES = ['Calendars.ReadWrite', 'User.Read'];
+
+// Microsoft Outlook / 365 Preset 0-24 Category Palette Colors
+export const MICROSOFT_CATEGORY_COLORS = {
+  'preset0': '#d13438',  // Red
+  'preset1': '#ff8c00',  // Orange
+  'preset2': '#f7630c',  // Peach
+  'preset3': '#ffb900',  // Yellow
+  'preset4': '#107c41',  // Green
+  'preset5': '#008272',  // Teal
+  'preset6': '#004b50',  // Olive
+  'preset7': '#0078d4',  // Blue
+  'preset8': '#5c2d91',  // Purple
+  'preset9': '#b4009e',  // Cranberry
+  'preset10': '#5c5b5d', // Steel
+  'preset11': '#323130', // Dark Steel
+  'preset12': '#737373', // Gray
+  'preset13': '#484644', // Dark Gray
+  'preset14': '#201f1e', // Black
+  'preset15': '#750b1c', // Dark Red
+  'preset16': '#a4373a', // Dark Orange
+  'preset17': '#8e562e', // Dark Peach
+  'preset18': '#8f7015', // Dark Yellow
+  'preset19': '#0e4e10', // Dark Green
+  'preset20': '#004b42', // Dark Teal
+  'preset21': '#012b2e', // Dark Olive
+  'preset22': '#004e8c', // Dark Blue
+  'preset23': '#3b1a5c', // Dark Purple
+  'preset24': '#5c004f'  // Dark Cranberry
+};
+
+// Common Outlook standard category names mapped to standard hex colors
+export const MICROSOFT_CATEGORY_NAME_MAP = {
+  'red category': '#d13438',
+  'orange category': '#ff8c00',
+  'peach category': '#f7630c',
+  'yellow category': '#ffb900',
+  'green category': '#107c41',
+  'teal category': '#008272',
+  'olive category': '#004b50',
+  'blue category': '#0078d4',
+  'purple category': '#5c2d91',
+  'cranberry category': '#b4009e',
+  'steel category': '#5c5b5d',
+  'gray category': '#737373'
+};
+
+// Microsoft Outlook Calendar theme color mappings
+export const MICROSOFT_CALENDAR_COLORS = {
+  'auto': '#0078d4',
+  'lightBlue': '#0078d4',
+  'lightGreen': '#107c41',
+  'lightOrange': '#ff8c00',
+  'lightGray': '#737373',
+  'lightYellow': '#ffb900',
+  'lightTeal': '#008272',
+  'lightPink': '#b4009e',
+  'lightBrown': '#8e562e',
+  'lightRed': '#d13438',
+  'maxColor': '#5c2d91'
+};
 
 export class MicrosoftCalendarAdapter {
   constructor(options) {
     const opts = (options && typeof options === 'object') ? options : {};
-    const configId = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId) ? OAUTH_CONFIG.microsoft.clientId : DEFAULT_CLIENT_ID;
+    const configId = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId)
+      ? OAUTH_CONFIG.microsoft.clientId
+      : DEFAULT_CLIENT_ID;
     this.clientId = opts.clientId ? String(opts.clientId) : configId;
     this.accessToken = opts.accessToken ? String(opts.accessToken) : null;
     this.tokenExpiresAt = opts.tokenExpiresAt ? Number(opts.tokenExpiresAt) : 0;
@@ -116,6 +180,7 @@ export class MicrosoftCalendarAdapter {
 
   /**
    * Initiates authentication with Microsoft Identity / Graph API.
+   * Uses silent token acquisition when possible, falling back to MSAL popup.
    * Resolves with access token on success.
    * @returns {Promise<string>}
    */
@@ -136,7 +201,7 @@ export class MicrosoftCalendarAdapter {
         return;
       }
 
-      // 2. Built-in Sandbox Mock Mode (for personal accounts without Azure AD tenant)
+      // 2. Built-in Sandbox Mock Mode (if explicitly toggled in config for test sandboxes)
       if (this.useMock) {
         const mockToken = 'mock-ms-token-' + Date.now();
         const mockEmail = 'sandbox.user@outlook.com';
@@ -161,7 +226,7 @@ export class MicrosoftCalendarAdapter {
         return;
       }
 
-      // 4. Browser MSAL Browser Client Check
+      // 5. Browser MSAL SDK Check
       const hasMsal = typeof window !== 'undefined' && window !== null && window.msal && window.msal.PublicClientApplication;
       if (!hasMsal) {
         if (typeof window === 'undefined') {
@@ -190,7 +255,8 @@ export class MicrosoftCalendarAdapter {
             auth: {
               clientId: this.clientId,
               authority: 'https://login.microsoftonline.com/common',
-              redirectUri: configRedirectUri
+              redirectUri: configRedirectUri,
+              navigateToLoginRequestUrl: false
             },
             cache: {
               cacheLocation: 'sessionStorage',
@@ -208,33 +274,53 @@ export class MicrosoftCalendarAdapter {
           prompt: 'select_account'
         };
 
-        const doLogin = () => {
-          this.msalInstance.loginPopup(loginRequest).then((response) => {
-            if (response && response.accessToken) {
-              const expiresIn = (response.expiresOn && response.expiresOn instanceof Date)
-                ? Math.max(60, Math.floor((response.expiresOn.getTime() - Date.now()) / 1000))
-                : 3600;
-              this.setToken(response.accessToken, expiresIn);
-              if (response.account && response.account.username) {
-                this.userEmail = response.account.username;
-                if (typeof taskStore !== 'undefined' && typeof taskStore.setMicrosoftUserEmail === 'function') {
-                  taskStore.setMicrosoftUserEmail(response.account.username);
-                }
-              } else {
-                this.fetchUserEmail().catch(() => {});
+        const handleAuthSuccess = (response) => {
+          if (response && response.accessToken) {
+            const expiresIn = (response.expiresOn && response.expiresOn instanceof Date)
+              ? Math.max(60, Math.floor((response.expiresOn.getTime() - Date.now()) / 1000))
+              : 3600;
+            this.setToken(response.accessToken, expiresIn);
+            if (response.account && response.account.username) {
+              this.userEmail = response.account.username;
+              if (typeof taskStore !== 'undefined' && typeof taskStore.setMicrosoftUserEmail === 'function') {
+                taskStore.setMicrosoftUserEmail(response.account.username);
               }
-              resolve(response.accessToken);
             } else {
-              reject(new Error('Failed to acquire Microsoft access token.'));
+              this.fetchUserEmail().catch(() => {});
             }
-          }).catch(reject);
+            resolve(response.accessToken);
+          } else {
+            reject(new Error('Failed to acquire Microsoft access token.'));
+          }
         };
 
-        // MSAL v3 requires initialize() before loginPopup()
+        const doPopupLogin = () => {
+          this.msalInstance.loginPopup(loginRequest)
+            .then(handleAuthSuccess)
+            .catch(reject);
+        };
+
+        const trySilentOrPopup = () => {
+          const accounts = (typeof this.msalInstance.getAllAccounts === 'function')
+            ? this.msalInstance.getAllAccounts()
+            : [];
+          if (accounts && accounts.length > 0) {
+            this.msalInstance.acquireTokenSilent({
+              scopes: loginScopes,
+              account: accounts[0]
+            }).then(handleAuthSuccess).catch(() => {
+              doPopupLogin();
+            });
+          } else {
+            doPopupLogin();
+          }
+        };
+
+        // MSAL v3 requires initialize() before any calls
         if (typeof this.msalInstance.initialize === 'function') {
-          this.msalInstance.initialize().then(doLogin).catch(reject);
+          this.msalInstance.initialize().then(trySilentOrPopup).catch(reject);
         } else {
-          doLogin();
+          trySilentOrPopup();
         }
       } catch (e) {
         reject(e);
@@ -289,7 +375,70 @@ export class MicrosoftCalendarAdapter {
   }
 
   /**
-   * Fetches calendar events via Microsoft Graph Delta API.
+   * Fetches the user's active Microsoft Calendars list (default calendar and secondary calendars).
+   * @returns {Promise<Array<{id: string, name: string, summary: string, primary: boolean, isDefaultCalendar: boolean, hexColor: string, backgroundColor: string}>>}
+   */
+  async fetchCalendarList() {
+    if (!this.isAuthenticated() || this.useMock) {
+      return [{
+        id: 'primary',
+        name: 'Calendar',
+        summary: 'Calendar',
+        primary: true,
+        isDefaultCalendar: true,
+        hexColor: '#0078d4',
+        backgroundColor: '#0078d4'
+      }];
+    }
+
+    try {
+      const resp = await fetch(`${GRAPH_API_BASE}/me/calendars`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && Array.isArray(data.value) && data.value.length > 0) {
+          const cals = [];
+          for (let i = 0; i < data.value.length; i++) {
+            const c = data.value[i];
+            if (!c || !c.id) continue;
+            const hex = c.hexColor || (c.color && MICROSOFT_CALENDAR_COLORS[c.color]) || '#0078d4';
+            cals.push({
+              id: c.id,
+              name: c.name || 'Calendar',
+              summary: c.name || 'Calendar',
+              primary: Boolean(c.isDefaultCalendar),
+              isDefaultCalendar: Boolean(c.isDefaultCalendar),
+              color: c.color || 'auto',
+              hexColor: hex,
+              backgroundColor: hex
+            });
+          }
+          if (cals.length > 0) {
+            return cals;
+          }
+        }
+      }
+    } catch (_) {}
+
+    return [{
+      id: 'primary',
+      name: 'Calendar',
+      summary: 'Calendar',
+      primary: true,
+      isDefaultCalendar: true,
+      hexColor: '#0078d4',
+      backgroundColor: '#0078d4'
+    }];
+  }
+
+  /**
+   * Fetches calendar events via Microsoft Graph Delta API with full pagination,
+   * comprehensive term date-window coverage, and color matching.
+   * Matches Google Calendar window defaults (past 60 days to next 180 days).
    * @param {string} [startDateTime] ISO string
    * @param {string} [endDateTime] ISO string
    * @param {string} [deltaLink]
@@ -315,23 +464,75 @@ export class MicrosoftCalendarAdapter {
       throw new Error('Not authenticated with Microsoft Calendar');
     }
 
-    let url = deltaLink;
-    if (!url) {
-      const start = startDateTime || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const end = endDateTime || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-      url = `${GRAPH_API_BASE}/me/calendarView/delta?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}`;
+    // Window defaults: past 60 days to next 180 days (matches Google Calendar full schedule coverage)
+    const start = startDateTime || new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const end = endDateTime || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+
+    const calendars = await this.fetchCalendarList();
+    const primaryCal = calendars.find(c => c && c.primary) || calendars[0] || { id: 'primary', hexColor: '#0078d4' };
+    const defaultCalColor = primaryCal.hexColor || '#0078d4';
+
+    const allEvents = [];
+    const seenExternalIds = new Set();
+    let finalDeltaLink = null;
+    let anyExpired = false;
+
+    // 1. Fetch Primary Calendar using Delta Query with full @odata.nextLink pagination
+    let currentUrl = deltaLink;
+    if (!currentUrl) {
+      currentUrl = `${GRAPH_API_BASE}/me/calendarView/delta?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}`;
     }
 
-    const resp = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
-        'Prefer': 'outlook.timezone="UTC"',
-        'Accept': 'application/json'
-      }
-    });
+    let pageCount = 0;
+    while (currentUrl && pageCount < 50) {
+      pageCount++;
+      const resp = await fetch(currentUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Prefer': 'outlook.timezone="UTC"',
+          'Accept': 'application/json'
+        }
+      });
 
-    if (resp.status === 410) {
-      // 410 Gone: Delta token expired
+      if (resp.status === 401) {
+        this.signOut();
+        throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
+      }
+
+      if (resp.status === 410) {
+        // Delta token expired: clear token and signal full resync
+        anyExpired = true;
+        break;
+      }
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Microsoft Graph API error (${resp.status}): ${errText}`);
+      }
+
+      const data = await resp.json();
+      const rawItems = (data && Array.isArray(data.value)) ? data.value : [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const raw = rawItems[i];
+        if (!raw || !raw.id) continue;
+        if (seenExternalIds.has(raw.id)) continue;
+        seenExternalIds.add(raw.id);
+
+        const ev = this.mapToCalentimerEvent(raw, defaultCalColor);
+        if (ev) {
+          ev.externalCalendarId = primaryCal.id || 'primary';
+          allEvents.push(ev);
+        }
+      }
+
+      if (data && data['@odata.deltaLink']) {
+        finalDeltaLink = data['@odata.deltaLink'];
+      }
+      currentUrl = (data && data['@odata.nextLink']) ? data['@odata.nextLink'] : null;
+    }
+
+    if (anyExpired) {
       return {
         events: [],
         nextDeltaLink: null,
@@ -339,27 +540,54 @@ export class MicrosoftCalendarAdapter {
       };
     }
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Microsoft Graph API error (${resp.status}): ${errText}`);
+    // 2. Fetch Secondary Calendars (if user has multiple calendars and this is a full sync)
+    if (!deltaLink && calendars.length > 1) {
+      for (let cIdx = 0; cIdx < calendars.length; cIdx++) {
+        const secCal = calendars[cIdx];
+        if (secCal.primary || secCal.isDefaultCalendar || secCal.id === 'primary') continue;
+
+        try {
+          let secUrl = `${GRAPH_API_BASE}/me/calendars/${encodeURIComponent(secCal.id)}/calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$top=100`;
+          let secPages = 0;
+          while (secUrl && secPages < 20) {
+            secPages++;
+            const secResp = await fetch(secUrl, {
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Prefer': 'outlook.timezone="UTC"',
+                'Accept': 'application/json'
+              }
+            });
+            if (secResp.status === 401) {
+              this.signOut();
+              throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
+            }
+            if (!secResp.ok) break;
+
+            const secData = await secResp.json();
+            const secItems = (secData && Array.isArray(secData.value)) ? secData.value : [];
+            for (let j = 0; j < secItems.length; j++) {
+              const raw = secItems[j];
+              if (!raw || !raw.id || seenExternalIds.has(raw.id)) continue;
+              seenExternalIds.add(raw.id);
+
+              const ev = this.mapToCalentimerEvent(raw, secCal.hexColor);
+              if (ev) {
+                ev.externalCalendarId = secCal.id;
+                allEvents.push(ev);
+              }
+            }
+            secUrl = (secData && secData['@odata.nextLink']) ? secData['@odata.nextLink'] : null;
+          }
+        } catch (secErr) {
+          console.warn(`CalendarSync: Failed to fetch secondary calendar "${secCal.name}":`, secErr);
+        }
+      }
     }
-
-    const data = await resp.json();
-    const rawItems = (data && Array.isArray(data.value)) ? data.value : [];
-    const mapped = [];
-
-    for (let i = 0; i < rawItems.length; i++) {
-      const ev = this.mapToCalentimerEvent(rawItems[i]);
-      if (ev) mapped.push(ev);
-    }
-
-    const nextLink = (data && (data['@odata.deltaLink'] || data['@odata.nextLink']))
-      ? (data['@odata.deltaLink'] || data['@odata.nextLink'])
-      : null;
 
     return {
-      events: mapped,
-      nextDeltaLink: nextLink,
+      events: allEvents,
+      nextDeltaLink: finalDeltaLink,
       deltaLinkExpired: false
     };
   }
@@ -394,14 +622,24 @@ export class MicrosoftCalendarAdapter {
     }
 
     const payload = this.mapToMicrosoftPayload(calentimerEvent);
+    const timeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : 'UTC';
+
     const resp = await fetch(`${GRAPH_API_BASE}/me/events`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Prefer': `outlook.timezone="${timeZone}"`
       },
       body: JSON.stringify(payload)
     });
+
+    if (resp.status === 401) {
+      this.signOut();
+      throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
+    }
 
     if (!resp.ok) {
       const errText = await resp.text();
@@ -409,7 +647,7 @@ export class MicrosoftCalendarAdapter {
     }
 
     const created = await resp.json();
-    return this.mapToCalentimerEvent(created);
+    return this.mapToCalentimerEvent(created, calentimerEvent.color);
   }
 
   /**
@@ -447,14 +685,24 @@ export class MicrosoftCalendarAdapter {
 
     const payload = this.mapToMicrosoftPayload(calentimerEvent);
     const eventId = encodeURIComponent(calentimerEvent.externalId);
+    const timeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : 'UTC';
+
     const resp = await fetch(`${GRAPH_API_BASE}/me/events/${eventId}`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Prefer': `outlook.timezone="${timeZone}"`
       },
       body: JSON.stringify(payload)
     });
+
+    if (resp.status === 401) {
+      this.signOut();
+      throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
+    }
 
     if (!resp.ok) {
       const errText = await resp.text();
@@ -462,7 +710,7 @@ export class MicrosoftCalendarAdapter {
     }
 
     const updated = await resp.json();
-    return this.mapToCalentimerEvent(updated);
+    return this.mapToCalentimerEvent(updated, calentimerEvent.color);
   }
 
   /**
@@ -499,6 +747,11 @@ export class MicrosoftCalendarAdapter {
       }
     });
 
+    if (resp.status === 401) {
+      this.signOut();
+      throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
+    }
+
     if (resp.status === 404 || resp.status === 410) {
       return true; // Already deleted
     }
@@ -511,6 +764,51 @@ export class MicrosoftCalendarAdapter {
     return true;
   }
 
+  /**
+   * Resolves the theme color for a Microsoft Graph event item.
+   * Checks explicit hexColor, category colors (preset 0-24 and standard names),
+   * calendar color mapping, and parent calendar defaultColor.
+   * @param {object} item 
+   * @param {string} [defaultColor] 
+   * @returns {string|null}
+   */
+  _resolveEventColor(item, defaultColor) {
+    if (!item) return defaultColor || null;
+
+    // 1. Explicit hex color if provided
+    if (item.hexColor && typeof item.hexColor === 'string' && item.hexColor.charAt(0) === '#') {
+      return item.hexColor;
+    }
+
+    // 2. Outlook Category Color mapping
+    if (item.categories && Array.isArray(item.categories) && item.categories.length > 0) {
+      for (let i = 0; i < item.categories.length; i++) {
+        const rawCat = String(item.categories[i]).trim().toLowerCase();
+        if (MICROSOFT_CATEGORY_NAME_MAP[rawCat]) {
+          return MICROSOFT_CATEGORY_NAME_MAP[rawCat];
+        }
+        if (MICROSOFT_CATEGORY_COLORS[rawCat]) {
+          return MICROSOFT_CATEGORY_COLORS[rawCat];
+        }
+      }
+    }
+
+    // 3. Outlook Calendar color token mapping
+    if (item.color && MICROSOFT_CALENDAR_COLORS[item.color]) {
+      return MICROSOFT_CALENDAR_COLORS[item.color];
+    }
+
+    // 4. Default calendar color or null
+    return defaultColor || null;
+  }
+
+  /**
+   * Helper to parse ISO datetime strings into user's local browser date and time.
+   * Prevents UTC offsets from shifting event times and dates.
+   * @param {string} dateTimeStr 
+   * @param {string} [fallbackDateStr] 
+   * @returns {{date: string, time: string}}
+   */
   _parseDateTimeString(dateTimeStr, fallbackDateStr) {
     if (dateTimeStr) {
       const d = new Date(dateTimeStr);
@@ -533,15 +831,18 @@ export class MicrosoftCalendarAdapter {
   }
 
   /**
-   * Converts Microsoft Graph event item to Calentimer schema.
+   * Converts Microsoft Graph event item to Calentimer schema with timezone accuracy,
+   * deterministic semantic word classification (emoji & category), and color matching.
    * @param {object} item 
+   * @param {string} [defaultColor]
    * @returns {object|null}
    */
-  mapToCalentimerEvent(item) {
+  mapToCalentimerEvent(item, defaultColor) {
     if (!item || !item.id) return null;
 
     const isRemoved = Boolean(item['@removed']);
     const title = item.subject ? String(item.subject).trim() : 'Microsoft Meeting';
+    const description = item.bodyPreview || (item.body && item.body.content) || '';
 
     let dateStr = '';
     let startTime = '09:00';
@@ -551,22 +852,53 @@ export class MicrosoftCalendarAdapter {
       const parsedStart = this._parseDateTimeString(item.start.dateTime);
       dateStr = parsedStart.date;
       startTime = parsedStart.time;
+    } else if (item.start && item.start.date) {
+      dateStr = item.start.date;
+      startTime = '09:00';
+      endTime = '17:00';
     }
 
     if (item.end && item.end.dateTime) {
       const parsedEnd = this._parseDateTimeString(item.end.dateTime);
       endTime = parsedEnd.time;
+    } else if (item.end && item.end.date && !item.end.dateTime) {
+      endTime = '17:00';
     }
 
+    // All-day event coverage
+    if (item.isAllDay) {
+      startTime = '09:00';
+      endTime = '17:00';
+    }
+
+    // Calculate duration in minutes
     const sMin = this._parseTimeToMinutes(startTime);
     let eMin = this._parseTimeToMinutes(endTime);
     if (eMin <= sMin) eMin += 1440;
     const plannedDuration = Math.max(15, eMin - sMin);
 
-    const classification = classifyEvent(title, item.bodyPreview || (item.body && item.body.content) || '', null);
+    // Color resolution
+    const eventColor = this._resolveEventColor(item, defaultColor);
+
+    // Intelligent semantic word classification (deterministic emoji & category)
+    const classification = classifyEvent(title, description, eventColor);
     const resolvedEmoji = classification.emoji;
-    const resolvedCategory = classification.category;
-    const resolvedColor = classification.color;
+
+    // Check if user set a custom domain category in Outlook categories (e.g. "Study", "Coding", "Marketing")
+    let resolvedCategory = classification.category;
+    if (item.categories && Array.isArray(item.categories) && item.categories.length > 0) {
+      for (let c = 0; c < item.categories.length; c++) {
+        const catCandidate = String(item.categories[c]).trim();
+        const lowerCandidate = catCandidate.toLowerCase();
+        // Skip default Outlook generic names like "Red category", "Blue category"
+        if (lowerCandidate.indexOf('category') === -1 && lowerCandidate.indexOf('preset') === -1) {
+          resolvedCategory = catCandidate;
+          break;
+        }
+      }
+    }
+
+    const resolvedColor = eventColor || classification.color;
 
     if (resolvedCategory && typeof taskStore !== 'undefined' && typeof taskStore.addCategory === 'function') {
       taskStore.addCategory(resolvedCategory);
@@ -575,7 +907,7 @@ export class MicrosoftCalendarAdapter {
     return {
       id: `cal-ms-${item.id}`,
       externalId: item.id,
-      externalCalendarId: 'primary',
+      externalCalendarId: item.calendarId || 'primary',
       provider: 'microsoft',
       source: 'microsoft',
       title: title,
@@ -588,6 +920,7 @@ export class MicrosoftCalendarAdapter {
       emoji: resolvedEmoji,
       category: resolvedCategory,
       color: resolvedColor,
+      colorId: (item.categories && item.categories[0]) || item.color || null,
       etag: item['@odata.etag'] || null,
       status: isRemoved ? 'cancelled' : 'confirmed',
       isCancelled: isRemoved,
@@ -612,8 +945,14 @@ export class MicrosoftCalendarAdapter {
     const startDateTime = `${date}T${startTime}:00`;
     const endDateTime = `${date}T${endTime}:00`;
 
+    const categories = [];
+    if (event.category) {
+      categories.push(event.category);
+    }
+
     return {
       subject: event.title || 'Calentimer Task',
+      categories: categories,
       body: {
         contentType: 'text',
         content: `Managed by Calentimer${event.category ? ' • Category: ' + event.category : ''}`

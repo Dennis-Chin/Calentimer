@@ -14,12 +14,11 @@ export const OAUTH_CONFIG = {
     scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
   },
   microsoft: {
-    // Microsoft Application (client) ID placeholder
-    // Flag useMock: true provides fully functional mock sync while personal account developer sandboxes are restricted
-    clientId: 'YOUR_MICROSOFT_CLIENT_ID',
+    // Microsoft Application (client) ID configured for two-way sync
+    clientId: '15001074-5d3f-42d1-97fd-f61ea17c5be9',
     scopes: ['Calendars.ReadWrite', 'User.Read'],
     redirectUri: 'http://localhost:3000',
-    useMock: true
+    useMock: false
   }
 };
 
