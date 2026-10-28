@@ -534,6 +534,16 @@ if (typeof global.document === 'undefined') {
   assert(Array.isArray(calList) && calList.length >= 1, 'fetchCalendarList returns active calendars');
   assert(Boolean(calList[0].hexColor || calList[0].backgroundColor), 'Calendar has theme color');
 
+  // 8. Test Dynamic OAuth Redirect URI Resolution (prevents production www.calentimer.com from redirecting to localhost)
+  global.window.location = { origin: 'https://www.calentimer.com' };
+  assert(microsoftCalendarAdapter.getRedirectUri() === 'https://www.calentimer.com', 'Resolves https://www.calentimer.com in production without redirecting to localhost');
+
+  global.window.location = { origin: 'http://localhost:3000' };
+  assert(microsoftCalendarAdapter.getRedirectUri() === 'http://localhost:3000', 'Resolves http://localhost:3000 in development');
+
+  global.window.location = { origin: 'https://calentimer.com/' };
+  assert(microsoftCalendarAdapter.getRedirectUri() === 'https://calentimer.com', 'Strips trailing slash from origin');
+
   console.log('\n--- 11. Testing WebCrypto subtle.digest SHA-256 Polyfill (MSAL PKCE Support) ---');
   const { ensureWebCryptoPolyfill } = await import('./cryptoPolyfill.js');
   assert(typeof ensureWebCryptoPolyfill === 'function', 'ensureWebCryptoPolyfill is a function');

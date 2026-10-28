@@ -254,6 +254,8 @@ assert(msAdapterContent.includes('MICROSOFT_CALENDAR_COLORS'), 'microsoftCalenda
 assert(msAdapterContent.includes('fetchCalendarList('), 'microsoftCalendarAdapter.js implements fetchCalendarList()');
 assert(msAdapterContent.includes('_resolveEventColor('), 'microsoftCalendarAdapter.js implements _resolveEventColor()');
 assert(msAdapterContent.includes('classifyEvent('), 'microsoftCalendarAdapter.js implements semantic word classification');
+assert(msAdapterContent.includes('getRedirectUri('), 'microsoftCalendarAdapter.js implements dynamic getRedirectUri()');
+assert(!oauthConfigContent.includes("redirectUri: 'http://localhost:3000'"), 'oauthConfig.js does not hardcode localhost redirectUri');
 
 // Microsoft WebCrypto / MSAL PKCE subtle.digest polyfill verification
 const cryptoPolyfillContent = fs.readFileSync(path.resolve(process.cwd(), 'cryptoPolyfill.js'), 'utf8');

@@ -96,6 +96,7 @@ export class MicrosoftCalendarAdapter {
     const isMockFromConfig = Boolean(OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.useMock);
     this.useMock = (typeof opts.useMock !== 'undefined') ? Boolean(opts.useMock) : isMockFromConfig;
     this._mockEvents = [];
+    this._currentMsalRedirectUri = null;
   }
 
   /**
@@ -139,6 +140,42 @@ export class MicrosoftCalendarAdapter {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Resolves the active OAuth redirect URI.
+   * Dynamically uses the current browser origin (e.g. https://www.calentimer.com,
+   * https://calentimer.com, or http://localhost:3000) so production sessions never
+   * get redirected back to localhost.
+   * @returns {string}
+   */
+  getRedirectUri() {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      const currentOrigin = String(window.location.origin).replace(/\/+$/, '');
+      const configuredUri = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.redirectUri)
+        ? String(OAUTH_CONFIG.microsoft.redirectUri).trim().replace(/\/+$/, '')
+        : '';
+
+      // If a specific redirect URI is explicitly configured AND matches current origin hostname, honor it
+      if (configuredUri && configuredUri.indexOf('http') === 0) {
+        try {
+          const parsedConfig = new URL(configuredUri);
+          const parsedCurrent = new URL(currentOrigin);
+          if (parsedConfig.hostname === parsedCurrent.hostname) {
+            return configuredUri;
+          }
+        } catch (_) {}
+      }
+
+      // Default dynamically to active current browser origin
+      return currentOrigin;
+    }
+
+    if (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.redirectUri) {
+      return String(OAUTH_CONFIG.microsoft.redirectUri).trim().replace(/\/+$/, '');
+    }
+
+    return 'http://localhost:3000';
   }
 
   /**
@@ -229,7 +266,7 @@ export class MicrosoftCalendarAdapter {
 
       // 3. Protocol Check
       if (typeof window !== 'undefined' && window.location && window.location.protocol === 'file:') {
-        reject(new Error('Microsoft Sign-In requires serving Calentimer over HTTP/HTTPS (e.g. http://localhost:3000), not file://.'));
+        reject(new Error('Microsoft Sign-In requires serving Calentimer over HTTP/HTTPS (e.g. https://www.calentimer.com or http://localhost:3000), not file://.'));
         return;
       }
 
@@ -262,21 +299,20 @@ export class MicrosoftCalendarAdapter {
           resolve(demoToken);
           return;
         }
-        reject(new Error('Microsoft Authentication Library (MSAL) is not loaded. Ensure you are connected to the internet and serving over http://localhost:3000.'));
+        reject(new Error('Microsoft Authentication Library (MSAL) is not loaded. Ensure you are connected to the internet and serving over HTTP/HTTPS.'));
         return;
       }
 
       try {
-        const configRedirectUri = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.redirectUri)
-          ? OAUTH_CONFIG.microsoft.redirectUri
-          : ((typeof window !== 'undefined' && window.location) ? window.location.origin : 'http://localhost:3000');
+        const activeRedirectUri = this.getRedirectUri();
 
-        if (!this.msalInstance) {
+        if (!this.msalInstance || this._currentMsalRedirectUri !== activeRedirectUri) {
+          this._currentMsalRedirectUri = activeRedirectUri;
           this.msalInstance = new window.msal.PublicClientApplication({
             auth: {
               clientId: this.clientId,
               authority: 'https://login.microsoftonline.com/common',
-              redirectUri: configRedirectUri,
+              redirectUri: activeRedirectUri,
               navigateToLoginRequestUrl: false
             },
             cache: {
@@ -292,6 +328,7 @@ export class MicrosoftCalendarAdapter {
 
         const loginRequest = {
           scopes: loginScopes,
+          redirectUri: activeRedirectUri,
           prompt: 'select_account'
         };
 
@@ -328,7 +365,8 @@ export class MicrosoftCalendarAdapter {
           if (accounts && accounts.length > 0) {
             this.msalInstance.acquireTokenSilent({
               scopes: loginScopes,
-              account: accounts[0]
+              account: accounts[0],
+              redirectUri: activeRedirectUri
             }).then(handleAuthSuccess).catch(() => {
               doPopupLogin();
             });

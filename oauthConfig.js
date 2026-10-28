@@ -2,7 +2,7 @@
  * oauthConfig.js
  * 
  * Centralized Developer OAuth 2.0 Configuration for Calentimer.
- * Pre-configured for development on http://localhost:3000.
+ * Automatically adapts between production (https://www.calentimer.com) and local development (http://localhost:3000).
  * End users never have to configure or see these credentials.
  * Strictly zero optional chaining and zero nullish coalescing operators.
  */
@@ -17,7 +17,8 @@ export const OAUTH_CONFIG = {
     // Microsoft Application (client) ID configured for two-way sync
     clientId: '15001074-5d3f-42d1-97fd-f61ea17c5be9',
     scopes: ['Calendars.ReadWrite', 'User.Read'],
-    redirectUri: 'http://localhost:3000',
+    // Dynamic redirect URI: null defaults dynamically to current origin (https://www.calentimer.com or http://localhost:3000)
+    redirectUri: null,
     useMock: false
   }
 };
