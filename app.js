@@ -870,7 +870,13 @@ function updateScheduleUI(schedule) {
 
   const todayFinishLine = document.getElementById('todayFinishLine');
   if (todayFinishLine) {
-    todayFinishLine.style.display = isTimespans ? 'block' : 'none';
+    todayFinishLine.style.display = 'block';
+    const timeEl = document.getElementById('todayFinishLineTime');
+    if (timeEl) {
+      timeEl.textContent = (typeof taskStore !== 'undefined' && typeof taskStore.getHardStop === 'function')
+        ? (taskStore.getHardStop() || '18:00')
+        : '18:00';
+    }
   }
 
   if (schedule.isCompressed) {
@@ -1722,6 +1728,13 @@ function setupControls() {
     });
   }
 
+  const todayFinishLine = document.getElementById('todayFinishLine');
+  if (todayFinishLine) {
+    todayFinishLine.addEventListener('click', () => {
+      openHardStopModal();
+    });
+  }
+
   if (hardStopInput) {
     hardStopInput.addEventListener('change', (e) => {
       syncHardStopValue(e.target.value);
@@ -1931,7 +1944,6 @@ function setupControls() {
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.remove('hidden');
     scrollToCenterActiveTask();
     mobileServices.hapticTap();
-    checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   };
 
   closeTaskDrawer = function() {
@@ -1972,7 +1984,7 @@ function setupControls() {
 
   function onDrawerTouchStart(e) {
     if (isNavSwiping) return;
-    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
+    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact')) {
       isDrawerTouching = false;
       isDrawerPullingDown = false;
       isDrawerPullingUp = false;
@@ -1998,7 +2010,7 @@ function setupControls() {
       isDrawerTouching = false;
       return;
     }
-    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
+    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact')) {
       isDrawerTouching = false;
       if (isDrawerPullingDown || isDrawerPullingUp) {
         taskDrawer.style.removeProperty('transform');
@@ -2296,8 +2308,8 @@ function setupCalendarModalPullToDismiss() {
   const onTouchStart = (e) => {
     // If user is actively dragging to reorder tasks or swiping horizontally to delete, do not start pull-down
     if (isDraggingTask || isSwipingCardToDelete) return;
-    // Exclude emoji badges, action buttons, delete action button, and interactive inputs
-    if (e.target.closest('.calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input, textarea, select')) return;
+    // Exclude emoji badges, action buttons, delete action button, interactive inputs, and drag handles
+    if (e.target.closest('.calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input, textarea, select, [data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact, .calendar-block-left')) return;
     if (!e.touches || e.touches.length !== 1) return;
 
     const activeScroll = modal.querySelector('.modal-body');
@@ -3003,6 +3015,46 @@ function checkAndPromptScheduleConflict(tasks) {
   }
 }
 
+function promptConflictForTask(taskId, taskList) {
+  if (!taskId) return;
+  const tasks = taskList || ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks()) || [];
+  if (tasks.length < 2) {
+    openTaskEditModal(taskId);
+    return;
+  }
+  const targetTask = tasks.find(t => t.id === taskId);
+  if (!targetTask || !targetTask.startTime || !targetTask.endTime) {
+    openTaskEditModal(taskId);
+    return;
+  }
+
+  const tStart = parseTimeToMinutes(targetTask.startTime);
+  let tEnd = parseTimeToMinutes(targetTask.endTime);
+  if (tEnd <= tStart) tEnd += 1440;
+
+  for (let i = 0; i < tasks.length; i++) {
+    const other = tasks[i];
+    if (other.id === taskId) continue;
+    if (!other.startTime || !other.endTime) continue;
+    const oStart = parseTimeToMinutes(other.startTime);
+    let oEnd = parseTimeToMinutes(other.endTime);
+    if (oEnd <= oStart) oEnd += 1440;
+
+    if (tStart < oEnd && oStart < tEnd) {
+      const idxTarget = tasks.findIndex(t => t.id === targetTask.id);
+      const idxOther = tasks.findIndex(t => t.id === other.id);
+      if (tStart <= oStart) {
+        openScheduleConflictModal(targetTask, other, idxTarget, idxOther);
+      } else {
+        openScheduleConflictModal(other, targetTask, idxOther, idxTarget);
+      }
+      return;
+    }
+  }
+
+  openTaskEditModal(taskId);
+}
+
 function openScheduleConflictModal(taskA, taskB, idxA, idxB) {
   const modalBackdrop = document.getElementById('scheduleConflictModalBackdrop');
   if (!modalBackdrop) return;
@@ -3279,6 +3331,7 @@ function renderTaskList(tasks) {
   const isAllCompleted = runtime.status === TimerStatus.COMPLETED;
 
   // Detect schedule overlaps in linear pipeline
+  const conflictingTaskIds = new Set();
   const overlapIndices = new Set();
   for (let i = 0; i < tasks.length; i++) {
     const tA = tasks[i];
@@ -3295,8 +3348,12 @@ function renderTaskList(tasks) {
       if (bEnd <= bStart) bEnd += 1440;
 
       if (aStart < bEnd && bStart < aEnd) {
+        conflictingTaskIds.add(tA.id);
+        conflictingTaskIds.add(tB.id);
         const laterIdx = bStart >= aStart ? j : i;
-        overlapIndices.add(laterIdx);
+        if (!overlapIndices.has(laterIdx - 1)) {
+          overlapIndices.add(laterIdx);
+        }
       }
     }
   }
@@ -3570,6 +3627,21 @@ function renderTaskList(tasks) {
     if (_editBtn) {
       _editBtn.addEventListener('click', (e) => {
         if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]')) return;
+        if (conflictingTaskIds.has(task.id)) {
+          promptConflictForTask(task.id, tasks);
+          return;
+        }
+        openTaskEditModal(task.id);
+      });
+    }
+
+    const _bottomRow = card.querySelector('.task-card-bottom-row');
+    if (_bottomRow) {
+      _bottomRow.addEventListener('click', (e) => {
+        if (conflictingTaskIds.has(task.id)) {
+          promptConflictForTask(task.id, tasks);
+          return;
+        }
         openTaskEditModal(task.id);
       });
     }
@@ -3704,7 +3776,15 @@ function applyTheme(theme) {
 // ==========================================
 // Emoji Picker Modal Logic
 // ==========================================
-const CURATED_EMOJIS = ['📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃', '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌'];
+const CURATED_EMOJIS = [
+  '📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃',
+  '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌',
+  '👥', '🎓', '🩺', '🌿', '🎉', '✈️', '🍱', '💰', '🥞', '🥪', '😴', '🐛',
+  '🚀', '🗄️', '🔀', '🏊', '🚴', '🧘', '🥾', '🎾', '⚽', '🏀', '🥊', '🏛️',
+  '📄', '🤝', '📞', '🍻', '🎬', '🎮', '🎵', '🎂', '❤️', '🚆', '🚌', '🚗',
+  '🏨', '🧳', '🍽️', '🍕', '🛒', '🧺', '✂️', '📦', '🐾', '🌱', '⭐', '🗓️', '💡',
+  '🕒'
+];
 let currentEmojiTaskId = null;
 let currentAddTaskEmoji = '📚';
 let currentTodoEmoji = '📌';
@@ -4251,7 +4331,6 @@ function openCalendar() {
   updateScheduleUI(runtime.currentSchedule);
   updateActiveTaskDisplay();
   updateTimespansButtonUI();
-  checkAndPromptScheduleConflict((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
   }
@@ -4390,6 +4469,36 @@ function renderCalendarModal() {
     }
   }
 
+  // Detect schedule overlaps for calendar modal
+  const calConflictingIds = new Set();
+  const calIndentedIndices = new Set();
+
+  for (let i = 0; i < tasks.length; i++) {
+    const tA = tasks[i];
+    if (!tA.startTime || !tA.endTime) continue;
+    const aStart = parseTimeToMinutes(tA.startTime);
+    let aEnd = parseTimeToMinutes(tA.endTime);
+    if (aEnd <= aStart) aEnd += 1440;
+
+    for (let j = i + 1; j < tasks.length; j++) {
+      const tB = tasks[j];
+      if (!tB.startTime || !tB.endTime) continue;
+      const bStart = parseTimeToMinutes(tB.startTime);
+      let bEnd = parseTimeToMinutes(tB.endTime);
+      if (bEnd <= bStart) bEnd += 1440;
+
+      if (aStart < bEnd && bStart < aEnd) {
+        calConflictingIds.add(tA.id);
+        calConflictingIds.add(tB.id);
+
+        const laterIdx = bStart >= aStart ? j : i;
+        if (!calIndentedIndices.has(laterIdx - 1)) {
+          calIndentedIndices.add(laterIdx);
+        }
+      }
+    }
+  }
+
   tasks.forEach((task, idx) => {
     const isImmovable = Boolean(task.isLocked);
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
@@ -4412,8 +4521,9 @@ function renderCalendarModal() {
       ? `🔒 Locked (${task.startTime || task.fixedStartTime || 'Fixed timing'})`
       : '🔓 Unlocked (Flexible)';
 
+    const isCalOverlap = calIndentedIndices.has(idx);
     const wrapper = document.createElement('div');
-    wrapper.className = 'calendar-item-wrapper';
+    wrapper.className = `calendar-item-wrapper ${isCalOverlap ? 'is-schedule-overlap' : ''}`;
     wrapper.setAttribute('data-id', task.id);
     wrapper.setAttribute('data-index', idx);
 
@@ -4731,7 +4841,12 @@ function renderCalendarModal() {
       if (e.target.closest('[data-action="toggle-calendar-time-bank"]') ||
           e.target.closest('[data-action="toggle-calendar-lock"]') ||
           e.target.closest('[data-action="pick-calendar-emoji"]') ||
-          e.target.closest('[data-action="drag-handle"]')) {
+          e.target.closest('[data-action="drag-handle"]') ||
+          e.target.closest('[data-action="locked-drag-attempt"]')) {
+        return;
+      }
+      if (calConflictingIds.has(task.id)) {
+        promptConflictForTask(task.id, tasks);
         return;
       }
       openTaskEditModal(task.id);
@@ -4763,7 +4878,13 @@ function renderCalendarModal() {
   });
 
   if (finishLine) {
-    finishLine.style.display = isTimespans ? 'flex' : 'none';
+    finishLine.style.display = 'flex';
+    const calInput = document.getElementById('calendarHardStopInput');
+    if (calInput) {
+      calInput.value = (typeof taskStore !== 'undefined' && typeof taskStore.getHardStop === 'function')
+        ? (taskStore.getHardStop() || '18:00')
+        : '18:00';
+    }
   }
 }
 

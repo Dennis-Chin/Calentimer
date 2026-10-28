@@ -211,6 +211,39 @@ const cssContent = fs.readFileSync(path.resolve(process.cwd(), 'style.css'), 'ut
 const hasDayLockedOrangeBoxShadow = cssContent.includes('.day-event-card.is-locked') && cssContent.match(/\.day-event-card\.is-locked[^{]*\{[^}]*#f59e0b/);
 assert(!hasDayLockedOrangeBoxShadow, 'style.css has zero static orange borders or box-shadows on .day-event-card.is-locked');
 
+console.log('\n--- 6. Testing Touch Scrolling, Overlap Indentation & Hard Stop Regression ---');
+// Touch-action on drag handles must be pan-y !important to allow native vertical scrolling
+assert(cssContent.includes('.drag-handle') && cssContent.includes('touch-action: pan-y !important;'), '.drag-handle has touch-action: pan-y !important;');
+assert(cssContent.includes('.drag-handle-locked') && cssContent.includes('touch-action: pan-y !important;'), '.drag-handle-locked has touch-action: pan-y !important;');
+assert(cssContent.includes('.drag-handle-compact') && cssContent.includes('touch-action: pan-y !important;'), '.drag-handle-compact has touch-action: pan-y !important;');
+assert(cssContent.includes('.drag-handle-locked-compact') && cssContent.includes('touch-action: pan-y !important;'), '.drag-handle-locked-compact has touch-action: pan-y !important;');
+
+// Today & Calendar finish lines display unconditionally in sequential & chronological modes
+assert(appContent.includes("todayFinishLine.style.display = 'block';"), "todayFinishLine displays unconditionally in sequential & chronological modes");
+assert(appContent.includes("finishLine.style.display = 'flex';"), "calendarFinishLine displays unconditionally in sequential & chronological modes");
+
+// Finish lines have tap/click listeners that launch openHardStopModal
+assert(appContent.includes("todayFinishLine.addEventListener('click', () => {") && appContent.includes("openHardStopModal();"), "todayFinishLine has click listener opening Hard Stop modal");
+assert(appContent.includes("calendarFinishLine.addEventListener('click', () => {") && appContent.includes("openHardStopModal();"), "calendarFinishLine has click listener opening Hard Stop modal");
+
+// Overlap popup only triggered on click, not auto-prompted on opening schedule tabs
+const openDrawerSlice = appContent.slice(appContent.indexOf('openTaskDrawer = function()'), appContent.indexOf('closeTaskDrawer = function()'));
+assert(!openDrawerSlice.includes('checkAndPromptScheduleConflict'), 'openTaskDrawer does not auto-prompt overlap conflict');
+const openCalSlice = appContent.slice(appContent.indexOf('function openCalendar()'), appContent.indexOf('function closeCalendar()'));
+assert(!openCalSlice.includes('checkAndPromptScheduleConflict'), 'openCalendar does not auto-prompt overlap conflict');
+
+// Overlap conflict resolution triggered on task card tap via promptConflictForTask
+assert(appContent.includes('function promptConflictForTask('), 'app.js defines promptConflictForTask()');
+assert(appContent.includes('promptConflictForTask(task.id, tasks);'), 'renderTaskList & renderCalendarModal trigger promptConflictForTask on tap');
+
+// Overlap indentation alternates so second overlapping event does not also indent
+assert(appContent.includes('!overlapIndices.has(laterIdx - 1)'), 'renderTaskList alternates overlap indentation');
+assert(appContent.includes('!calIndentedIndices.has(laterIdx - 1)'), 'renderCalendarModal alternates overlap indentation');
+assert(calContent.includes('eventCols[cB - 1] === 1') || calContent.includes('eventCols[k - 1] === 1'), 'calendarView.js alternates overlap columns');
+
+// Complete curated emojis palette matching classifier emojis
+assert(appContent.includes('CURATED_EMOJIS') && appContent.includes('🎓') && appContent.includes('🩺') && appContent.includes('✈️') && appContent.includes('🍽️') && appContent.includes('🍕'), 'CURATED_EMOJIS contains all classifier domain emojis');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

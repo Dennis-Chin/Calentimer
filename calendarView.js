@@ -1932,6 +1932,38 @@ export class CalendarView {
       return this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
     });
 
+    // Calculate overlapping column layout (0 = left/earlier, 1 = right/indented)
+    // Rule: If an event indents due to overlapping an event (col 1),
+    // an event below it that also overlaps does NOT also indent (stays in col 0).
+    const eventCols = [];
+    const hasOverlap = [];
+    for (let cIdx = 0; cIdx < visibleEvents.length; cIdx++) {
+      eventCols.push(0);
+      hasOverlap.push(false);
+    }
+
+    for (let cA = 0; cA < visibleEvents.length; cA++) {
+      const evA = visibleEvents[cA];
+      const aStart = this._parseTimeToMinutes(evA.startTime);
+      const aEnd = this._parseTimeToMinutes(evA.endTime);
+
+      for (let cB = cA + 1; cB < visibleEvents.length; cB++) {
+        const evB = visibleEvents[cB];
+        const bStart = this._parseTimeToMinutes(evB.startTime);
+        const bEnd = this._parseTimeToMinutes(evB.endTime);
+
+        if (aStart < bEnd && bStart < aEnd) {
+          hasOverlap[cA] = true;
+          hasOverlap[cB] = true;
+          if (eventCols[cB - 1] === 1) {
+            eventCols[cB] = 0;
+          } else {
+            eventCols[cB] = (eventCols[cA] === 0) ? 1 : 0;
+          }
+        }
+      }
+    }
+
     // Render Event Cards Absolutely Positioned with Overlap Indentation
     for (let j = 0; j < visibleEvents.length; j++) {
       const ev = visibleEvents[j];
@@ -1946,22 +1978,8 @@ export class CalendarView {
       const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
       const heightPx = Math.max(26, (dur / 60) * hourHeight);
 
-      // Check if overlapping with any earlier-starting event
-      let isLaterOverlap = false;
-      for (let k = 0; k < j; k++) {
-        const other = visibleEvents[k];
-        const otherStart = this._parseTimeToMinutes(other.startTime);
-        const otherEnd = this._parseTimeToMinutes(other.endTime);
-        if (startMin < otherEnd && endMin > otherStart) {
-          isLaterOverlap = true;
-          const earlierCard = body.querySelector(`[data-event-id="${other.id}"]`);
-          if (earlierCard) {
-            earlierCard.classList.add('is-overlapping-earlier');
-            this._applyEventCardLayout(earlierCard, parseInt(earlierCard.style.height, 10) || 40);
-          }
-          break;
-        }
-      }
+      const isLaterOverlap = hasOverlap[j] && (eventCols[j] === 1);
+      const isEarlierOverlap = hasOverlap[j] && (eventCols[j] === 0);
 
       // Check if event corresponds to completed or currently active timer task
       let isDone = false;
@@ -1995,7 +2013,7 @@ export class CalendarView {
       }
 
       const card = document.createElement('div');
-      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
+      card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isEarlierOverlap ? 'is-overlapping-earlier' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
       card.style.top = `${topPx}px`;
       card.style.borderLeftColor = ev.color || this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
@@ -2176,6 +2194,36 @@ export class CalendarView {
 
       const eventsForDate = allEvents.filter(e => e.date === dStr);
 
+      // Precompute overlapping column layout for week day
+      const weekEventCols = [];
+      const weekHasOverlap = [];
+      for (let cIdx = 0; cIdx < eventsForDate.length; cIdx++) {
+        weekEventCols.push(0);
+        weekHasOverlap.push(false);
+      }
+
+      for (let cA = 0; cA < eventsForDate.length; cA++) {
+        const evA = eventsForDate[cA];
+        const aStart = this._parseTimeToMinutes(evA.startTime);
+        const aEnd = this._parseTimeToMinutes(evA.endTime);
+
+        for (let cB = cA + 1; cB < eventsForDate.length; cB++) {
+          const evB = eventsForDate[cB];
+          const bStart = this._parseTimeToMinutes(evB.startTime);
+          const bEnd = this._parseTimeToMinutes(evB.endTime);
+
+          if (aStart < bEnd && bStart < aEnd) {
+            weekHasOverlap[cA] = true;
+            weekHasOverlap[cB] = true;
+            if (weekEventCols[cB - 1] === 1) {
+              weekEventCols[cB] = 0;
+            } else {
+              weekEventCols[cB] = (weekEventCols[cA] === 0) ? 1 : 0;
+            }
+          }
+        }
+      }
+
       for (let j = 0; j < eventsForDate.length; j++) {
         const ev = eventsForDate[j];
         const startMin = this._parseTimeToMinutes(ev.startTime);
@@ -2189,24 +2237,11 @@ export class CalendarView {
           const top = Math.max(0, (cardStartHour - startHour) * hourHeight) + 1;
           const height = Math.max(14, ((durationMin / 60) * hourHeight) - 2);
 
-          // Check if overlapping with earlier event in same day
-          let isLaterOverlap = false;
-          for (let k = 0; k < j; k++) {
-            const other = eventsForDate[k];
-            const otherStart = this._parseTimeToMinutes(other.startTime);
-            const otherEnd = this._parseTimeToMinutes(other.endTime);
-            if (startMin < otherEnd && endMin > otherStart) {
-              isLaterOverlap = true;
-              const earlierCard = dayCol.querySelector(`[data-event-id="${other.id}"]`);
-              if (earlierCard) {
-                earlierCard.classList.add('is-overlapping-earlier');
-              }
-              break;
-            }
-          }
+          const isLaterOverlap = weekHasOverlap[j] && (weekEventCols[j] === 1);
+          const isEarlierOverlap = weekHasOverlap[j] && (weekEventCols[j] === 0);
 
           const card = document.createElement('div');
-          card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''}`;
+          card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isEarlierOverlap ? 'is-overlapping-earlier' : ''}`;
           card.style.top = `${top}px`;
           card.style.height = `${height}px`;
           card.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
