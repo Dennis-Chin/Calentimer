@@ -209,6 +209,9 @@ const elementRegistry = {};
 function getOrCreateMockElement(id) {
   if (!elementRegistry[id]) {
     elementRegistry[id] = createMockElement('div', id);
+    if (id && id.endsWith('Backdrop')) {
+      elementRegistry[id].classList.add('hidden');
+    }
   }
   return elementRegistry[id];
 }
@@ -1086,6 +1089,101 @@ assert(todayLineInSlide !== null, 'Dynamic current time line is rendered on slid
 const lockBtnInSlide = todaySlide.querySelector('.cal-event-lock-btn');
 assert(lockBtnInSlide !== null, 'Padlock element is rendered on day event card during swipe in preview slide');
 calendar.closeEventInspector();
+
+console.log('\n--- 14. Testing External Calendar Visibility Filtering & Header Toggles ---');
+const phase3TodayStr = calendar._formatDateISO(new Date());
+
+taskStore.saveCalendarEvents([
+  {
+    id: 'test-local-1',
+    title: 'Local Standup',
+    date: phase3TodayStr,
+    startTime: '09:00',
+    endTime: '09:30',
+    plannedDuration: 30,
+    provider: 'local',
+    isLocked: false
+  },
+  {
+    id: 'test-google-1',
+    title: 'Google Architecture Sync',
+    date: phase3TodayStr,
+    startTime: '10:00',
+    endTime: '11:00',
+    plannedDuration: 60,
+    provider: 'google',
+    externalId: 'gcal_123',
+    isLocked: true
+  },
+  {
+    id: 'test-ms-1',
+    title: 'Microsoft 365 Review',
+    date: phase3TodayStr,
+    startTime: '14:00',
+    endTime: '15:00',
+    plannedDuration: 60,
+    provider: 'microsoft',
+    externalId: 'ms_456',
+    isLocked: true
+  }
+]);
+
+// 1. Both Google and Microsoft visible by default
+taskStore.setGoogleCalendarVisible(true);
+taskStore.setMicrosoftCalendarVisible(true);
+let visibleEvents = calendar._getVisibleCalendarEvents();
+assert(visibleEvents.length === 3, 'All 3 events returned when both providers visible');
+assert(visibleEvents.some(e => e.id === 'test-local-1'), 'Local event is present');
+assert(visibleEvents.some(e => e.id === 'test-google-1'), 'Google event is present');
+assert(visibleEvents.some(e => e.id === 'test-ms-1'), 'Microsoft event is present');
+
+// 2. Hide Google
+taskStore.setGoogleCalendarVisible(false);
+visibleEvents = calendar._getVisibleCalendarEvents();
+assert(visibleEvents.length === 2, '2 events returned when Google is muted');
+assert(!visibleEvents.some(e => e.id === 'test-google-1'), 'Google event is excluded when muted');
+assert(visibleEvents.some(e => e.id === 'test-local-1'), 'Local event remains present');
+assert(visibleEvents.some(e => e.id === 'test-ms-1'), 'Microsoft event remains present');
+
+// 3. Hide Microsoft as well
+taskStore.setMicrosoftCalendarVisible(false);
+visibleEvents = calendar._getVisibleCalendarEvents();
+assert(visibleEvents.length === 1, 'Only 1 event returned when both Google & Microsoft are muted');
+assert(visibleEvents[0].id === 'test-local-1', 'Only local event remains visible');
+
+// 4. Re-enable Google
+taskStore.setGoogleCalendarVisible(true);
+visibleEvents = calendar._getVisibleCalendarEvents();
+assert(visibleEvents.length === 2, '2 events returned when Google re-enabled');
+assert(visibleEvents.some(e => e.id === 'test-google-1'), 'Google event is visible again');
+assert(!visibleEvents.some(e => e.id === 'test-ms-1'), 'Microsoft event remains filtered out');
+
+// 5. Test Quick Toggle Buttons in Header
+taskStore.setGoogleCalendarConnected(true);
+taskStore.setGoogleCalendarVisible(true);
+taskStore.setMicrosoftCalendarConnected(false);
+
+calendar.updateProviderToggleUI();
+const btnGoogle = calendar.elements.btnToggleGoogleCal;
+const btnMs = calendar.elements.btnToggleMicrosoftCal;
+
+assert(btnGoogle.classList.contains('is-connected'), 'Google button has is-connected class');
+assert(btnGoogle.classList.contains('is-active'), 'Google button has is-active class');
+assert(!btnGoogle.classList.contains('is-muted'), 'Google button is not muted');
+assert(btnMs.classList.contains('is-unconnected'), 'Microsoft button has is-unconnected class');
+
+// Click Google toggle: toggles visibility to muted
+btnGoogle.dispatchSimulatedEvent('click');
+assert(taskStore.getGoogleCalendarVisible() === false, 'Tapping active Google toggle sets visibility to false');
+assert(btnGoogle.classList.contains('is-muted'), 'Google button receives is-muted class after toggle');
+
+// Click Microsoft toggle while unconnected: opens Connect Modal
+const connectBackdrop = calendar.elements.connectModalBackdrop;
+assert(connectBackdrop.classList.contains('hidden'), 'Connect modal is hidden initially');
+btnMs.dispatchSimulatedEvent('click');
+assert(!connectBackdrop.classList.contains('hidden'), 'Tapping unconnected Microsoft button opens Connect Modal');
+calendar.closeConnectModal();
+assert(connectBackdrop.classList.contains('hidden'), 'closeConnectModal() hides the modal');
 
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);

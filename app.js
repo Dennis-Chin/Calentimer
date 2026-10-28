@@ -12,6 +12,7 @@ import { mobileServices } from './mobileServices.js';
 import { formatMinutesToTime, parseTimeToMinutes } from './schedulerEngine.js';
 import { analytics } from './analyticsDb.js';
 import { calendarView } from './calendarView.js';
+import { calendarSyncService } from './calendarSyncService.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -215,6 +216,30 @@ function initApp() {
     setupNavigationAndModals();
     calendarView.init();
     setupScheduleConflictModal();
+
+    if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.init === 'function') {
+      calendarSyncService.init();
+      calendarSyncService.onSyncStatusChange((isSyncing, details) => {
+        if (calendarView && typeof calendarView.updateProviderToggleUI === 'function') {
+          calendarView.updateProviderToggleUI();
+        }
+        if (typeof window.syncCalendarSettingsUI === 'function') {
+          window.syncCalendarSettingsUI();
+        }
+      });
+    }
+
+    // Startup Onboarding Prompt (if not skipped and neither provider connected)
+    const skipPrompt = (typeof taskStore.getSkipConnectPrompt === 'function') ? taskStore.getSkipConnectPrompt() : false;
+    const googleConn = (typeof taskStore.getGoogleCalendarConnected === 'function') ? taskStore.getGoogleCalendarConnected() : false;
+    const msConn = (typeof taskStore.getMicrosoftCalendarConnected === 'function') ? taskStore.getMicrosoftCalendarConnected() : false;
+    if (!skipPrompt && !googleConn && !msConn) {
+      setTimeout(() => {
+        if (calendarView && typeof calendarView.openConnectModal === 'function') {
+          calendarView.openConnectModal();
+        }
+      }, 700);
+    }
 
     taskStore.onChange(() => {
       if (runtime) {
@@ -1890,9 +1915,11 @@ function setupControls() {
 
   openTaskDrawer = function() {
     ensureHistoryBuffer();
-    taskStore.syncScheduleAndCalendar();
-    runtime.initialTasks = taskStore.getTasks();
-    runtime.recalculate();
+    if (!runtime || runtime.status === TimerStatus.IDLE) {
+      taskStore.syncScheduleAndCalendar();
+      runtime.initialTasks = taskStore.getTasks();
+      runtime.recalculate();
+    }
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
     renderCalendarModal();
     updateScheduleUI(runtime.currentSchedule);
@@ -3218,11 +3245,18 @@ function getCategoryHexColor(category) {
     case 'study': return '#7c3aed';
     case 'break': return '#d97706';
     case 'personal': return '#0d9488';
+    case 'meeting': return '#d946ef';
+    case 'health':
     case 'exercise':
     case 'fitness': return '#e11d48';
     case 'reading': return '#0891b2';
     case 'coding':
     case 'dev': return '#4f46e5';
+    case 'social': return '#ec4899';
+    case 'travel': return '#0284c7';
+    case 'food':
+    case 'dining': return '#f97316';
+    case 'finance': return '#10b981';
     default: return '#8b5cf6';
   }
 }
@@ -3341,15 +3375,21 @@ function renderTaskList(tasks) {
     let statusClass = 'task-pending';
     let statusBadge = '';
 
-    if (isAllCompleted || isPastTask || (!isTimespans && (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex))) {
+    if (isCurrentActive) {
+      statusClass = 'task-current';
+      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
+    } else if (isAllCompleted || (isPastTask && !isCurrentActive) || (!isTimespans && (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex))) {
       statusClass = 'task-completed';
       statusBadge = '<span class="task-status-pill completed">✓ Done</span>';
-    } else if ((isCurrentTask || idx === activeIdx) && !isAllCompleted) {
+    } else if (isCurrentTask && !isAllCompleted && !isRunning && !isPaused) {
+      statusClass = 'task-current';
+      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
+    } else if (idx === activeIdx && !isAllCompleted && !isPastTask) {
       statusClass = 'task-current';
       statusBadge = '<span class="task-status-pill current">▶ Active</span>';
     } else {
       statusClass = 'task-pending';
-      const catHex = getCategoryHexColor(task.category);
+      const catHex = task.color || getCategoryHexColor(task.category);
       statusBadge = isBreak
         ? '<span class="task-status-pill break-pill">☕ Break</span>'
         : `<span class="task-status-pill pending" style="background:${hexToRgba(catHex, 0.18)};color:${catHex};border:1px solid ${hexToRgba(catHex, 0.45)};">⏳ Todo</span>`;
@@ -3359,11 +3399,16 @@ function renderTaskList(tasks) {
     card.setAttribute('data-id', task.id);
     card.setAttribute('data-index', idx);
 
+    const catHex = task.color || getCategoryHexColor(task.category);
     if (statusClass === 'task-pending') {
-      const catHex = getCategoryHexColor(task.category);
       card.style.background = hexToRgba(catHex, 0.12);
       card.style.borderColor = hexToRgba(catHex, 0.35);
       card.style.borderLeft = `5px solid ${catHex}`;
+    } else if (statusClass === 'task-current') {
+      card.style.background = '#142329';
+      card.style.borderColor = '#00f0ff';
+      card.style.borderLeft = '5px solid #00f0ff';
+      card.style.boxShadow = '0 0 16px rgba(0, 240, 255, 0.25)';
     }
 
     const isCompressed = task.allocatedDuration < task.plannedDuration;
@@ -3436,7 +3481,7 @@ function renderTaskList(tasks) {
           ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'} • ${durationText}`
           : `⏱️ ${durationText} <span class="task-timing-indicator" style="opacity: 0.65; font-size: 0.72rem; margin-left: 6px; font-weight: 500;">(${seqTimeSpans[idx] ? `${seqTimeSpans[idx].start} → ${seqTimeSpans[idx].end}` : ''})</span>`
         }</span>
-        <span class="task-category-chip">${escapeHtml(task.category || 'General')}</span>
+        <span class="task-category-chip" style="${catHex ? 'background:' + hexToRgba(catHex, 0.18) + ';color:' + catHex + ';border:1px solid ' + hexToRgba(catHex, 0.45) + ';' : ''}">${escapeHtml(task.category || 'General')}</span>
       </div>
     `;
 
@@ -4196,9 +4241,11 @@ function openCalendar() {
   calendarView.close();
   const navItemFullCalendar = document.getElementById('navItemFullCalendar');
   if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
-  taskStore.syncScheduleAndCalendar();
-  runtime.initialTasks = taskStore.getTasks();
-  runtime.recalculate();
+  if (!runtime || runtime.status === TimerStatus.IDLE) {
+    taskStore.syncScheduleAndCalendar();
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+  }
   renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
   renderCalendarModal();
   updateScheduleUI(runtime.currentSchedule);
@@ -4353,7 +4400,9 @@ function renderCalendarModal() {
     const catColor = getCategoryColor(task.category);
 
     let statusClass = 'pending';
-    if (task.isCompleted || (runtime.activeTaskIndex > 0 && idx < activeIdx)) {
+    if (isCurrentActive) {
+      statusClass = 'current';
+    } else if (task.isCompleted || (runtime.activeTaskIndex > 0 && idx < activeIdx)) {
       statusClass = 'completed';
     } else if (idx === activeIdx) {
       statusClass = 'current';
@@ -4377,15 +4426,22 @@ function renderCalendarModal() {
     item.setAttribute('data-id', task.id);
     item.setAttribute('data-index', idx);
 
+    const catHex = task.color || getCategoryHexColor(task.category);
     if (statusClass === 'pending') {
-      const catHex = getCategoryHexColor(task.category);
       const tint = hexToRgba(catHex, 0.12);
       const isLight = (document.documentElement && document.documentElement.getAttribute('data-theme') === 'light') || (document.body && document.body.getAttribute('data-theme') === 'light');
       const baseBg = isLight ? '#ffffff' : '#141822';
       item.style.background = `linear-gradient(${tint}, ${tint}), ${baseBg}`;
       item.style.borderColor = hexToRgba(catHex, 0.35);
       item.style.borderLeft = `4px solid ${catHex}`;
+    } else if (statusClass === 'current') {
+      item.style.background = '#142329';
+      item.style.borderColor = '#00f0ff';
+      item.style.borderLeft = '4px solid #00f0ff';
+      item.style.boxShadow = '0 0 14px rgba(0, 240, 255, 0.25)';
     }
+
+    const pillStyle = `background:${hexToRgba(catHex, 0.2)};border:1px solid ${hexToRgba(catHex, 0.45)};color:${catHex};`;
 
     item.innerHTML = `
       <div class="calendar-block-left">
@@ -4417,7 +4473,7 @@ function renderCalendarModal() {
         </div>
         <div class="calendar-main-line2">
           <span class="calendar-time-range">${isTimespans ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'}` : `${seqTimeSpans[idx] ? `${seqTimeSpans[idx].start} → ${seqTimeSpans[idx].end}` : ''}`}</span>
-          <span class="calendar-category-pill" style="background:${catColor.bg};border:1px solid ${catColor.border};color:${catColor.text};">${escapeHtml(task.category || 'General')}</span>
+          <span class="calendar-category-pill" style="${pillStyle}">${escapeHtml(task.category || 'General')}</span>
         </div>
       </div>
 
@@ -6214,6 +6270,14 @@ function setupNavigationAndModals() {
   const calStartTimeInput = document.getElementById('calStartTimeInput');
   const calEndTimeInput = document.getElementById('calEndTimeInput');
 
+  const settingsGoogleStatus = document.getElementById('settingsGoogleStatus');
+  const btnSettingsGoogleConnect = document.getElementById('btnSettingsGoogleConnect');
+  const settingsMSStatus = document.getElementById('settingsMSStatus');
+  const btnSettingsMSConnect = document.getElementById('btnSettingsMSConnect');
+  const toggleAutoSyncEnabled = document.getElementById('toggleAutoSyncEnabled');
+  const settingsLastSyncDesc = document.getElementById('settingsLastSyncDesc');
+  const btnSettingsSyncAll = document.getElementById('btnSettingsSyncAll');
+
   function syncCalendarSettingsUI() {
     if (toggleCalRangeEnabled) {
       toggleCalRangeEnabled.checked = taskStore.getCalendarCustomRangeEnabled();
@@ -6224,7 +6288,69 @@ function setupNavigationAndModals() {
     if (calEndTimeInput) {
       calEndTimeInput.value = taskStore.getCalendarEndTime();
     }
+
+    // Google Calendar Settings State
+    const isGoogleConnected = (typeof taskStore.getGoogleCalendarConnected === 'function')
+      ? taskStore.getGoogleCalendarConnected()
+      : false;
+    if (settingsGoogleStatus) {
+      if (isGoogleConnected) {
+        const email = (typeof taskStore.getGoogleUserEmail === 'function') ? taskStore.getGoogleUserEmail() : null;
+        settingsGoogleStatus.textContent = email ? ('Connected (' + email + ')') : 'Connected';
+      } else {
+        settingsGoogleStatus.textContent = 'Not connected';
+      }
+    }
+    if (btnSettingsGoogleConnect) {
+      if (isGoogleConnected) {
+        btnSettingsGoogleConnect.textContent = 'Disconnect';
+        btnSettingsGoogleConnect.classList.add('is-connected');
+      } else {
+        btnSettingsGoogleConnect.textContent = 'Connect';
+        btnSettingsGoogleConnect.classList.remove('is-connected');
+      }
+    }
+
+    // Microsoft Calendar Settings State
+    const isMSConnected = (typeof taskStore.getMicrosoftCalendarConnected === 'function')
+      ? taskStore.getMicrosoftCalendarConnected()
+      : false;
+    if (settingsMSStatus) {
+      if (isMSConnected) {
+        const email = (typeof taskStore.getMicrosoftUserEmail === 'function') ? taskStore.getMicrosoftUserEmail() : null;
+        settingsMSStatus.textContent = email ? ('Connected (' + email + ')') : 'Connected';
+      } else {
+        settingsMSStatus.textContent = 'Not connected';
+      }
+    }
+    if (btnSettingsMSConnect) {
+      if (isMSConnected) {
+        btnSettingsMSConnect.textContent = 'Disconnect';
+        btnSettingsMSConnect.classList.add('is-connected');
+      } else {
+        btnSettingsMSConnect.textContent = 'Connect';
+        btnSettingsMSConnect.classList.remove('is-connected');
+      }
+    }
+
+    // Auto-Sync Toggle
+    if (toggleAutoSyncEnabled && typeof taskStore.getAutoSyncEnabled === 'function') {
+      toggleAutoSyncEnabled.checked = taskStore.getAutoSyncEnabled();
+    }
+
+    // Last Synced Timestamp
+    if (settingsLastSyncDesc && typeof taskStore.getLastSyncTimestamp === 'function') {
+      const lastSync = taskStore.getLastSyncTimestamp('all');
+      if (lastSync && typeof lastSync === 'number' && lastSync > 0) {
+        const d = new Date(lastSync);
+        const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        settingsLastSyncDesc.textContent = 'Last synced: ' + timeStr;
+      } else {
+        settingsLastSyncDesc.textContent = 'Last synced: Never';
+      }
+    }
   }
+  window.syncCalendarSettingsUI = syncCalendarSettingsUI;
 
   if (settingRowCalendar && calendarSettingsSubPanel) {
     settingRowCalendar.addEventListener('click', () => {
@@ -6286,6 +6412,172 @@ function setupNavigationAndModals() {
       if (calendarView) calendarView.render();
     }
   });
+
+  // Google Settings Connect / Disconnect Action
+  if (btnSettingsGoogleConnect) {
+    btnSettingsGoogleConnect.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      const isConnected = taskStore.getGoogleCalendarConnected();
+      if (isConnected) {
+        await calendarSyncService.disconnectProvider('google');
+        showToastNotification('Google Calendar disconnected');
+        syncCalendarSettingsUI();
+        if (calendarView) {
+          calendarView.updateProviderToggleUI();
+          calendarView.render();
+        }
+      } else {
+        try {
+          btnSettingsGoogleConnect.textContent = 'Connecting...';
+          btnSettingsGoogleConnect.disabled = true;
+          await calendarSyncService.connectProvider('google');
+          btnSettingsGoogleConnect.disabled = false;
+          syncCalendarSettingsUI();
+          if (calendarView) {
+            calendarView.updateProviderToggleUI();
+            calendarView.openSyncConfirmModal('Google');
+          }
+          showToastNotification('Google Calendar connected!');
+        } catch (err) {
+          btnSettingsGoogleConnect.disabled = false;
+          syncCalendarSettingsUI();
+          showToastNotification('Failed to connect Google: ' + (err && err.message ? err.message : 'Error'));
+        }
+      }
+    });
+  }
+
+  // Microsoft Settings Connect / Disconnect Action
+  if (btnSettingsMSConnect) {
+    btnSettingsMSConnect.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      const isConnected = taskStore.getMicrosoftCalendarConnected();
+      if (isConnected) {
+        await calendarSyncService.disconnectProvider('microsoft');
+        showToastNotification('Microsoft Calendar disconnected');
+        syncCalendarSettingsUI();
+        if (calendarView) {
+          calendarView.updateProviderToggleUI();
+          calendarView.render();
+        }
+      } else {
+        try {
+          btnSettingsMSConnect.textContent = 'Connecting...';
+          btnSettingsMSConnect.disabled = true;
+          await calendarSyncService.connectProvider('microsoft');
+          btnSettingsMSConnect.disabled = false;
+          syncCalendarSettingsUI();
+          if (calendarView) {
+            calendarView.updateProviderToggleUI();
+            calendarView.openSyncConfirmModal('Microsoft');
+          }
+          showToastNotification('Microsoft Calendar connected!');
+        } catch (err) {
+          btnSettingsMSConnect.disabled = false;
+          syncCalendarSettingsUI();
+          showToastNotification('Failed to connect Microsoft: ' + (err && err.message ? err.message : 'Error'));
+        }
+      }
+    });
+  }
+
+  // Auto-Sync Toggle Switch
+  if (toggleAutoSyncEnabled) {
+    toggleAutoSyncEnabled.addEventListener('change', () => {
+      taskStore.setAutoSyncEnabled(toggleAutoSyncEnabled.checked);
+      mobileServices.hapticTap();
+      if (toggleAutoSyncEnabled.checked) {
+        calendarSyncService.startAutoSync();
+        showToastNotification('Background Auto-Sync enabled');
+      } else {
+        calendarSyncService.stopAutoSync();
+        showToastNotification('Background Auto-Sync disabled');
+      }
+    });
+  }
+
+  // Settings Manual Sync Button
+  if (btnSettingsSyncAll) {
+    btnSettingsSyncAll.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      btnSettingsSyncAll.textContent = 'Syncing...';
+      btnSettingsSyncAll.disabled = true;
+      try {
+        await calendarSyncService.syncAll();
+        btnSettingsSyncAll.textContent = 'Sync Now';
+        btnSettingsSyncAll.disabled = false;
+        syncCalendarSettingsUI();
+        if (calendarView) calendarView.render();
+        showToastNotification('✓ Calendar sync complete');
+      } catch (err) {
+        btnSettingsSyncAll.textContent = 'Sync Now';
+        btnSettingsSyncAll.disabled = false;
+        showToastNotification('Sync error: ' + (err && err.message ? err.message : 'Failed'));
+      }
+    });
+  }
+
+  // Connect Modal Buttons (Google & Microsoft)
+  const btnConnectGoogle = document.getElementById('btnConnectGoogle');
+  if (btnConnectGoogle) {
+    btnConnectGoogle.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      if (calendarView && typeof calendarView.closeConnectModal === 'function') {
+        calendarView.closeConnectModal();
+      }
+      try {
+        await calendarSyncService.connectProvider('google');
+        syncCalendarSettingsUI();
+        if (calendarView) {
+          calendarView.updateProviderToggleUI();
+          calendarView.openSyncConfirmModal('Google');
+        }
+        showToastNotification('Google Calendar connected!');
+      } catch (err) {
+        showToastNotification('Failed to connect Google: ' + (err && err.message ? err.message : 'Error'));
+      }
+    });
+  }
+
+  const btnConnectMicrosoft = document.getElementById('btnConnectMicrosoft');
+  if (btnConnectMicrosoft) {
+    btnConnectMicrosoft.addEventListener('click', async () => {
+      mobileServices.hapticTap();
+      if (calendarView && typeof calendarView.closeConnectModal === 'function') {
+        calendarView.closeConnectModal();
+      }
+      try {
+        await calendarSyncService.connectProvider('microsoft');
+        syncCalendarSettingsUI();
+        if (calendarView) {
+          calendarView.updateProviderToggleUI();
+          calendarView.openSyncConfirmModal('Microsoft');
+        }
+        showToastNotification('Microsoft Calendar connected!');
+      } catch (err) {
+        showToastNotification('Failed to connect Microsoft: ' + (err && err.message ? err.message : 'Error'));
+      }
+    });
+  }
+
+  // Sync Confirmation Modal Button
+  const btnConfirmSyncNow = document.getElementById('btnConfirmSyncNow');
+  if (btnConfirmSyncNow) {
+    btnConfirmSyncNow.addEventListener('click', async () => {
+      mobileServices.hapticCelebration();
+      if (calendarView && typeof calendarView.closeSyncConfirmModal === 'function') {
+        calendarView.closeSyncConfirmModal();
+      }
+      try {
+        await calendarSyncService.syncAll();
+        syncCalendarSettingsUI();
+        if (calendarView) calendarView.render();
+        showToastNotification('✓ Events synced successfully!');
+      } catch (err) {
+        showToastNotification('Sync error: ' + (err && err.message ? err.message : 'Failed'));
+      }
+    });
+  }
 
   // Active Task Card tap to Add Task when idle
   if (activeTaskTitle) {

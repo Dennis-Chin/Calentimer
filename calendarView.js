@@ -9,6 +9,7 @@
 import { taskStore } from './taskStore.js';
 import { mobileServices } from './mobileServices.js';
 import { analytics } from './analyticsDb.js';
+import { calendarSyncService } from './calendarSyncService.js';
 
 export class CalendarView {
   constructor() {
@@ -102,7 +103,23 @@ export class CalendarView {
       lockIcon: document.getElementById('calEventLockIcon'),
       btnSendToToday: document.getElementById('btnSendCalEventToToday'),
       btnDeleteEvent: document.getElementById('btnDeleteCalEvent'),
-      btnSaveCalEvent: document.getElementById('btnSaveCalEvent')
+      btnSaveCalEvent: document.getElementById('btnSaveCalEvent'),
+
+      // Phase 3: External Calendar Quick Toggles & Modals
+      btnToggleGoogleCal: document.getElementById('btnToggleGoogleCal'),
+      btnToggleMicrosoftCal: document.getElementById('btnToggleMicrosoftCal'),
+      googleStatusDot: document.getElementById('googleStatusDot'),
+      msStatusDot: document.getElementById('msStatusDot'),
+      connectModalBackdrop: document.getElementById('calendarConnectModalBackdrop'),
+      connectModal: document.getElementById('calendarConnectModal'),
+      btnCloseConnectModal: document.getElementById('btnCloseCalendarConnectModal'),
+      btnConnectGoogle: document.getElementById('btnConnectGoogle'),
+      btnConnectMicrosoft: document.getElementById('btnConnectMicrosoft'),
+      btnSkipConnect: document.getElementById('btnSkipConnect'),
+      chkDontAskConnectStartup: document.getElementById('chkDontAskConnectStartup'),
+      confirmSyncNowModalBackdrop: document.getElementById('confirmSyncNowModalBackdrop'),
+      btnConfirmSyncNow: document.getElementById('btnConfirmSyncNow'),
+      btnDismissSyncNow: document.getElementById('btnDismissSyncNow')
     };
 
     this._bindEvents();
@@ -130,9 +147,13 @@ export class CalendarView {
       taskStore.onChange(() => {
         if (this.isOpen()) {
           this.render();
+        } else {
+          this.updateProviderToggleUI();
         }
       });
     }
+
+    this.updateProviderToggleUI();
   }
 
   isOpen() {
@@ -209,6 +230,73 @@ export class CalendarView {
       el.btnAddEvent.addEventListener('click', () => {
         const todayStr = this._formatDateISO(this.selectedDate || new Date());
         this.openEventInspector(null, todayStr);
+      });
+    }
+
+    // Phase 3: External Calendar Quick Toggles
+    if (el.btnToggleGoogleCal) {
+      el.btnToggleGoogleCal.addEventListener('click', () => {
+        const isConn = (typeof taskStore.getGoogleCalendarConnected === 'function')
+          ? taskStore.getGoogleCalendarConnected()
+          : false;
+        if (!isConn) {
+          this.openConnectModal();
+        } else {
+          const currentVis = (typeof taskStore.getGoogleCalendarVisible === 'function')
+            ? taskStore.getGoogleCalendarVisible()
+            : true;
+          taskStore.setGoogleCalendarVisible(!currentVis);
+          mobileServices.hapticTap();
+          this.render();
+          this._showToast(!currentVis ? 'Google Calendar shown' : 'Google Calendar hidden');
+        }
+      });
+    }
+
+    if (el.btnToggleMicrosoftCal) {
+      el.btnToggleMicrosoftCal.addEventListener('click', () => {
+        const isConn = (typeof taskStore.getMicrosoftCalendarConnected === 'function')
+          ? taskStore.getMicrosoftCalendarConnected()
+          : false;
+        if (!isConn) {
+          this.openConnectModal();
+        } else {
+          const currentVis = (typeof taskStore.getMicrosoftCalendarVisible === 'function')
+            ? taskStore.getMicrosoftCalendarVisible()
+            : true;
+          taskStore.setMicrosoftCalendarVisible(!currentVis);
+          mobileServices.hapticTap();
+          this.render();
+          this._showToast(!currentVis ? 'Microsoft Calendar shown' : 'Microsoft Calendar hidden');
+        }
+      });
+    }
+
+    // Connect & Sync Modals
+    if (el.btnCloseConnectModal) {
+      el.btnCloseConnectModal.addEventListener('click', () => this.closeConnectModal());
+    }
+    if (el.btnSkipConnect) {
+      el.btnSkipConnect.addEventListener('click', () => this.closeConnectModal());
+    }
+    if (el.connectModalBackdrop) {
+      el.connectModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === el.connectModalBackdrop) this.closeConnectModal();
+      });
+    }
+    if (el.chkDontAskConnectStartup) {
+      el.chkDontAskConnectStartup.addEventListener('change', () => {
+        if (typeof taskStore.setSkipConnectPrompt === 'function') {
+          taskStore.setSkipConnectPrompt(el.chkDontAskConnectStartup.checked);
+        }
+      });
+    }
+    if (el.btnDismissSyncNow) {
+      el.btnDismissSyncNow.addEventListener('click', () => this.closeSyncConfirmModal());
+    }
+    if (el.confirmSyncNowModalBackdrop) {
+      el.confirmSyncNowModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === el.confirmSyncNowModalBackdrop) this.closeSyncConfirmModal();
       });
     }
 
@@ -327,7 +415,11 @@ export class CalendarView {
     if (el.btnDeleteEvent) {
       el.btnDeleteEvent.addEventListener('click', () => {
         if (this.selectedEvent && this.selectedEvent.id) {
-          taskStore.deleteCalendarEvent(this.selectedEvent.id);
+          const evToDelete = this.selectedEvent;
+          taskStore.deleteCalendarEvent(evToDelete.id);
+          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+            calendarSyncService.pushEventDelete(evToDelete);
+          }
           mobileServices.hapticTap();
           this.closeEventInspector();
           this.render();
@@ -704,7 +796,7 @@ export class CalendarView {
     slide.style.zIndex = '12';
     slide.style.background = 'var(--bg-surface)';
 
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
 
     if (this.activeView === 'day') {
       const dayContainer = document.createElement('div');
@@ -840,7 +932,7 @@ export class CalendarView {
         const card = document.createElement('div');
         card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
         card.style.top = `${topPx}px`;
-        card.style.borderLeftColor = this._getCategoryColor(ev.category);
+        card.style.borderLeftColor = ev.color || this._getCategoryColor(ev.category);
         card.setAttribute('data-event-id', ev.id);
         if (isDone) {
           card.style.background = 'rgba(16, 185, 129, 0.22)';
@@ -848,6 +940,7 @@ export class CalendarView {
           card.style.background = 'rgba(0, 240, 255, 0.2)';
         }
         this._applyEventCardLayout(card, heightPx);
+        const catBadgeStyle = ev.color ? `background:${this._hexToRgba(ev.color, 0.2)};color:${ev.color};border:1px solid ${this._hexToRgba(ev.color, 0.45)};` : '';
         card.innerHTML = `
           <span class="day-event-emoji">${ev.emoji || '📅'}</span>
           <div class="day-event-content">
@@ -857,7 +950,7 @@ export class CalendarView {
             <div class="day-event-meta-line">
               <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
               <span class="event-duration-pill">(${dur}m)</span>
-              <span class="event-cat-pill">${this._escapeHtml(ev.category || 'Work')}</span>
+              <span class="event-cat-pill" style="${catBadgeStyle}">${this._escapeHtml(ev.category || 'Work')}</span>
             </div>
           </div>
           <div class="cal-event-lock-btn ${ev.isLocked ? 'is-locked' : ''}" style="pointer-events:none;">
@@ -976,7 +1069,7 @@ export class CalendarView {
             card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''}`;
             card.style.top = `${top}px`;
             card.style.height = `${height}px`;
-            card.style.backgroundColor = this._getCategoryColor(ev.category);
+            card.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
             const isCompact = height < 44;
             if (isCompact) {
               card.classList.add('is-compact-short');
@@ -1057,7 +1150,7 @@ export class CalendarView {
           const ev = eventsForDate[j];
           const pill = document.createElement('div');
           pill.className = `month-event-pill ${ev.isLocked ? 'is-locked' : ''}`;
-          pill.style.backgroundColor = this._getCategoryColor(ev.category);
+          pill.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
           pill.innerHTML = `
             <span class="event-title">${this._escapeHtml(ev.title)}</span>
             ${ev.isLocked && ev.title && ev.title.length <= 5 ? `<span>${padlockSvg}</span>` : ''}
@@ -1194,6 +1287,106 @@ export class CalendarView {
     }, { passive: false });
   }
 
+  // ==========================================
+  // Phase 3: External Calendar Provider Filter & Modals
+  // ==========================================
+
+  _getVisibleCalendarEvents() {
+    const allEvents = (typeof taskStore !== 'undefined' && typeof taskStore.getCalendarEvents === 'function')
+      ? (taskStore.getCalendarEvents() || [])
+      : [];
+    const isGoogleVis = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalendarVisible === 'function')
+      ? taskStore.getGoogleCalendarVisible()
+      : true;
+    const isMsVis = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalendarVisible === 'function')
+      ? taskStore.getMicrosoftCalendarVisible()
+      : true;
+
+    return allEvents.filter(ev => {
+      if (!ev) return false;
+      const prov = (ev.provider || ev.source) ? (ev.provider || ev.source) : 'local';
+      if (prov === 'google' && !isGoogleVis) return false;
+      if (prov === 'microsoft' && !isMsVis) return false;
+      return true;
+    });
+  }
+
+  updateProviderToggleUI() {
+    const el = this.elements;
+    if (!el || !el.btnToggleGoogleCal || !el.btnToggleMicrosoftCal) return;
+
+    const googleConn = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalendarConnected === 'function')
+      ? taskStore.getGoogleCalendarConnected()
+      : false;
+    const googleVis = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalendarVisible === 'function')
+      ? taskStore.getGoogleCalendarVisible()
+      : true;
+
+    el.btnToggleGoogleCal.classList.toggle('is-unconnected', !googleConn);
+    el.btnToggleGoogleCal.classList.toggle('is-connected', googleConn);
+    el.btnToggleGoogleCal.classList.toggle('is-active', googleConn && googleVis);
+    el.btnToggleGoogleCal.classList.toggle('is-muted', googleConn && !googleVis);
+    if (!googleConn) {
+      el.btnToggleGoogleCal.setAttribute('title', 'Google Calendar: Not connected (Click to connect)');
+    } else if (googleVis) {
+      el.btnToggleGoogleCal.setAttribute('title', 'Google Calendar: Active (Click to hide events)');
+    } else {
+      el.btnToggleGoogleCal.setAttribute('title', 'Google Calendar: Hidden (Click to show events)');
+    }
+
+    const msConn = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalendarConnected === 'function')
+      ? taskStore.getMicrosoftCalendarConnected()
+      : false;
+    const msVis = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalendarVisible === 'function')
+      ? taskStore.getMicrosoftCalendarVisible()
+      : true;
+
+    el.btnToggleMicrosoftCal.classList.toggle('is-unconnected', !msConn);
+    el.btnToggleMicrosoftCal.classList.toggle('is-connected', msConn);
+    el.btnToggleMicrosoftCal.classList.toggle('is-active', msConn && msVis);
+    el.btnToggleMicrosoftCal.classList.toggle('is-muted', msConn && !msVis);
+    if (!msConn) {
+      el.btnToggleMicrosoftCal.setAttribute('title', 'Microsoft Calendar: Not connected (Click to connect)');
+    } else if (msVis) {
+      el.btnToggleMicrosoftCal.setAttribute('title', 'Microsoft Calendar: Active (Click to hide events)');
+    } else {
+      el.btnToggleMicrosoftCal.setAttribute('title', 'Microsoft Calendar: Hidden (Click to show events)');
+    }
+  }
+
+  openConnectModal() {
+    const el = this.elements;
+    if (!el || !el.connectModalBackdrop) return;
+    if (el.chkDontAskConnectStartup && typeof taskStore !== 'undefined' && typeof taskStore.getSkipConnectPrompt === 'function') {
+      el.chkDontAskConnectStartup.checked = taskStore.getSkipConnectPrompt();
+    }
+    el.connectModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  closeConnectModal() {
+    const el = this.elements;
+    if (!el || !el.connectModalBackdrop) return;
+    el.connectModalBackdrop.classList.add('hidden');
+  }
+
+  openSyncConfirmModal(providerName) {
+    const el = this.elements;
+    if (!el || !el.confirmSyncNowModalBackdrop) return;
+    const descEl = document.getElementById('confirmSyncNowDesc');
+    if (descEl && providerName) {
+      descEl.textContent = `Sync your ${providerName} events now? We will import your upcoming schedule into Calentimer.`;
+    }
+    el.confirmSyncNowModalBackdrop.classList.remove('hidden');
+    mobileServices.hapticTap();
+  }
+
+  closeSyncConfirmModal() {
+    const el = this.elements;
+    if (!el || !el.confirmSyncNowModalBackdrop) return;
+    el.confirmSyncNowModalBackdrop.classList.add('hidden');
+  }
+
   _applyEventCardLayout(card, heightPx) {
     card.style.height = `${heightPx}px`;
 
@@ -1225,7 +1418,7 @@ export class CalendarView {
 
     const hourHeight = this.dayHourHeight || 56;
     const cards = body.querySelectorAll('.day-event-card');
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
 
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
@@ -1295,7 +1488,7 @@ export class CalendarView {
 
     // Update event cards positions and heights
     const cards = body.querySelectorAll('.week-event-card');
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
       const evId = card.getAttribute('data-event-id');
@@ -1558,6 +1751,7 @@ export class CalendarView {
   render(preserveScrollTop) {
     this._clearActiveResizeHandles();
     this._renderRangeLabel();
+    this.updateProviderToggleUI();
 
     if (this.activeView === 'day') {
       const currentScroll = (typeof preserveScrollTop === 'number')
@@ -1637,7 +1831,7 @@ export class CalendarView {
     const selStr = this._formatDateISO(sel);
     const isToday = this._isViewingToday();
 
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
     const eventsForDay = allEvents.filter(e => e.date === selStr);
 
     const isCustom = taskStore.getCalendarCustomRangeEnabled();
@@ -1803,7 +1997,7 @@ export class CalendarView {
       const card = document.createElement('div');
       card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
       card.style.top = `${topPx}px`;
-      card.style.borderLeftColor = this._getCategoryColor(ev.category);
+      card.style.borderLeftColor = ev.color || this._getCategoryColor(ev.category);
       card.setAttribute('data-event-id', ev.id);
       if (isDone) {
         card.style.background = 'rgba(16, 185, 129, 0.22)';
@@ -1812,6 +2006,7 @@ export class CalendarView {
       }
       this._applyEventCardLayout(card, heightPx);
 
+      const catBadgeStyle = ev.color ? `background:${this._hexToRgba(ev.color, 0.2)};color:${ev.color};border:1px solid ${this._hexToRgba(ev.color, 0.45)};` : '';
       // Top line purely for task title, line below for time span and duration
       card.innerHTML = `
         <span class="day-event-emoji">${ev.emoji || '📅'}</span>
@@ -1822,7 +2017,7 @@ export class CalendarView {
           <div class="day-event-meta-line">
             <span class="event-time-range">${ev.startTime} - ${ev.endTime}</span>
             <span class="event-duration-pill">(${dur}m)</span>
-            <span class="event-cat-pill">${this._escapeHtml(ev.category || 'Work')}</span>
+            <span class="event-cat-pill" style="${catBadgeStyle}">${this._escapeHtml(ev.category || 'Work')}</span>
           </div>
         </div>
         <button type="button" class="cal-event-lock-btn ${ev.isLocked ? 'is-locked' : ''}" data-action="toggle-lock" title="${ev.isLocked ? 'Fixed Schedule (Locked) - tap to unlock' : 'Flexible Schedule - tap to lock'}">
@@ -1849,10 +2044,13 @@ export class CalendarView {
           const currentLocked = Boolean(ev.isLocked);
           const newLocked = !currentLocked;
           const fixedStart = newLocked ? (ev.startTime || null) : null;
-          taskStore.updateCalendarEvent(ev.id, {
+          const updatedEv = taskStore.updateCalendarEvent(ev.id, {
             isLocked: newLocked,
             fixedStartTime: fixedStart
           });
+          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+            calendarSyncService.pushEventUpdate(updatedEv);
+          }
           mobileServices.hapticTap();
           this.render();
           this._showToast(newLocked ? '🔒 Event locked to fixed schedule' : '🔓 Event unlocked (flexible)');
@@ -1915,7 +2113,7 @@ export class CalendarView {
       headerRow.appendChild(colHeader);
     }
 
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
 
     const isCustom = taskStore.getCalendarCustomRangeEnabled();
     let startHour = 0;
@@ -2011,7 +2209,7 @@ export class CalendarView {
           card.className = `week-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''}`;
           card.style.top = `${top}px`;
           card.style.height = `${height}px`;
-          card.style.backgroundColor = this._getCategoryColor(ev.category);
+          card.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
           card.setAttribute('data-event-id', ev.id);
 
           const isCompact = height < 44;
@@ -2066,7 +2264,7 @@ export class CalendarView {
     if (startDayOfWeek === -1) startDayOfWeek = 6;
 
     const prevMonthLastDay = new Date(year, month, 0).getDate();
-    const allEvents = taskStore.getCalendarEvents();
+    const allEvents = this._getVisibleCalendarEvents();
 
     const totalCells = (startDayOfWeek + totalDays > 35) ? 42 : 35;
     const padlockSvg = `<svg class="cal-mini-lock-svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
@@ -2118,7 +2316,7 @@ export class CalendarView {
         const pill = document.createElement('div');
         pill.className = `month-event-pill ${ev.isLocked ? 'is-locked' : ''}`;
         pill.title = `${ev.title} (${ev.startTime} - ${ev.endTime})`;
-        pill.style.backgroundColor = this._getCategoryColor(ev.category);
+        pill.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
         pill.setAttribute('data-event-id', ev.id);
 
         // Solid background, NO emoji, task title only (clipped without ...)
@@ -2481,13 +2679,16 @@ export class CalendarView {
         const finalStartStr = self._formatMinutesToTime(finalStartMin);
         const finalEndStr = self._formatMinutesToTime(finalEndMin);
 
-        taskStore.updateCalendarEvent(ev.id, {
+        const updatedEv = taskStore.updateCalendarEvent(ev.id, {
           startTime: finalStartStr,
           endTime: finalEndStr,
           plannedDuration: finalDur,
           fixedStartTime: ev.isLocked ? finalStartStr : (ev.fixedStartTime ? finalStartStr : null),
           isLocked: Boolean(ev.isLocked)
         });
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+          calendarSyncService.pushEventUpdate(updatedEv);
+        }
 
         const todayStr = self._formatDateISO(new Date());
         if (ev.date === todayStr) {
@@ -3016,7 +3217,7 @@ export class CalendarView {
       const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
       const targetDateStr = this._formatDateISO(this.selectedDate || this.currentDate);
 
-      taskStore.updateCalendarEvent(ev.id, {
+      const updatedEv = taskStore.updateCalendarEvent(ev.id, {
         date: targetDateStr,
         startTime: newStartTime,
         endTime: newEndTime,
@@ -3024,6 +3225,9 @@ export class CalendarView {
         fixedStartTime: newStartTime,
         isLocked: Boolean(ev.isLocked)
       });
+      if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+        calendarSyncService.pushEventUpdate(updatedEv);
+      }
 
       // Check if newly placed event still overlaps with other events on targetDateStr
       let stillOverlaps = false;
@@ -3615,7 +3819,7 @@ export class CalendarView {
         const sMin = this._parseTimeToMinutes(dropTarget.startTime);
         const eMin = sMin + dur;
 
-        taskStore.updateCalendarEvent(ev.id, {
+        const updatedEv = taskStore.updateCalendarEvent(ev.id, {
           date: targetDate,
           startTime: dropTarget.startTime,
           endTime: dropTarget.endTime,
@@ -3623,6 +3827,9 @@ export class CalendarView {
           fixedStartTime: dropTarget.startTime,
           isLocked: Boolean(ev.isLocked)
         });
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+          calendarSyncService.pushEventUpdate(updatedEv);
+        }
 
         // Check if newly placed event still overlaps with other events on targetDate
         let stillOverlaps = false;
@@ -4079,12 +4286,15 @@ export class CalendarView {
       if (targetCell) {
         const targetDateStr = targetCell.getAttribute('data-date');
         if (targetDateStr && targetDateStr !== ev.date) {
-          taskStore.updateCalendarEvent(ev.id, {
+          const updatedEv = taskStore.updateCalendarEvent(ev.id, {
             date: targetDateStr,
             startTime: ev.startTime,
             endTime: ev.endTime,
             plannedDuration: ev.plannedDuration
           });
+          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+            calendarSyncService.pushEventUpdate(updatedEv);
+          }
           this.isDraggingEvent = false;
           mobileServices.hapticTap();
           this._showToast(`✓ Moved to ${targetDateStr} (${ev.startTime} - ${ev.endTime})`);
@@ -4509,7 +4719,7 @@ export class CalendarView {
 
     if (eventId) {
       // Update existing
-      taskStore.updateCalendarEvent(eventId, {
+      const updatedEv = taskStore.updateCalendarEvent(eventId, {
         title,
         date,
         startTime,
@@ -4520,10 +4730,13 @@ export class CalendarView {
         emoji: this.currentEmoji,
         category
       });
+      if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
+        calendarSyncService.pushEventUpdate(updatedEv);
+      }
       this._showToast('✓ Event updated');
     } else {
       // Add new
-      taskStore.addCalendarEvent({
+      const newEv = taskStore.addCalendarEvent({
         title,
         date,
         startTime,
@@ -4534,6 +4747,9 @@ export class CalendarView {
         emoji: this.currentEmoji,
         category
       });
+      if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventCreate === 'function') {
+        calendarSyncService.pushEventCreate(newEv);
+      }
       this._showToast('✓ Event created');
     }
 
@@ -4576,20 +4792,43 @@ export class CalendarView {
   // Helper Utilities
   // ==========================================
 
+  _hexToRgba(hex, alpha) {
+    const a = typeof alpha === 'number' ? alpha : 0.15;
+    if (!hex || typeof hex !== 'string' || hex.charAt(0) !== '#') {
+      return 'rgba(37, 99, 235, ' + a + ')';
+    }
+    let h = hex.slice(1);
+    if (h.length === 3) {
+      h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    }
+    const num = parseInt(h, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + a + ')';
+  }
+
   _getCategoryColor(category) {
     const cat = (category || 'general').trim().toLowerCase();
     switch (cat) {
       case 'work': return '#2563eb'; // Royal Blue
       case 'study': return '#7c3aed'; // Vibrant Purple
-      case 'break': return '#d97706'; // Amber
-      case 'personal': return '#0d9488'; // Deep Teal (Avoids light green reserved for completed tasks)
+      case 'break': return '#d97706'; // Amber (strictly reserved for breaks)
+      case 'personal': return '#0d9488'; // Deep Teal
+      case 'meeting': return '#d946ef'; // Vivid Fuchsia
+      case 'health':
       case 'exercise':
       case 'fitness': return '#e11d48'; // Rose
       case 'reading': return '#0891b2'; // Cyan
       case 'coding':
       case 'dev': return '#4f46e5'; // Indigo
+      case 'social': return '#ec4899'; // Pink
+      case 'travel': return '#0284c7'; // Sky Blue
+      case 'food':
+      case 'dining': return '#f97316'; // Coral / Food
+      case 'finance': return '#10b981'; // Emerald
       default: {
-        const colors = ['#2563eb', '#7c3aed', '#0d9488', '#d97706', '#0891b2', '#4f46e5', '#db2777', '#8b5cf6'];
+        const colors = ['#2563eb', '#7c3aed', '#0d9488', '#0891b2', '#4f46e5', '#db2777', '#8b5cf6', '#d946ef'];
         let hash = 0;
         for (let i = 0; i < cat.length; i++) {
           hash = cat.charCodeAt(i) + ((hash << 5) - hash);

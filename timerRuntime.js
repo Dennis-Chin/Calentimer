@@ -171,6 +171,8 @@ export class TimerRuntime {
           title: initTask.title,
           category: initTask.category,
           emoji: initTask.emoji,
+          color: initTask.color || null,
+          colorId: initTask.colorId || null,
           useTimeBank: initTask.useTimeBank !== false,
           tags: initTask.tags,
           fixedStartTime: initTask.fixedStartTime,
@@ -201,10 +203,10 @@ export class TimerRuntime {
       if (this.status === TimerStatus.IDLE) {
         this.currentSchedule = schedule;
       } else {
-        // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category) are reflected
+        // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category, color) are reflected
         const completedTasks = ((this.currentSchedule && this.currentSchedule.tasks) || []).slice(0, this.activeTaskIndex).map(t => {
           const orig = this.initialTasks.find(init => init.id === t.id);
-          return orig ? { ...t, emoji: orig.emoji, title: orig.title, category: orig.category } : t;
+          return orig ? { ...t, emoji: orig.emoji, title: orig.title, category: orig.category, color: orig.color, colorId: orig.colorId } : t;
         });
         this.currentSchedule = {
           ...schedule,
@@ -251,7 +253,9 @@ export class TimerRuntime {
       const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
         ? taskStore.getTimespansEnabled()
         : true;
-      if (isTimespans) {
+      if (this.activeTaskIndex >= 0 && this.activeTaskIndex < this.currentSchedule.tasks.length) {
+        // User explicitly focused or viewed this task on the timer screen: start this exact task!
+      } else if (isTimespans) {
         const targetIdx = this.getActiveTaskIndexByTime(this.currentSchedule.tasks);
         if (targetIdx < 0) {
           this._setStatus(TimerStatus.COMPLETED);
@@ -259,7 +263,7 @@ export class TimerRuntime {
           return { success: false, reason: 'ALL_TASKS_PAST' };
         }
         this.activeTaskIndex = targetIdx;
-      } else if (this.activeTaskIndex < 0) {
+      } else {
         this.activeTaskIndex = 0;
       }
       this._startTask(this.activeTaskIndex);
@@ -1014,6 +1018,14 @@ export class TimerRuntime {
   getActiveTask() {
     if (!this.currentSchedule || !this.currentSchedule.tasks || this.currentSchedule.tasks.length === 0) return null;
     if (this.status === TimerStatus.COMPLETED) return null;
+
+    // While timer is actively running or paused, the active task strictly remains the current task being timed
+    if (this.status === TimerStatus.RUNNING || this.status === TimerStatus.PAUSED) {
+      if (this.activeTaskIndex >= 0 && this.activeTaskIndex < this.currentSchedule.tasks.length) {
+        return this.currentSchedule.tasks[this.activeTaskIndex];
+      }
+    }
+
     const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
       ? taskStore.getTimespansEnabled()
       : true;
@@ -1049,7 +1061,7 @@ export class TimerRuntime {
         }
         return allTasks[nextIdx];
       }
-      return null;
+      return candidate || allTasks[0] || null;
     }
 
     let index = this.activeTaskIndex;

@@ -33,7 +33,12 @@ const targetFiles = [
   'mobileServices.js',
   'schedulerEngine.js',
   'analyticsDb.js',
-  'calendarView.js'
+  'calendarView.js',
+  'oauthConfig.js',
+  'googleCalendarAdapter.js',
+  'microsoftCalendarAdapter.js',
+  'calendarSyncService.js',
+  'eventClassifier.js'
 ];
 
 console.log('--- 1. Testing Mobile WebView Syntax Compatibility ---');

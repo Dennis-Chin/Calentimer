@@ -2311,22 +2311,22 @@ body {
   color: #b45309 !important;
 }
 
-.calendar-block.is-break-task:not(.completed) {
+.calendar-block.is-break-task:not(.completed):not(.current) {
   border-left: 3.5px solid #f59e0b !important;
   background: #221f1c !important;
 }
 
-[data-theme="light"] .calendar-block.is-break-task:not(.completed) {
+[data-theme="light"] .calendar-block.is-break-task:not(.completed):not(.current) {
   border-left: 3.5px solid #f59e0b !important;
   background: #fffbeb !important;
 }
 
-.task-card.is-break-task:not(.task-completed) {
+.task-card.is-break-task:not(.task-completed):not(.task-current) {
   border-left: 5px solid #f59e0b !important;
   background: #221f1c !important;
 }
 
-[data-theme="light"] .task-card.is-break-task:not(.task-completed) {
+[data-theme="light"] .task-card.is-break-task:not(.task-completed):not(.task-current) {
   border-left: 5px solid #f59e0b !important;
   background: #fffbeb !important;
 }
@@ -4179,7 +4179,180 @@ body {
 .cal-sub-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   z-index: 1;
+}
+
+.cal-provider-toggles {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-provider-box-btn {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+  user-select: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Default / Unconnected */
+.cal-provider-box-btn.is-unconnected {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  opacity: 0.5;
+}
+
+[data-theme="light"] .cal-provider-box-btn.is-unconnected {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  opacity: 0.55;
+}
+
+.cal-provider-box-btn:hover {
+  opacity: 0.9;
+  transform: scale(1.04);
+}
+
+.cal-provider-box-btn:active {
+  transform: scale(0.96);
+}
+
+/* Connected & Active (Visible) */
+.cal-provider-box-btn.is-connected.is-active#btnToggleGoogleCal {
+  border: 1.5px solid #4285F4;
+  background: rgba(66, 133, 244, 0.16);
+  box-shadow: 0 0 8px rgba(66, 133, 244, 0.38);
+  opacity: 1;
+}
+
+.cal-provider-box-btn.is-connected.is-active#btnToggleMicrosoftCal {
+  border: 1.5px solid #00A4EF;
+  background: rgba(0, 164, 239, 0.16);
+  box-shadow: 0 0 8px rgba(0, 164, 239, 0.38);
+  opacity: 1;
+}
+
+/* Connected & Muted (Hidden / Filtered off) */
+.cal-provider-box-btn.is-connected.is-muted {
+  opacity: 0.35;
+  border: 1.5px dashed rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: none;
+}
+
+[data-theme="light"] .cal-provider-box-btn.is-connected.is-muted {
+  border: 1.5px dashed rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Status indicator dot on the provider button */
+.provider-status-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
+  transition: background-color 0.2s ease;
+}
+
+.cal-provider-box-btn.is-connected.is-active .provider-status-dot {
+  background: #10b981;
+  box-shadow: 0 0 4px #10b981;
+}
+
+.cal-provider-box-btn.is-connected.is-muted .provider-status-dot {
+  background: #f59e0b;
+}
+
+.cal-provider-box-btn.is-unconnected .provider-status-dot {
+  display: none;
+}
+
+/* Settings section divider */
+.settings-section-divider {
+  display: flex;
+  align-items: center;
+  padding: 12px 2px 4px 2px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-top: 6px;
+}
+
+.settings-section-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Connect Provider Buttons */
+.btn-connect-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+  outline: none;
+}
+
+.btn-connect-google {
+  background: rgba(66, 133, 244, 0.12);
+  border: 1.5px solid rgba(66, 133, 244, 0.38);
+  color: #ffffff;
+}
+
+.btn-connect-google:hover,
+.btn-connect-google:active {
+  background: rgba(66, 133, 244, 0.25);
+  border-color: #4285F4;
+  box-shadow: 0 4px 14px rgba(66, 133, 244, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-connect-ms {
+  background: rgba(0, 164, 239, 0.12);
+  border: 1.5px solid rgba(0, 164, 239, 0.38);
+  color: #ffffff;
+}
+
+.btn-connect-ms:hover,
+.btn-connect-ms:active {
+  background: rgba(0, 164, 239, 0.25);
+  border-color: #00A4EF;
+  box-shadow: 0 4px 14px rgba(0, 164, 239, 0.35);
+  transform: translateY(-1px);
+}
+
+[data-theme="light"] .btn-connect-google {
+  color: #1e3a8a;
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+[data-theme="light"] .btn-connect-ms {
+  color: #0369a1;
+  background: #f0f9ff;
+  border-color: #7dd3fc;
 }
 
 .cal-nav-buttons-group {

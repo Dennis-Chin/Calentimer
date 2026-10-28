@@ -19,7 +19,18 @@ const STORAGE_KEYS = {
   CAL_START_TIME: 'calentimer_cal_start_time_v1',
   CAL_END_TIME: 'calentimer_cal_end_time_v1',
   DELETED_IDS: 'calentimer_deleted_ids_v1',
-  TIMESPANS_ENABLED: 'calentimer_timespans_enabled_v1'
+  TIMESPANS_ENABLED: 'calentimer_timespans_enabled_v1',
+  GOOGLE_CONNECTED: 'calentimer_google_connected_v1',
+  MS_CONNECTED: 'calentimer_ms_connected_v1',
+  GOOGLE_VISIBLE: 'calentimer_google_visible_v1',
+  MS_VISIBLE: 'calentimer_ms_visible_v1',
+  GOOGLE_SYNC_TOKEN: 'calentimer_google_sync_token_v1',
+  MS_DELTA_LINK: 'calentimer_ms_delta_link_v1',
+  AUTO_SYNC_ENABLED: 'calentimer_auto_sync_enabled_v1',
+  LAST_SYNC_TS: 'calentimer_last_sync_ts_v1',
+  SKIP_CONNECT_PROMPT: 'calentimer_skip_connect_prompt_v1',
+  GOOGLE_USER_EMAIL: 'calentimer_google_user_email_v1',
+  MS_USER_EMAIL: 'calentimer_ms_user_email_v1'
 };
 
 const memoryStorage = {};
@@ -959,8 +970,16 @@ export class TaskStore {
       useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : false,
       emoji: (eventData && eventData.emoji) ? eventData.emoji : '📅',
       category: (eventData && eventData.category) ? eventData.category : 'General',
-      source: (eventData && eventData.source) ? eventData.source : 'local',
+      provider: (eventData && eventData.provider) ? eventData.provider : ((eventData && eventData.source) ? eventData.source : 'local'),
+      source: (eventData && eventData.source) ? eventData.source : ((eventData && eventData.provider) ? eventData.provider : 'local'),
+      color: (eventData && eventData.color) ? eventData.color : null,
+      colorId: (eventData && eventData.colorId) ? eventData.colorId : null,
       externalId: (eventData && eventData.externalId) ? eventData.externalId : null,
+      externalCalendarId: (eventData && eventData.externalCalendarId) ? eventData.externalCalendarId : null,
+      etag: (eventData && eventData.etag) ? eventData.etag : null,
+      syncHash: (eventData && eventData.syncHash) ? eventData.syncHash : null,
+      lastSyncedAt: (eventData && typeof eventData.lastSyncedAt === 'number') ? eventData.lastSyncedAt : null,
+      isDirty: (eventData && eventData.isDirty !== undefined) ? Boolean(eventData.isDirty) : false,
       lastModified: now
     };
     current.push(newEvent);
@@ -1038,6 +1057,22 @@ export class TaskStore {
     return false;
   }
 
+  /**
+   * Retrieves a specific calendar event by its Calentimer ID.
+   * @param {string} id
+   * @returns {object|null}
+   */
+  getCalendarEventById(id) {
+    if (!id) return null;
+    const current = this.getCalendarEvents();
+    for (let i = 0; i < current.length; i++) {
+      if (current[i] && current[i].id === id) {
+        return current[i];
+      }
+    }
+    return null;
+  }
+
   // ==========================================
   // Schedule & Calendar Bi-directional Sync Bridge
   // ==========================================
@@ -1072,6 +1107,8 @@ export class TaskStore {
         useTimeBank: task.useTimeBank !== false,
         emoji: task.emoji || '📌',
         category: task.category || 'General',
+        color: task.color || null,
+        colorId: task.colorId || null,
         source: task.source || 'local',
         externalId: task.externalId || null,
         lastModified: task.lastModified || Date.now()
@@ -1104,6 +1141,8 @@ export class TaskStore {
         plannedDuration: calEvent.plannedDuration,
         category: calEvent.category,
         emoji: calEvent.emoji,
+        color: calEvent.color || null,
+        colorId: calEvent.colorId || null,
         isLocked: isEventLocked,
         useTimeBank: calEvent.useTimeBank !== false,
         fixedStartTime: fixedStart,
@@ -1182,6 +1221,8 @@ export class TaskStore {
             plannedDuration: calEvent.plannedDuration || 30,
             category: calEvent.category || 'General',
             emoji: calEvent.emoji || '📅',
+            color: calEvent.color || null,
+            colorId: calEvent.colorId || null,
             isLocked: isEventLocked,
             useTimeBank: calEvent.useTimeBank !== false,
             fixedStartTime: fixedStart,
@@ -1202,6 +1243,8 @@ export class TaskStore {
             existingTask.plannedDuration = calEvent.plannedDuration;
             existingTask.category = calEvent.category;
             existingTask.emoji = calEvent.emoji;
+            if (calEvent.color) existingTask.color = calEvent.color;
+            if (calEvent.colorId) existingTask.colorId = calEvent.colorId;
             existingTask.isLocked = isEventLocked;
             existingTask.useTimeBank = calEvent.useTimeBank !== false;
             existingTask.fixedStartTime = fixedStart;
@@ -1275,6 +1318,10 @@ export class TaskStore {
             if (existingEvent.useTimeBank !== (task.useTimeBank !== false)) { existingEvent.useTimeBank = task.useTimeBank !== false; updated = true; }
             if (task.startTime && existingEvent.startTime !== task.startTime) { existingEvent.startTime = task.startTime; updated = true; }
             if (task.endTime && existingEvent.endTime !== task.endTime) { existingEvent.endTime = task.endTime; updated = true; }
+            if (task.color && existingEvent.color !== task.color) { existingEvent.color = task.color; updated = true; }
+            if (task.colorId && existingEvent.colorId !== task.colorId) { existingEvent.colorId = task.colorId; updated = true; }
+            if (existingEvent.color && !task.color) { task.color = existingEvent.color; }
+            if (existingEvent.colorId && !task.colorId) { task.colorId = existingEvent.colorId; }
             const lockedState = Boolean(task.isLocked);
             if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
             if (updated) {
@@ -1364,6 +1411,205 @@ export class TaskStore {
 
   setTimespansEnabled(enabled) {
     safeSetItem(STORAGE_KEYS.TIMESPANS_ENABLED, Boolean(enabled) ? 'true' : 'false');
+    this._notify();
+  }
+
+  // ==========================================
+  // Phase 3: External Calendar Sync Settings
+  // ==========================================
+
+  getGoogleCalendarConnected() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.GOOGLE_CONNECTED);
+      return v === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setGoogleCalendarConnected(connected) {
+    safeSetItem(STORAGE_KEYS.GOOGLE_CONNECTED, Boolean(connected) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getMicrosoftCalendarConnected() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.MS_CONNECTED);
+      return v === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setMicrosoftCalendarConnected(connected) {
+    safeSetItem(STORAGE_KEYS.MS_CONNECTED, Boolean(connected) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getGoogleCalendarVisible() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.GOOGLE_VISIBLE);
+      if (v !== null) return v === 'true';
+    } catch (_) {}
+    return true; // Default visible
+  }
+
+  setGoogleCalendarVisible(visible) {
+    safeSetItem(STORAGE_KEYS.GOOGLE_VISIBLE, Boolean(visible) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getMicrosoftCalendarVisible() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.MS_VISIBLE);
+      if (v !== null) return v === 'true';
+    } catch (_) {}
+    return true; // Default visible
+  }
+
+  setMicrosoftCalendarVisible(visible) {
+    safeSetItem(STORAGE_KEYS.MS_VISIBLE, Boolean(visible) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getGoogleSyncToken() {
+    try {
+      return safeGetItem(STORAGE_KEYS.GOOGLE_SYNC_TOKEN) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  setGoogleSyncToken(token) {
+    if (token) {
+      safeSetItem(STORAGE_KEYS.GOOGLE_SYNC_TOKEN, String(token));
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.GOOGLE_SYNC_TOKEN);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.GOOGLE_SYNC_TOKEN];
+    }
+  }
+
+  getMicrosoftDeltaLink() {
+    try {
+      return safeGetItem(STORAGE_KEYS.MS_DELTA_LINK) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  setMicrosoftDeltaLink(link) {
+    if (link) {
+      safeSetItem(STORAGE_KEYS.MS_DELTA_LINK, String(link));
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.MS_DELTA_LINK);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.MS_DELTA_LINK];
+    }
+  }
+
+  getAutoSyncEnabled() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.AUTO_SYNC_ENABLED);
+      if (v !== null) return v === 'true';
+    } catch (_) {}
+    return true; // Default enabled
+  }
+
+  setAutoSyncEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.AUTO_SYNC_ENABLED, Boolean(enabled) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getLastSyncTimestamp(provider) {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.LAST_SYNC_TS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          const key = provider || 'all';
+          return parsed[key] || null;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  setLastSyncTimestamp(provider, ts) {
+    try {
+      let record = {};
+      const raw = safeGetItem(STORAGE_KEYS.LAST_SYNC_TS);
+      if (raw) {
+        try { record = JSON.parse(raw) || {}; } catch (_) {}
+      }
+      const key = provider || 'all';
+      record[key] = ts || Date.now();
+      safeSetItem(STORAGE_KEYS.LAST_SYNC_TS, JSON.stringify(record));
+      this._notify();
+    } catch (_) {}
+  }
+
+  getSkipConnectPrompt() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.SKIP_CONNECT_PROMPT);
+      return v === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setSkipConnectPrompt(skip) {
+    safeSetItem(STORAGE_KEYS.SKIP_CONNECT_PROMPT, Boolean(skip) ? 'true' : 'false');
+    this._notify();
+  }
+
+  getGoogleUserEmail() {
+    try {
+      return safeGetItem(STORAGE_KEYS.GOOGLE_USER_EMAIL) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  setGoogleUserEmail(email) {
+    if (email) {
+      safeSetItem(STORAGE_KEYS.GOOGLE_USER_EMAIL, String(email).trim());
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.GOOGLE_USER_EMAIL);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.GOOGLE_USER_EMAIL];
+    }
+    this._notify();
+  }
+
+  getMicrosoftUserEmail() {
+    try {
+      return safeGetItem(STORAGE_KEYS.MS_USER_EMAIL) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  setMicrosoftUserEmail(email) {
+    if (email) {
+      safeSetItem(STORAGE_KEYS.MS_USER_EMAIL, String(email).trim());
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.MS_USER_EMAIL);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.MS_USER_EMAIL];
+    }
     this._notify();
   }
 }
