@@ -38,7 +38,8 @@ const targetFiles = [
   'googleCalendarAdapter.js',
   'microsoftCalendarAdapter.js',
   'calendarSyncService.js',
-  'eventClassifier.js'
+  'eventClassifier.js',
+  'cryptoPolyfill.js'
 ];
 
 console.log('--- 1. Testing Mobile WebView Syntax Compatibility ---');
@@ -253,6 +254,14 @@ assert(msAdapterContent.includes('MICROSOFT_CALENDAR_COLORS'), 'microsoftCalenda
 assert(msAdapterContent.includes('fetchCalendarList('), 'microsoftCalendarAdapter.js implements fetchCalendarList()');
 assert(msAdapterContent.includes('_resolveEventColor('), 'microsoftCalendarAdapter.js implements _resolveEventColor()');
 assert(msAdapterContent.includes('classifyEvent('), 'microsoftCalendarAdapter.js implements semantic word classification');
+
+// Microsoft WebCrypto / MSAL PKCE subtle.digest polyfill verification
+const cryptoPolyfillContent = fs.readFileSync(path.resolve(process.cwd(), 'cryptoPolyfill.js'), 'utf8');
+assert(cryptoPolyfillContent.includes('function ensureWebCryptoPolyfill'), 'cryptoPolyfill.js defines ensureWebCryptoPolyfill');
+assert(cryptoPolyfillContent.includes('sha256Buffer('), 'cryptoPolyfill.js implements sha256Buffer');
+assert(cryptoPolyfillContent.includes('SubtleCrypto polyfill only supports SHA-256'), 'cryptoPolyfill.js provides SubtleCrypto digest implementation');
+assert(htmlContent.includes('cryptoPolyfill.js'), 'index.html includes cryptoPolyfill.js');
+assert(msAdapterContent.includes("from './cryptoPolyfill.js'"), 'microsoftCalendarAdapter.js imports cryptoPolyfill.js');
 
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

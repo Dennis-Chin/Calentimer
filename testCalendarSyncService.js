@@ -534,6 +534,58 @@ if (typeof global.document === 'undefined') {
   assert(Array.isArray(calList) && calList.length >= 1, 'fetchCalendarList returns active calendars');
   assert(Boolean(calList[0].hexColor || calList[0].backgroundColor), 'Calendar has theme color');
 
+  console.log('\n--- 11. Testing WebCrypto subtle.digest SHA-256 Polyfill (MSAL PKCE Support) ---');
+  const { ensureWebCryptoPolyfill } = await import('./cryptoPolyfill.js');
+  assert(typeof ensureWebCryptoPolyfill === 'function', 'ensureWebCryptoPolyfill is a function');
+
+  const testScope = {};
+  ensureWebCryptoPolyfill(testScope);
+  assert(Boolean(testScope.crypto), 'testScope.crypto initialized');
+  assert(typeof testScope.crypto.getRandomValues === 'function', 'testScope.crypto.getRandomValues polyfilled');
+  assert(Boolean(testScope.crypto.subtle), 'testScope.crypto.subtle initialized');
+  assert(typeof testScope.crypto.subtle.digest === 'function', 'testScope.crypto.subtle.digest is a function');
+
+  // Test getRandomValues randomness & bounds
+  const randBytes = new Uint8Array(16);
+  testScope.crypto.getRandomValues(randBytes);
+  let allZero = true;
+  for (let i = 0; i < randBytes.length; i++) {
+    if (randBytes[i] !== 0) allZero = false;
+    assert(randBytes[i] >= 0 && randBytes[i] <= 255, `randBytes[${i}] within uint8 range`);
+  }
+  assert(!allZero, 'getRandomValues populated non-zero pseudorandom bytes');
+
+  // Helper to convert ArrayBuffer to hex string
+  function bufToHex(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i].toString(16).padStart(2, '0');
+    }
+    return hex;
+  }
+
+  // Test standard NIST vector for "abc"
+  const digestAbc = await testScope.crypto.subtle.digest('SHA-256', 'abc');
+  const hexAbc = bufToHex(digestAbc);
+  assert(hexAbc === 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', 'SHA-256("abc") matches standard NIST hash vector');
+
+  // Test Uint8Array input with object algorithm { name: 'SHA-256' }
+  const textBytes = new Uint8Array([104, 101, 108, 108, 111]); // "hello"
+  const digestHello = await testScope.crypto.subtle.digest({ name: 'SHA-256' }, textBytes);
+  const hexHello = bufToHex(digestHello);
+  assert(hexHello === '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824', 'SHA-256("hello") matches standard NIST hash vector');
+
+  // Test unsupported algorithm rejection
+  let unsupportedCaught = false;
+  try {
+    await testScope.crypto.subtle.digest('MD5', 'abc');
+  } catch (err) {
+    unsupportedCaught = true;
+    assert(Boolean(err && err.message && err.message.indexOf('SHA-256') !== -1), 'Rejects non-SHA-256 algorithm gracefully');
+  }
+  assert(unsupportedCaught, 'Rejects unsupported hash algorithm');
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

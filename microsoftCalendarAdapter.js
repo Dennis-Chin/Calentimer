@@ -11,6 +11,11 @@
 import { taskStore } from './taskStore.js';
 import { OAUTH_CONFIG } from './oauthConfig.js';
 import { classifyEvent } from './eventClassifier.js';
+import { ensureWebCryptoPolyfill } from './cryptoPolyfill.js';
+
+if (typeof ensureWebCryptoPolyfill === 'function') {
+  ensureWebCryptoPolyfill();
+}
 
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
 const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000000';
@@ -97,6 +102,10 @@ export class MicrosoftCalendarAdapter {
    * Initializes adapter and attempts to restore stored access token or MSAL instance.
    */
   init() {
+    if (typeof ensureWebCryptoPolyfill === 'function') {
+      ensureWebCryptoPolyfill();
+    }
+
     if (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId && OAUTH_CONFIG.microsoft.clientId !== DEFAULT_CLIENT_ID) {
       this.clientId = OAUTH_CONFIG.microsoft.clientId;
     }
@@ -234,7 +243,11 @@ export class MicrosoftCalendarAdapter {
       }
       this.clientId = effectiveClientId;
 
-      // 5. Browser MSAL SDK Check
+      // 5. Browser MSAL SDK & WebCrypto Polyfill Check
+      if (typeof ensureWebCryptoPolyfill === 'function') {
+        ensureWebCryptoPolyfill();
+      }
+
       const hasMsal = typeof window !== 'undefined' && window !== null && window.msal && window.msal.PublicClientApplication;
       if (!hasMsal) {
         if (typeof window === 'undefined') {
