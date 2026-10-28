@@ -293,7 +293,13 @@ export class GoogleCalendarAdapter {
       throw new Error('Not authenticated with Google Calendar');
     }
 
-    const calendars = await this.fetchCalendarList();
+    let calendars = await this.fetchCalendarList();
+    const selectedIds = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleSelectedCalendarIds === 'function')
+      ? taskStore.getGoogleSelectedCalendarIds()
+      : null;
+    if (selectedIds && Array.isArray(selectedIds) && selectedIds.length > 0) {
+      calendars = calendars.filter(c => selectedIds.indexOf(c.id) !== -1 || (c.primary && selectedIds.indexOf('primary') !== -1));
+    }
     const allEvents = [];
     const seenExternalIds = new Set();
     let primarySyncToken = null;

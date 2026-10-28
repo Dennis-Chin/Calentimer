@@ -233,9 +233,10 @@ assert(!openDrawerSlice.includes('checkAndPromptScheduleConflict'), 'openTaskDra
 const openCalSlice = appContent.slice(appContent.indexOf('function openCalendar()'), appContent.indexOf('function closeCalendar()'));
 assert(!openCalSlice.includes('checkAndPromptScheduleConflict'), 'openCalendar does not auto-prompt overlap conflict');
 
-// Overlap conflict resolution triggered on task card tap via promptConflictForTask
+// Overlap conflict resolution triggered when active timer starts on overlapping event; priority swap arrows on cards
 assert(appContent.includes('function promptConflictForTask('), 'app.js defines promptConflictForTask()');
-assert(appContent.includes('promptConflictForTask(task.id, tasks);'), 'renderTaskList & renderCalendarModal trigger promptConflictForTask on tap');
+assert(appContent.includes('function checkActiveTaskTimerConflict(') && appContent.includes('checkActiveTaskTimerConflict('), 'overlap conflict modal triggered when first overlapping event starts on timer');
+assert(appContent.includes('data-action="swap-overlap-priority"') && appContent.includes('handleSwapOverlapPriority('), 'Today schedule cards render inline priority swap arrows (▲/▼)');
 
 // Overlap indentation alternates so second overlapping event does not also indent
 assert(appContent.includes('!overlapIndices.has(laterIdx - 1)'), 'renderTaskList alternates overlap indentation');
@@ -264,6 +265,28 @@ assert(cryptoPolyfillContent.includes('sha256Buffer('), 'cryptoPolyfill.js imple
 assert(cryptoPolyfillContent.includes('SubtleCrypto polyfill only supports SHA-256'), 'cryptoPolyfill.js provides SubtleCrypto digest implementation');
 assert(htmlContent.includes('cryptoPolyfill.js'), 'index.html includes cryptoPolyfill.js');
 assert(msAdapterContent.includes("from './cryptoPolyfill.js'"), 'microsoftCalendarAdapter.js imports cryptoPolyfill.js');
+
+console.log('\n--- 8. Testing Outbound Sync Toggles, Multi-Calendar Settings & Live Classifier ---');
+// Outbound sync toggle boxes in all modals
+assert(htmlContent.includes('id="addTaskSyncGoogle"') && htmlContent.includes('id="addTaskSyncMS"'), 'index.html has Add Task outbound sync checkboxes');
+assert(htmlContent.includes('id="editTaskSyncGoogle"') && htmlContent.includes('id="editTaskSyncMS"'), 'index.html has Edit Task outbound sync checkboxes');
+assert(htmlContent.includes('id="calEventSyncGoogle"') && htmlContent.includes('id="calEventSyncMS"'), 'index.html has Calendar Event outbound sync checkboxes');
+
+// Multi-calendar display selectors in Settings
+assert(htmlContent.includes('id="settingsGoogleCalendarsContainer"') && htmlContent.includes('id="settingsGoogleCalChecklist"'), 'index.html has Google multi-calendar checklist');
+assert(htmlContent.includes('id="settingsMSCalendarsContainer"') && htmlContent.includes('id="settingsMSCalChecklist"'), 'index.html has Microsoft multi-calendar checklist');
+assert(appContent.includes('function openCalendarSettingsSubPanel('), 'app.js defines openCalendarSettingsSubPanel()');
+assert(appContent.includes('renderMultiCalendarChecklist('), 'app.js implements renderMultiCalendarChecklist()');
+
+// Live debounced title auto-classification
+assert(appContent.includes('addTitleDebounceTimer') && appContent.includes('classifyEvent(text)'), 'app.js debounces title input for Add Task classification');
+assert(appContent.includes('editTitleDebounceTimer'), 'app.js debounces title input for Edit Task classification');
+assert(calContent.includes('classifyEvent(val)') || calContent.includes('classifyEvent('), 'calendarView.js debounces title input for Event classification');
+
+// Harmonized category palette in eventClassifier.js
+const classifierContent = fs.readFileSync(path.resolve(process.cwd(), 'eventClassifier.js'), 'utf8');
+assert(classifierContent.includes('export function getCategoryColor('), 'eventClassifier.js exports getCategoryColor() single source of truth');
+assert(classifierContent.includes('export function getAllClassificationEmojis('), 'eventClassifier.js exports getAllClassificationEmojis()');
 
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

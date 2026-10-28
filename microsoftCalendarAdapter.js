@@ -527,8 +527,16 @@ export class MicrosoftCalendarAdapter {
     const start = startDateTime || new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const end = endDateTime || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
 
-    const calendars = await this.fetchCalendarList();
-    const primaryCal = calendars.find(c => c && c.primary) || calendars[0] || { id: 'primary', hexColor: '#0078d4' };
+    let calendars = await this.fetchCalendarList();
+    const selectedIds = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftSelectedCalendarIds === 'function')
+      ? taskStore.getMicrosoftSelectedCalendarIds()
+      : null;
+    if (selectedIds && Array.isArray(selectedIds) && selectedIds.length > 0) {
+      calendars = calendars.filter(c => selectedIds.indexOf(c.id) !== -1 || ((c.primary || c.isDefaultCalendar) && selectedIds.indexOf('primary') !== -1));
+    }
+
+    const hasPrimarySelected = calendars.some(c => c && (c.primary || c.isDefaultCalendar || c.id === 'primary'));
+    const primaryCal = calendars.find(c => c && (c.primary || c.isDefaultCalendar)) || calendars[0] || { id: 'primary', hexColor: '#0078d4' };
     const defaultCalColor = primaryCal.hexColor || '#0078d4';
 
     const allEvents = [];
@@ -536,9 +544,9 @@ export class MicrosoftCalendarAdapter {
     let finalDeltaLink = null;
     let anyExpired = false;
 
-    // 1. Fetch Primary Calendar using Delta Query with full @odata.nextLink pagination
-    let currentUrl = deltaLink;
-    if (!currentUrl) {
+    // 1. Fetch Primary Calendar using Delta Query with full @odata.nextLink pagination (if primary selected)
+    let currentUrl = hasPrimarySelected ? deltaLink : null;
+    if (hasPrimarySelected && !currentUrl) {
       currentUrl = `${GRAPH_API_BASE}/me/calendarView/delta?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}`;
     }
 

@@ -13,6 +13,9 @@ import { formatMinutesToTime, parseTimeToMinutes } from './schedulerEngine.js';
 import { analytics } from './analyticsDb.js';
 import { calendarView } from './calendarView.js';
 import { calendarSyncService } from './calendarSyncService.js';
+import { googleCalendarAdapter } from './googleCalendarAdapter.js';
+import { microsoftCalendarAdapter } from './microsoftCalendarAdapter.js';
+import { classifyEvent, getCategoryColor as classifierGetCategoryColor, getAllClassificationEmojis } from './eventClassifier.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -266,11 +269,6 @@ function initApp() {
             updateWheelProgress(0);
           }
         }
-        if (calendarView && typeof calendarView.isOpen === 'function' && (calendarView.isOpen() || calendarView.isDraggingEvent)) {
-          // Do not interrupt active calendar view or dragging event with conflict popup
-        } else {
-          checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || storedTasks);
-        }
       }
       if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
         calendarView.render();
@@ -438,13 +436,17 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskStart', (data) => {
-    analytics.startTaskMetric(data && data.activeTask ? data.activeTask : runtime.getActiveTask(), { index: runtime.activeTaskIndex });
+    const actTask = data && data.activeTask ? data.activeTask : runtime.getActiveTask();
+    analytics.startTaskMetric(actTask, { index: runtime.activeTaskIndex });
     startContinuousWheelAnimation();
     updateActiveTaskDisplay();
     updateFinishEarlyButtonText(data.totalDurationSeconds);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
       calendarView.render();
+    }
+    if (typeof checkActiveTaskTimerConflict === 'function') {
+      checkActiveTaskTimerConflict(actTask);
     }
   });
 
@@ -1196,8 +1198,6 @@ function setupRotaryWheel() {
       if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
         calendarView.render();
       }
-      dismissedOverlapPairs.clear();
-      checkAndPromptScheduleConflict((runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks());
       pendingMinuteAdjustment = 0;
 
       if (runtime.status === TimerStatus.RUNNING) {
@@ -2977,6 +2977,86 @@ function syncDynamicScheduleTimesToCalendar() {
 let dismissedOverlapPairs = new Set();
 let currentConflictData = null;
 
+function checkActiveTaskTimerConflict(activeTask) {
+  if (!activeTask || !activeTask.startTime || !activeTask.endTime) return;
+  const tasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks()) || [];
+  if (tasks.length < 2) return;
+
+  const aStart = parseTimeToMinutes(activeTask.startTime);
+  let aEnd = parseTimeToMinutes(activeTask.endTime);
+  if (aEnd <= aStart) aEnd += 1440;
+
+  for (let i = 0; i < tasks.length; i++) {
+    const other = tasks[i];
+    if (other.id === activeTask.id) continue;
+    if (!other.startTime || !other.endTime) continue;
+    const bStart = parseTimeToMinutes(other.startTime);
+    let bEnd = parseTimeToMinutes(other.endTime);
+    if (bEnd <= bStart) bEnd += 1440;
+
+    if (aStart < bEnd && bStart < aEnd) {
+      const pairKey = `${activeTask.id}_${other.id}`;
+      const reverseKey = `${other.id}_${activeTask.id}`;
+      const timeKey = `${activeTask.id}:${activeTask.startTime}-${activeTask.endTime}__${other.id}:${other.startTime}-${other.endTime}`;
+      const altTimeKey = `${other.id}:${other.startTime}-${other.endTime}__${activeTask.id}:${activeTask.startTime}-${activeTask.endTime}`;
+      if (!dismissedOverlapPairs.has(pairKey) && !dismissedOverlapPairs.has(reverseKey) && !dismissedOverlapPairs.has(timeKey) && !dismissedOverlapPairs.has(altTimeKey)) {
+        const idxA = tasks.findIndex(t => t.id === activeTask.id);
+        const idxB = i;
+        openScheduleConflictModal(activeTask, other, idxA, idxB);
+        return;
+      }
+    }
+  }
+}
+window.checkActiveTaskTimerConflict = checkActiveTaskTimerConflict;
+
+function handleSwapOverlapPriority(taskId, dir) {
+  const currentTasks = taskStore.getTasks();
+  const idx = currentTasks.findIndex(t => t.id === taskId);
+  if (idx === -1) return;
+  const currentTask = currentTasks[idx];
+
+  // Find partner overlapping task
+  let partnerTask = null;
+  let partnerIdx = -1;
+  const curStart = parseTimeToMinutes(currentTask.startTime || '00:00');
+  let curEnd = parseTimeToMinutes(currentTask.endTime || '23:59');
+  if (curEnd <= curStart) curEnd += 1440;
+
+  for (let i = 0; i < currentTasks.length; i++) {
+    if (i === idx) continue;
+    const t = currentTasks[i];
+    if (!t.startTime || !t.endTime) continue;
+    const oStart = parseTimeToMinutes(t.startTime);
+    let oEnd = parseTimeToMinutes(t.endTime);
+    if (oEnd <= oStart) oEnd += 1440;
+
+    if (curStart < oEnd && oStart < curEnd) {
+      partnerTask = t;
+      partnerIdx = i;
+      break;
+    }
+  }
+
+  if (!partnerTask) return;
+
+  if (typeof taskStore.swapTasks === 'function') {
+    taskStore.swapTasks(currentTask.id, partnerTask.id);
+  } else {
+    taskStore.reorderTaskById(currentTask.id, partnerTask.id);
+  }
+
+  runtime.initialTasks = taskStore.getTasks();
+  runtime.recalculate();
+  syncDynamicScheduleTimesToCalendar();
+  updateScheduleUI(runtime.currentSchedule);
+  renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+  renderCalendarModal();
+  mobileServices.hapticTap();
+  showToastNotification('✓ Overlap priority swapped');
+}
+window.handleSwapOverlapPriority = handleSwapOverlapPriority;
+
 function checkAndPromptScheduleConflict(tasks) {
   if (!tasks || tasks.length < 2) return;
   if (typeof calendarView !== 'undefined' && calendarView) {
@@ -3288,28 +3368,30 @@ function hexToRgba(hex, alpha) {
 }
 
 function getCategoryHexColor(category) {
+  if (typeof classifierGetCategoryColor === 'function') {
+    return classifierGetCategoryColor(category);
+  }
   if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView._getCategoryColor === 'function') {
     return calendarView._getCategoryColor(category);
   }
   const cat = (category || 'general').trim().toLowerCase();
   switch (cat) {
-    case 'work': return '#2563eb';
-    case 'study': return '#7c3aed';
-    case 'break': return '#d97706';
-    case 'personal': return '#0d9488';
+    case 'work': return '#3b82f6';
+    case 'study': return '#8b5cf6';
+    case 'break': return '#f59e0b';
+    case 'personal': return '#10b981';
     case 'meeting': return '#d946ef';
-    case 'health':
-    case 'exercise':
-    case 'fitness': return '#e11d48';
-    case 'reading': return '#0891b2';
+    case 'health': return '#06b6d4';
+    case 'fitness': return '#f43f5e';
+    case 'reading': return '#0284c7';
     case 'coding':
-    case 'dev': return '#4f46e5';
+    case 'dev': return '#6366f1';
     case 'social': return '#ec4899';
-    case 'travel': return '#0284c7';
+    case 'travel': return '#a855f7';
     case 'food':
     case 'dining': return '#f97316';
-    case 'finance': return '#10b981';
-    default: return '#8b5cf6';
+    case 'finance': return '#14b8a6';
+    default: return '#0ea5e9';
   }
 }
 
@@ -3479,11 +3561,22 @@ function renderTaskList(tasks) {
 
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
 
+    const overlapBadgeHtml = isOverlap ? `
+      <div class="task-overlap-tag-group">
+        <span class="task-overlap-badge">⚠️ Overlap</span>
+        <div class="overlap-priority-arrows">
+          <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="up" title="Promote task (give timer priority)">▲</button>
+          <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="down" title="Demote task (indent)">▼</button>
+        </div>
+      </div>
+    ` : '';
+
     card.innerHTML = `
       <!-- Top Row: Status badge on top left, actions on top right -->
       <div class="task-card-top-row">
         <div class="task-card-status-wrap">
           ${statusBadge}
+          ${overlapBadgeHtml}
         </div>
         <div class="task-card-actions">
           <button class="btn-icon-action time-bank-btn ${task.useTimeBank !== false ? 'active' : ''} ${isOverrunningTask ? 'cracked' : ''}" data-action="toggle-time-bank" data-id="${task.id}" title="${task.useTimeBank !== false ? 'Time Bank enabled: taps into saved surplus time if overdue' : 'Time Bank disabled'}">
@@ -3626,11 +3719,7 @@ function renderTaskList(tasks) {
     const _editBtn = card.querySelector('[data-action="edit-task"]');
     if (_editBtn) {
       _editBtn.addEventListener('click', (e) => {
-        if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]')) return;
-        if (conflictingTaskIds.has(task.id)) {
-          promptConflictForTask(task.id, tasks);
-          return;
-        }
+        if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]') || e.target.closest('[data-action="swap-overlap-priority"]')) return;
         openTaskEditModal(task.id);
       });
     }
@@ -3638,13 +3727,21 @@ function renderTaskList(tasks) {
     const _bottomRow = card.querySelector('.task-card-bottom-row');
     if (_bottomRow) {
       _bottomRow.addEventListener('click', (e) => {
-        if (conflictingTaskIds.has(task.id)) {
-          promptConflictForTask(task.id, tasks);
-          return;
-        }
+        if (e.target.closest('[data-action="swap-overlap-priority"]')) return;
         openTaskEditModal(task.id);
       });
     }
+
+    // Overlap priority swap buttons (▲ and ▼)
+    const _swapPriorityBtns = card.querySelectorAll('[data-action="swap-overlap-priority"]');
+    _swapPriorityBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const dir = btn.getAttribute('data-dir');
+        handleSwapOverlapPriority(task.id, dir);
+      });
+    });
 
     // Locked drag handle tap notification
     const lockedDrag = card.querySelector('[data-action="locked-drag-attempt"]');
@@ -3853,7 +3950,26 @@ function openEmojiPicker(taskId) {
   const grid = document.getElementById('emojiPickerGrid');
   if (grid) {
     grid.innerHTML = '';
-    CURATED_EMOJIS.forEach(emoji => {
+    const allClassEmojis = (typeof getAllClassificationEmojis === 'function') ? getAllClassificationEmojis() : [];
+    const existingEmojis = [];
+    if (typeof taskStore !== 'undefined') {
+      if (typeof taskStore.getTasks === 'function') {
+        taskStore.getTasks().forEach(t => { if (t && t.emoji) existingEmojis.push(t.emoji); });
+      }
+      if (typeof taskStore.getTodoTasks === 'function') {
+        taskStore.getTodoTasks().forEach(t => { if (t && t.emoji) existingEmojis.push(t.emoji); });
+      }
+      if (typeof taskStore.getCalendarEvents === 'function') {
+        taskStore.getCalendarEvents().forEach(e => { if (e && e.emoji) existingEmojis.push(e.emoji); });
+      }
+    }
+    const dynamicEmojiSet = new Set(CURATED_EMOJIS);
+    allClassEmojis.forEach(e => { if (e) dynamicEmojiSet.add(e); });
+    existingEmojis.forEach(e => { if (e) dynamicEmojiSet.add(e); });
+    if (selectedEmojiInPicker) dynamicEmojiSet.add(selectedEmojiInPicker);
+    const displayedEmojis = Array.from(dynamicEmojiSet);
+
+    displayedEmojis.forEach(emoji => {
       const btn = document.createElement('button');
       btn.className = `emoji-pick-btn ${emoji === selectedEmojiInPicker ? 'active' : ''}`;
       btn.type = 'button';
@@ -4089,8 +4205,15 @@ function setAddTaskType(type) {
 // ==========================================
 // Add Task Modal Logic (Unified Planning UI)
 // ==========================================
+let isAddModalManualEmoji = false;
+let isAddModalManualCategory = false;
+let isEditModalManualEmoji = false;
+let isEditModalManualCategory = false;
+
 function openAddTaskModal(defaultType = 'work', prefillData = null) {
   ensureHistoryBuffer();
+  isAddModalManualEmoji = false;
+  isAddModalManualCategory = false;
   const modal = document.getElementById('addTaskModalBackdrop');
   if (!modal) return;
   const inputTitle = document.getElementById('addModalTitle');
@@ -4102,6 +4225,19 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
   const toggleBank = document.getElementById('addModalTimeBank');
   const toggleLock = document.getElementById('addModalIsLocked');
   const emojiBadge = document.getElementById('addTaskHeaderEmoji');
+
+  const addSyncGoogle = document.getElementById('addTaskSyncGoogle');
+  const addSyncMS = document.getElementById('addTaskSyncMS');
+  if (addSyncGoogle) {
+    addSyncGoogle.checked = (typeof taskStore.getOutboundSyncPreference === 'function')
+      ? taskStore.getOutboundSyncPreference('google')
+      : false;
+  }
+  if (addSyncMS) {
+    addSyncMS.checked = (typeof taskStore.getOutboundSyncPreference === 'function')
+      ? taskStore.getOutboundSyncPreference('microsoft')
+      : false;
+  }
 
   if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '30';
   if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
@@ -4176,6 +4312,19 @@ function openTaskEditModal(taskId) {
   if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = currentEditEmoji;
   if (editTaskTimeBank) editTaskTimeBank.checked = task.useTimeBank !== false;
 
+  const editSyncGoogle = document.getElementById('editTaskSyncGoogle');
+  const editSyncMS = document.getElementById('editTaskSyncMS');
+  const isPairedGoogle = Boolean(task.googleEventId || task.source === 'google' || (task.externalId && task.provider === 'google'));
+  const isPairedMS = Boolean(task.microsoftEventId || task.source === 'microsoft' || (task.externalId && task.provider === 'microsoft'));
+  if (editSyncGoogle) {
+    editSyncGoogle.checked = isPairedGoogle;
+  }
+  if (editSyncMS) {
+    editSyncMS.checked = isPairedMS;
+  }
+  isEditModalManualEmoji = false;
+  isEditModalManualCategory = false;
+
   syncModalToggleIcons();
   if (typeof renderAllDurationPresetChips === 'function') renderAllDurationPresetChips();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
@@ -4197,6 +4346,42 @@ function saveCurrentTaskEdit() {
   const emoji = currentEditEmoji || (() => { const _el = document.getElementById("editTaskHeaderEmoji"); return _el ? _el.textContent : ""; })().trim() || '📝';
 
   if (category) taskStore.addCategory(category);
+
+  const editSyncGoogle = document.getElementById('editTaskSyncGoogle');
+  const editSyncMS = document.getElementById('editTaskSyncMS');
+  const prevTask = taskStore.getTasks().find(t => t.id === currentEditTaskId);
+  const prevGoogle = Boolean(prevTask && (prevTask.googleEventId || prevTask.source === 'google' || (prevTask.externalId && prevTask.provider === 'google')));
+  const prevMS = Boolean(prevTask && (prevTask.microsoftEventId || prevTask.source === 'microsoft' || (prevTask.externalId && prevTask.provider === 'microsoft')));
+  const nextGoogle = Boolean(editSyncGoogle && editSyncGoogle.checked);
+  const nextMS = Boolean(editSyncMS && editSyncMS.checked);
+
+  // Unpair Google -> Delete from remote Google Calendar
+  if (prevGoogle && !nextGoogle) {
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
+      calendarSyncService.pushEventDelete(prevTask, 'google').catch(() => {});
+    }
+    taskStore.updateTask(currentEditTaskId, { googleEventId: null });
+  } else if (!prevGoogle && nextGoogle) {
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
+      calendarSyncService.createRemoteEvent('google', Object.assign({}, prevTask, { title, plannedDuration, category, fixedStartTime, emoji })).then(res => {
+        if (res && res.externalId) taskStore.updateTask(currentEditTaskId, { googleEventId: res.externalId });
+      }).catch(() => {});
+    }
+  }
+
+  // Unpair Microsoft -> Delete from remote Microsoft Calendar
+  if (prevMS && !nextMS) {
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
+      calendarSyncService.pushEventDelete(prevTask, 'microsoft').catch(() => {});
+    }
+    taskStore.updateTask(currentEditTaskId, { microsoftEventId: null });
+  } else if (!prevMS && nextMS) {
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
+      calendarSyncService.createRemoteEvent('microsoft', Object.assign({}, prevTask, { title, plannedDuration, category, fixedStartTime, emoji })).then(res => {
+        if (res && res.externalId) taskStore.updateTask(currentEditTaskId, { microsoftEventId: res.externalId });
+      }).catch(() => {});
+    }
+  }
 
   taskStore.updateTask(currentEditTaskId, {
     title,
@@ -4376,38 +4561,13 @@ function closeTodo() {
   if (navItemTodo) navItemTodo.classList.remove('active');
 }
 
-// Category Color Palette: Vibrant, colorful tones strictly avoiding light green (reserved for completed)
-const CATEGORY_PALETTE = [
-  { bg: 'rgba(168, 85, 247, 0.22)', border: '#a855f7', text: '#e9d5ff' },  // Bright Purple (Study / Deep Work)
-  { bg: 'rgba(13, 148, 136, 0.22)', border: '#0d9488', text: '#99f6e4' },  // Deep Teal (Personal - avoids light green)
-  { bg: 'rgba(236, 72, 153, 0.22)', border: '#ec4899', text: '#fbcfe8' },  // Magenta / Hot Pink (Creative / Life)
-  { bg: 'rgba(225, 29, 72, 0.22)', border: '#e11d48', text: '#fecdd3' },   // Rose (Health / Fitness)
-  { bg: 'rgba(37, 99, 235, 0.22)', border: '#2563eb', text: '#bfdbfe' },   // Royal Blue (Work)
-  { bg: 'rgba(217, 119, 6, 0.22)', border: '#d97706', text: '#fde68a' },   // Amber (Break)
-  { bg: 'rgba(217, 70, 239, 0.22)', border: '#d946ef', text: '#f5d0fe' },  // Vivid Fuchsia (Meeting)
-  { bg: 'rgba(139, 92, 246, 0.22)', border: '#8b5cf6', text: '#ddd6fe' },  // Violet (General)
-  { bg: 'rgba(79, 70, 229, 0.22)', border: '#4f46e5', text: '#c7d2fe' }   // Royal Indigo (Coding / Dev)
-];
-
 function getCategoryColor(category) {
-  const cat = (category || 'General').trim();
-  const lower = cat.toLowerCase();
-  if (lower === 'study') return CATEGORY_PALETTE[0];
-  if (lower === 'personal') return CATEGORY_PALETTE[1];
-  if (lower === 'health' || lower === 'fitness') return CATEGORY_PALETTE[3];
-  if (lower === 'work') return CATEGORY_PALETTE[4];
-  if (lower === 'break') return CATEGORY_PALETTE[5];
-  if (lower === 'meeting') return CATEGORY_PALETTE[6];
-  if (lower === 'general') return CATEGORY_PALETTE[7];
-  if (lower === 'coding' || lower === 'dev') return CATEGORY_PALETTE[8];
-
-  let hash = 0;
-  for (let i = 0; i < cat.length; i++) {
-    hash = ((hash << 5) - hash) + cat.charCodeAt(i);
-    hash |= 0;
-  }
-  const idx = Math.abs(hash) % CATEGORY_PALETTE.length;
-  return CATEGORY_PALETTE[idx];
+  const hex = getCategoryHexColor(category);
+  return {
+    bg: hexToRgba(hex, 0.22),
+    border: hex,
+    text: hex
+  };
 }
 
 // Condensed Calendar Timeline Renderer
@@ -4553,6 +4713,16 @@ function renderCalendarModal() {
 
     const pillStyle = `background:${hexToRgba(catHex, 0.2)};border:1px solid ${hexToRgba(catHex, 0.45)};color:${catHex};`;
 
+    const calOverlapHtml = isCalOverlap ? `
+      <div class="task-overlap-tag-group" style="margin-left: 6px;">
+        <span class="task-overlap-badge">⚠️ Overlap</span>
+        <div class="overlap-priority-arrows">
+          <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="up" title="Promote task (give timer priority)">▲</button>
+          <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="down" title="Demote task (indent)">▼</button>
+        </div>
+      </div>
+    ` : '';
+
     item.innerHTML = `
       <div class="calendar-block-left">
         ${!isLocked ? `
@@ -4580,6 +4750,7 @@ function renderCalendarModal() {
         <div class="calendar-main-line1">
           <span class="calendar-block-title">${escapeHtml(task.title)}</span>
           <span class="calendar-duration-badge">${task.allocatedDuration || task.plannedDuration}m</span>
+          ${calOverlapHtml}
         </div>
         <div class="calendar-main-line2">
           <span class="calendar-time-range">${isTimespans ? `${task.startTime || '--:--'} → ${task.endTime || '--:--'}` : `${seqTimeSpans[idx] ? `${seqTimeSpans[idx].start} → ${seqTimeSpans[idx].end}` : ''}`}</span>
@@ -4842,14 +5013,22 @@ function renderCalendarModal() {
           e.target.closest('[data-action="toggle-calendar-lock"]') ||
           e.target.closest('[data-action="pick-calendar-emoji"]') ||
           e.target.closest('[data-action="drag-handle"]') ||
-          e.target.closest('[data-action="locked-drag-attempt"]')) {
-        return;
-      }
-      if (calConflictingIds.has(task.id)) {
-        promptConflictForTask(task.id, tasks);
+          e.target.closest('[data-action="locked-drag-attempt"]') ||
+          e.target.closest('[data-action="swap-overlap-priority"]')) {
         return;
       }
       openTaskEditModal(task.id);
+    });
+
+    // Overlap priority swap buttons (▲ and ▼) inside calendar item
+    const _calSwapPriorityBtns = item.querySelectorAll('[data-action="swap-overlap-priority"]');
+    _calSwapPriorityBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const dir = btn.getAttribute('data-dir');
+        handleSwapOverlapPriority(task.id, dir);
+      });
     });
 
     // Also allow swiping right on deleteAction to slide X closed
@@ -5290,12 +5469,74 @@ function setupNavigationAndModals() {
   }
 
   // Setup category chip selectors for Add Task, Edit Task, and Calendar Event
-  refreshAddCategoryChips = setupCategorySelector('addModalCategoryChips', 'addModalCategory', 'btnAddCategory');
-  refreshEditCategoryChips = setupCategorySelector('editModalCategoryChips', 'editTaskCategory', 'btnEditAddCategory');
+  refreshAddCategoryChips = setupCategorySelector('addModalCategoryChips', 'addModalCategory', 'btnAddCategory', () => {
+    isAddModalManualCategory = true;
+  });
+  refreshEditCategoryChips = setupCategorySelector('editModalCategoryChips', 'editTaskCategory', 'btnEditAddCategory', () => {
+    isEditModalManualCategory = true;
+  });
   const refreshCalCategoryChips = setupCategorySelector('calEventCategoryChips', 'calEventCategory', 'btnAddCalCategory', (cat) => {
     if (calendarView) calendarView.currentCategory = cat;
   });
   if (calendarView) calendarView.refreshCategoryChips = refreshCalCategoryChips;
+
+  // Live Title Auto-Classification for Add Task Modal
+  let addTitleDebounceTimer = null;
+  const addModalTitle = document.getElementById('addModalTitle');
+  const addModalCategory = document.getElementById('addModalCategory');
+  const addTaskHeaderEmoji = document.getElementById('addTaskHeaderEmoji');
+
+  if (addModalTitle) {
+    addModalTitle.addEventListener('input', () => {
+      if (addTitleDebounceTimer) {
+        clearTimeout(addTitleDebounceTimer);
+      }
+      addTitleDebounceTimer = setTimeout(() => {
+        const text = (addModalTitle ? addModalTitle.value : '').trim();
+        if (!text || text.length < 2) return;
+        const cl = classifyEvent(text);
+        if (cl) {
+          if (!isAddModalManualCategory && cl.category) {
+            if (addModalCategory) addModalCategory.value = cl.category;
+            if (refreshAddCategoryChips) refreshAddCategoryChips();
+          }
+          if (!isAddModalManualEmoji && cl.emoji) {
+            currentAddTaskEmoji = cl.emoji;
+            if (addTaskHeaderEmoji) addTaskHeaderEmoji.textContent = cl.emoji;
+          }
+        }
+      }, 150);
+    });
+  }
+
+  // Live Title Auto-Classification for Edit Task Modal
+  let editTitleDebounceTimer = null;
+  const editTaskTitle = document.getElementById('editTaskTitle');
+  const editTaskCategory = document.getElementById('editTaskCategory');
+  const editTaskHeaderEmoji = document.getElementById('editTaskHeaderEmoji');
+
+  if (editTaskTitle) {
+    editTaskTitle.addEventListener('input', () => {
+      if (editTitleDebounceTimer) {
+        clearTimeout(editTitleDebounceTimer);
+      }
+      editTitleDebounceTimer = setTimeout(() => {
+        const text = (editTaskTitle ? editTaskTitle.value : '').trim();
+        if (!text || text.length < 2) return;
+        const cl = classifyEvent(text);
+        if (cl) {
+          if (!isEditModalManualCategory && cl.category) {
+            if (editTaskCategory) editTaskCategory.value = cl.category;
+            if (refreshEditCategoryChips) refreshEditCategoryChips();
+          }
+          if (!isEditModalManualEmoji && cl.emoji) {
+            currentEditEmoji = cl.emoji;
+            if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = cl.emoji;
+          }
+        }
+      }, 150);
+    });
+  }
 
   // Add Task Modal Elements
   const btnCloseAddTaskModal = document.getElementById('btnCloseAddTaskModal');
@@ -5936,7 +6177,16 @@ function setupNavigationAndModals() {
 
     if (category) taskStore.addCategory(category);
 
-    taskStore.addTask({
+    const addSyncGoogle = document.getElementById('addTaskSyncGoogle');
+    const addSyncMS = document.getElementById('addTaskSyncMS');
+    const syncGoogle = Boolean(addSyncGoogle && addSyncGoogle.checked);
+    const syncMS = Boolean(addSyncMS && addSyncMS.checked);
+    if (typeof taskStore.setOutboundSyncPreference === 'function') {
+      taskStore.setOutboundSyncPreference('google', syncGoogle);
+      taskStore.setOutboundSyncPreference('microsoft', syncMS);
+    }
+
+    const newTask = taskStore.addTask({
       title,
       plannedDuration: duration,
       category,
@@ -5945,6 +6195,21 @@ function setupNavigationAndModals() {
       useTimeBank,
       emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝')
     });
+
+    if (syncGoogle) {
+      if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
+        calendarSyncService.createRemoteEvent('google', newTask).then(res => {
+          if (res && res.externalId) taskStore.updateTask(newTask.id, { googleEventId: res.externalId });
+        }).catch(() => {});
+      }
+    }
+    if (syncMS) {
+      if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
+        calendarSyncService.createRemoteEvent('microsoft', newTask).then(res => {
+          if (res && res.externalId) taskStore.updateTask(newTask.id, { microsoftEventId: res.externalId });
+        }).catch(() => {});
+      }
+    }
 
     runtime.initialTasks = taskStore.getTasks();
     runtime.recalculate();
@@ -6399,6 +6664,107 @@ function setupNavigationAndModals() {
   const settingsLastSyncDesc = document.getElementById('settingsLastSyncDesc');
   const btnSettingsSyncAll = document.getElementById('btnSettingsSyncAll');
 
+  function openCalendarSettingsSubPanel() {
+    ensureHistoryBuffer();
+    closeDrawer();
+    closeCalendar();
+    closeTodo();
+    if (calendarView && typeof calendarView.close === 'function') calendarView.close();
+    const navItemFullCal = document.getElementById('navItemFullCalendar');
+    if (navItemFullCal) navItemFullCal.classList.remove('active');
+
+    const settingsBackdrop = document.getElementById('settingsModalBackdrop');
+    const settingsCard = document.getElementById('settingsModal');
+    const settingsGroup = settingsCard ? settingsCard.querySelector('.modal-body > .settings-group') : null;
+    const settingsHeader = settingsCard ? settingsCard.querySelector('.modal-header') : null;
+    const timerSub = document.getElementById('timerSettingsSubPanel');
+    const calSub = document.getElementById('calendarSettingsSubPanel');
+
+    if (timerSub) timerSub.classList.add('hidden');
+    if (settingsGroup) settingsGroup.classList.add('hidden');
+    if (settingsHeader) settingsHeader.classList.add('hidden');
+    if (calSub) calSub.classList.remove('hidden');
+    if (settingsBackdrop) settingsBackdrop.classList.remove('hidden');
+
+    syncCalendarSettingsUI();
+    mobileServices.hapticTap();
+  }
+  window.openCalendarSettingsSubPanel = openCalendarSettingsSubPanel;
+
+  async function renderMultiCalendarChecklist(provider) {
+    const isGoogle = provider === 'google';
+    const container = document.getElementById(isGoogle ? 'settingsGoogleCalendarsContainer' : 'settingsMSCalendarsContainer');
+    const checklist = document.getElementById(isGoogle ? 'settingsGoogleCalChecklist' : 'settingsMSCalChecklist');
+    const countBadge = document.getElementById(isGoogle ? 'settingsGoogleCalCount' : 'settingsMSCalCount');
+    if (!container || !checklist) return;
+
+    const isConnected = isGoogle
+      ? ((typeof taskStore.getGoogleCalendarConnected === 'function') ? taskStore.getGoogleCalendarConnected() : false)
+      : ((typeof taskStore.getMicrosoftCalendarConnected === 'function') ? taskStore.getMicrosoftCalendarConnected() : false);
+
+    if (!isConnected) {
+      container.classList.add('hidden');
+      checklist.innerHTML = '';
+      return;
+    }
+
+    container.classList.remove('hidden');
+
+    try {
+      const adapter = isGoogle ? googleCalendarAdapter : microsoftCalendarAdapter;
+      const calendars = await adapter.fetchCalendarList();
+      const storedSelected = isGoogle
+        ? taskStore.getGoogleSelectedCalendarIds()
+        : taskStore.getMicrosoftSelectedCalendarIds();
+
+      const selectedSet = new Set((storedSelected && Array.isArray(storedSelected)) ? storedSelected : calendars.map(c => c.id));
+
+      checklist.innerHTML = '';
+      calendars.forEach(cal => {
+        const item = document.createElement('label');
+        item.className = 'cal-list-check-item';
+        const isChecked = selectedSet.has(cal.id);
+        const dotColor = cal.backgroundColor || cal.hexColor || (isGoogle ? '#4285F4' : '#0078d4');
+
+        item.innerHTML = `
+          <input type="checkbox" data-cal-id="${escapeHtml(cal.id)}" ${isChecked ? 'checked' : ''}>
+          <span class="cal-list-color-dot" style="background:${dotColor}"></span>
+          <span class="cal-list-item-name">${escapeHtml(cal.summary || cal.name || 'Calendar')}</span>
+        `;
+
+        const chk = item.querySelector('input');
+        if (chk) {
+          chk.addEventListener('change', () => {
+            mobileServices.hapticTick();
+            const checkedBoxes = Array.from(checklist.querySelectorAll('input:checked'));
+            const newSelectedIds = checkedBoxes.map(b => b.getAttribute('data-cal-id'));
+            if (isGoogle) {
+              taskStore.setGoogleSelectedCalendarIds(newSelectedIds);
+            } else {
+              taskStore.setMicrosoftSelectedCalendarIds(newSelectedIds);
+            }
+            if (countBadge) {
+              countBadge.textContent = newSelectedIds.length === calendars.length ? 'All' : `${newSelectedIds.length}/${calendars.length}`;
+            }
+            if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.syncAll === 'function') {
+              calendarSyncService.syncAll().then(() => {
+                if (calendarView && typeof calendarView.render === 'function') calendarView.render();
+              }).catch(() => {});
+            }
+          });
+        }
+
+        checklist.appendChild(item);
+      });
+
+      if (countBadge) {
+        countBadge.textContent = selectedSet.size === calendars.length ? 'All' : `${selectedSet.size}/${calendars.length}`;
+      }
+    } catch (err) {
+      console.warn('Could not load calendar list:', err);
+    }
+  }
+
   function syncCalendarSettingsUI() {
     if (toggleCalRangeEnabled) {
       toggleCalRangeEnabled.checked = taskStore.getCalendarCustomRangeEnabled();
@@ -6453,6 +6819,10 @@ function setupNavigationAndModals() {
         btnSettingsMSConnect.classList.remove('is-connected');
       }
     }
+
+    // Multi-calendar checklists
+    renderMultiCalendarChecklist('google');
+    renderMultiCalendarChecklist('microsoft');
 
     // Auto-Sync Toggle
     if (toggleAutoSyncEnabled && typeof taskStore.getAutoSyncEnabled === 'function') {
@@ -6559,6 +6929,7 @@ function setupNavigationAndModals() {
             calendarView.openSyncConfirmModal('Google');
           }
           showToastNotification('Google Calendar connected!');
+          openCalendarSettingsSubPanel();
         } catch (err) {
           btnSettingsGoogleConnect.disabled = false;
           syncCalendarSettingsUI();
@@ -6593,6 +6964,7 @@ function setupNavigationAndModals() {
             calendarView.openSyncConfirmModal('Microsoft');
           }
           showToastNotification('Microsoft Calendar connected!');
+          openCalendarSettingsSubPanel();
         } catch (err) {
           btnSettingsMSConnect.disabled = false;
           syncCalendarSettingsUI();
@@ -6654,6 +7026,7 @@ function setupNavigationAndModals() {
           calendarView.openSyncConfirmModal('Google');
         }
         showToastNotification('Google Calendar connected!');
+        openCalendarSettingsSubPanel();
       } catch (err) {
         showToastNotification('Failed to connect Google: ' + (err && err.message ? err.message : 'Error'));
       }
@@ -6675,6 +7048,7 @@ function setupNavigationAndModals() {
           calendarView.openSyncConfirmModal('Microsoft');
         }
         showToastNotification('Microsoft Calendar connected!');
+        openCalendarSettingsSubPanel();
       } catch (err) {
         showToastNotification('Failed to connect Microsoft: ' + (err && err.message ? err.message : 'Error'));
       }

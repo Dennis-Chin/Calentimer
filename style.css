@@ -6303,4 +6303,241 @@ body {
   border-width: 0;
 }
 
+/* ==========================================
+   Outbound Sync Toggle Boxes ("Add to" Google / Microsoft)
+   ========================================== */
+.sync-destination-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  background: var(--bg-surface-highlight);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.sync-destination-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.sync-boxes-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sync-destination-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all 0.18s ease;
+}
+
+.sync-destination-box:hover {
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+.sync-destination-box input[type="checkbox"] {
+  appearance: auto;
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.sync-destination-box.is-checked {
+  background: rgba(0, 255, 136, 0.08);
+  border-color: var(--primary);
+  color: var(--text-main);
+}
+
+[data-theme="light"] .sync-destination-box.is-checked {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: #059669;
+  color: #065f46;
+}
+
+/* ==========================================
+   Multi-Calendar Selection Dropdown in Settings
+   ========================================== */
+.calendar-list-selector-wrapper {
+  margin: 4px 0 10px 14px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-list-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.calendar-list-selector-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.calendar-list-selector-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: rgba(0, 255, 136, 0.1);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+}
+
+[data-theme="light"] .calendar-list-selector-count {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.12);
+}
+
+.calendar-list-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.cal-list-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 4px;
+  border-radius: var(--radius-xs);
+  transition: background 0.15s ease;
+}
+
+.cal-list-check-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cal-list-check-item input[type="checkbox"] {
+  appearance: auto;
+  accent-color: var(--primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.cal-list-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ==========================================
+   Overlap Badge & Priority Arrows in Today's Schedule
+   ========================================== */
+.task-overlap-tag-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-overlap-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  user-select: none;
+}
+
+.overlap-priority-arrows {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.btn-overlap-arrow {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  border-radius: 3px;
+  width: 19px;
+  height: 19px;
+  font-size: 0.65rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-overlap-arrow:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #0c0e14;
+}
+
+.btn-overlap-arrow:active {
+  transform: scale(0.9);
+}
+
+[data-theme="light"] .btn-overlap-arrow {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+[data-theme="light"] .btn-overlap-arrow:hover {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+/* Ensure smooth vertical scrolling when touching drag handles, padlocks, and left gutter */
+.drag-handle,
+.drag-handle-locked,
+.drag-handle-compact,
+.drag-handle-locked-compact,
+.calendar-block-left,
+.task-card-middle-row,
+.btn-icon-action,
+[data-action="locked-drag-attempt"] {
+  touch-action: pan-y !important;
+}
+
 

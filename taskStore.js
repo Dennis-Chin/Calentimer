@@ -30,7 +30,10 @@ const STORAGE_KEYS = {
   LAST_SYNC_TS: 'calentimer_last_sync_ts_v1',
   SKIP_CONNECT_PROMPT: 'calentimer_skip_connect_prompt_v1',
   GOOGLE_USER_EMAIL: 'calentimer_google_user_email_v1',
-  MS_USER_EMAIL: 'calentimer_ms_user_email_v1'
+  MS_USER_EMAIL: 'calentimer_ms_user_email_v1',
+  OUTBOUND_SYNC_PREF: 'calentimer_outbound_sync_pref_v1',
+  GOOGLE_SELECTED_CALS: 'calentimer_google_selected_cals_v1',
+  MS_SELECTED_CALS: 'calentimer_ms_selected_cals_v1'
 };
 
 const memoryStorage = {};
@@ -395,6 +398,23 @@ export class TaskStore {
     if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return tasks;
     const [moved] = tasks.splice(fromIndex, 1);
     tasks.splice(toIndex, 0, moved);
+    this.saveTasks(tasks);
+    return tasks;
+  }
+
+  /**
+   * Swaps the positions of two tasks by ID.
+   * @param {string} idA
+   * @param {string} idB
+   */
+  swapTasks(idA, idB) {
+    const tasks = this.getTasks();
+    const idxA = tasks.findIndex(t => t.id === idA);
+    const idxB = tasks.findIndex(t => t.id === idB);
+    if (idxA === -1 || idxB === -1 || idxA === idxB) return tasks;
+    const temp = tasks[idxA];
+    tasks[idxA] = tasks[idxB];
+    tasks[idxB] = temp;
     this.saveTasks(tasks);
     return tasks;
   }
@@ -1611,6 +1631,102 @@ export class TaskStore {
       delete memoryStorage[STORAGE_KEYS.MS_USER_EMAIL];
     }
     this._notify();
+  }
+
+  /**
+   * Gets user outbound sync preference for a given provider (google or microsoft).
+   * Defaults to false, but sticky once the user changes it.
+   * @param {string} provider ('google' | 'microsoft')
+   * @returns {boolean}
+   */
+  getOutboundSyncPreference(provider) {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.OUTBOUND_SYNC_PREF);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') {
+          return Boolean(obj[provider]);
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /**
+   * Sets sticky user outbound sync preference for a given provider.
+   * @param {string} provider ('google' | 'microsoft')
+   * @param {boolean} enabled
+   */
+  setOutboundSyncPreference(provider, enabled) {
+    try {
+      let obj = {};
+      const raw = safeGetItem(STORAGE_KEYS.OUTBOUND_SYNC_PREF);
+      if (raw) {
+        try { obj = JSON.parse(raw) || {}; } catch (_) {}
+      }
+      obj[provider] = Boolean(enabled);
+      safeSetItem(STORAGE_KEYS.OUTBOUND_SYNC_PREF, JSON.stringify(obj));
+    } catch (_) {}
+  }
+
+  /**
+   * Gets array of selected Google Calendar IDs to display (or null for all).
+   * @returns {string[]|null}
+   */
+  getGoogleSelectedCalendarIds() {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Saves array of selected Google Calendar IDs to display.
+   * @param {string[]|null} calendarIds
+   */
+  setGoogleSelectedCalendarIds(calendarIds) {
+    try {
+      if (Array.isArray(calendarIds)) {
+        safeSetItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS, JSON.stringify(calendarIds));
+      } else {
+        safeSetItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS, '[]');
+      }
+      this._notify();
+    } catch (_) {}
+  }
+
+  /**
+   * Gets array of selected Microsoft Calendar IDs to display (or null for all).
+   * @returns {string[]|null}
+   */
+  getMicrosoftSelectedCalendarIds() {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.MS_SELECTED_CALS);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Saves array of selected Microsoft Calendar IDs to display.
+   * @param {string[]|null} calendarIds
+   */
+  setMicrosoftSelectedCalendarIds(calendarIds) {
+    try {
+      if (Array.isArray(calendarIds)) {
+        safeSetItem(STORAGE_KEYS.MS_SELECTED_CALS, JSON.stringify(calendarIds));
+      } else {
+        safeSetItem(STORAGE_KEYS.MS_SELECTED_CALS, '[]');
+      }
+      this._notify();
+    } catch (_) {}
   }
 }
 

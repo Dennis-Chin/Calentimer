@@ -10,6 +10,7 @@ import { taskStore } from './taskStore.js';
 import { mobileServices } from './mobileServices.js';
 import { analytics } from './analyticsDb.js';
 import { calendarSyncService } from './calendarSyncService.js';
+import { getCategoryColor, classifyEvent } from './eventClassifier.js';
 
 export class CalendarView {
   constructor() {
@@ -104,6 +105,12 @@ export class CalendarView {
       btnSendToToday: document.getElementById('btnSendCalEventToToday'),
       btnDeleteEvent: document.getElementById('btnDeleteCalEvent'),
       btnSaveCalEvent: document.getElementById('btnSaveCalEvent'),
+
+      // Outbound Sync Toggles
+      calEventSyncGoogle: document.getElementById('calEventSyncGoogle'),
+      calEventSyncMS: document.getElementById('calEventSyncMS'),
+      calEventSyncGoogleLabel: document.getElementById('calEventSyncGoogleLabel'),
+      calEventSyncMSLabel: document.getElementById('calEventSyncMSLabel'),
 
       // Phase 3: External Calendar Quick Toggles & Modals
       btnToggleGoogleCal: document.getElementById('btnToggleGoogleCal'),
@@ -329,8 +336,57 @@ export class CalendarView {
     if (el.btnEventEmoji) {
       el.btnEventEmoji.addEventListener('click', (e) => {
         e.preventDefault();
+        this._manualEmojiSelected = true;
         if (typeof window !== 'undefined' && typeof window.openEmojiPicker === 'function') {
           window.openEmojiPicker('CAL_EVENT');
+        }
+      });
+    }
+
+    // Live Title Auto-Classification as user types (debounced 150ms)
+    if (el.eventTitleInput) {
+      let titleDebounce = null;
+      el.eventTitleInput.addEventListener('input', () => {
+        if (this._manualCategorySelected && this._manualEmojiSelected) return;
+        if (titleDebounce) clearTimeout(titleDebounce);
+        titleDebounce = setTimeout(() => {
+          const val = el.eventTitleInput ? el.eventTitleInput.value.trim() : '';
+          if (val && val.length >= 2) {
+            const classified = classifyEvent(val);
+            if (classified) {
+              if (!this._manualEmojiSelected && classified.emoji) {
+                this.setEventEmoji(classified.emoji);
+              }
+              if (!this._manualCategorySelected && classified.category) {
+                this.currentCategory = classified.category;
+                if (el.eventCategoryInput) el.eventCategoryInput.value = classified.category;
+                if (this.refreshCategoryChips) this.refreshCategoryChips();
+              }
+            }
+          }
+        }, 150);
+      });
+    }
+
+    // Outbound Sync Toggles Click Listeners
+    if (el.calEventSyncGoogle) {
+      el.calEventSyncGoogle.addEventListener('change', () => {
+        if (el.calEventSyncGoogleLabel) {
+          el.calEventSyncGoogleLabel.classList.toggle('is-checked', Boolean(el.calEventSyncGoogle.checked));
+        }
+        if (typeof taskStore.setOutboundSyncPreference === 'function') {
+          taskStore.setOutboundSyncPreference('google', el.calEventSyncGoogle.checked);
+        }
+      });
+    }
+
+    if (el.calEventSyncMS) {
+      el.calEventSyncMS.addEventListener('change', () => {
+        if (el.calEventSyncMSLabel) {
+          el.calEventSyncMSLabel.classList.toggle('is-checked', Boolean(el.calEventSyncMS.checked));
+        }
+        if (typeof taskStore.setOutboundSyncPreference === 'function') {
+          taskStore.setOutboundSyncPreference('microsoft', el.calEventSyncMS.checked);
         }
       });
     }
@@ -4564,7 +4620,30 @@ export class CalendarView {
       if (el.lockIcon) el.lockIcon.classList.remove('active');
       if (el.eventTimeBankToggle) el.eventTimeBankToggle.checked = false;
       if (el.piggyIcon) el.piggyIcon.classList.remove('active');
+
+      this._manualCategorySelected = false;
+      this._manualEmojiSelected = false;
+
+      const gPref = (typeof taskStore.getOutboundSyncPreference === 'function') ? taskStore.getOutboundSyncPreference('google') : false;
+      const msPref = (typeof taskStore.getOutboundSyncPreference === 'function') ? taskStore.getOutboundSyncPreference('microsoft') : false;
+      if (el.calEventSyncGoogle) el.calEventSyncGoogle.checked = gPref;
+      if (el.calEventSyncGoogleLabel) el.calEventSyncGoogleLabel.classList.toggle('is-checked', gPref);
+      if (el.calEventSyncMS) el.calEventSyncMS.checked = msPref;
+      if (el.calEventSyncMSLabel) el.calEventSyncMSLabel.classList.toggle('is-checked', msPref);
+      this._initialGooglePaired = false;
+      this._initialMSPaired = false;
     } else {
+      this._manualCategorySelected = true;
+      this._manualEmojiSelected = true;
+
+      const isGoogle = Boolean(eventObj && (eventObj.googleEventId || eventObj.provider === 'google' || eventObj.source === 'google'));
+      const isMS = Boolean(eventObj && (eventObj.microsoftEventId || eventObj.provider === 'microsoft' || eventObj.source === 'microsoft'));
+      if (el.calEventSyncGoogle) el.calEventSyncGoogle.checked = isGoogle;
+      if (el.calEventSyncGoogleLabel) el.calEventSyncGoogleLabel.classList.toggle('is-checked', isGoogle);
+      if (el.calEventSyncMS) el.calEventSyncMS.checked = isMS;
+      if (el.calEventSyncMSLabel) el.calEventSyncMSLabel.classList.toggle('is-checked', isMS);
+      this._initialGooglePaired = isGoogle;
+      this._initialMSPaired = isMS;
       this.currentEventType = isBreakEvent ? 'break' : 'work';
       if (el.calTypeSegmentWork) el.calTypeSegmentWork.classList.toggle('active', !isBreakEvent);
       if (el.calTypeSegmentBreak) el.calTypeSegmentBreak.classList.toggle('active', isBreakEvent);
@@ -4752,9 +4831,23 @@ export class CalendarView {
       taskStore.addCategory(category);
     }
 
+    const isSyncGoogle = el.calEventSyncGoogle ? Boolean(el.calEventSyncGoogle.checked) : false;
+    const isSyncMS = el.calEventSyncMS ? Boolean(el.calEventSyncMS.checked) : false;
+
     if (eventId) {
-      // Update existing
-      const updatedEv = taskStore.updateCalendarEvent(eventId, {
+      // Unpair remote deletion: if previously paired and now unchecked, delete remote event
+      if (this._initialGooglePaired && !isSyncGoogle) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+          calendarSyncService.pushEventDelete(this.selectedEvent, 'google');
+        }
+      }
+      if (this._initialMSPaired && !isSyncMS) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+          calendarSyncService.pushEventDelete(this.selectedEvent, 'microsoft');
+        }
+      }
+
+      const updateData = {
         title,
         date,
         startTime,
@@ -4764,7 +4857,39 @@ export class CalendarView {
         useTimeBank,
         emoji: this.currentEmoji,
         category
-      });
+      };
+
+      if (!isSyncGoogle && this.selectedEvent && (this.selectedEvent.provider === 'google' || this.selectedEvent.googleEventId)) {
+        updateData.googleEventId = null;
+        if (this.selectedEvent.provider === 'google') updateData.provider = 'local';
+      }
+      if (!isSyncMS && this.selectedEvent && (this.selectedEvent.provider === 'microsoft' || this.selectedEvent.microsoftEventId)) {
+        updateData.microsoftEventId = null;
+        if (this.selectedEvent.provider === 'microsoft') updateData.provider = 'local';
+      }
+
+      const updatedEv = taskStore.updateCalendarEvent(eventId, updateData);
+
+      // If user toggled ON pairing during edit, push create to provider
+      if (!this._initialGooglePaired && isSyncGoogle) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
+          calendarSyncService.createRemoteEvent('google', updatedEv).then((res) => {
+            if (res && res.externalId) {
+              taskStore.updateCalendarEvent(eventId, { googleEventId: res.externalId, externalId: res.externalId, provider: 'google' });
+            }
+          }).catch(() => {});
+        }
+      }
+      if (!this._initialMSPaired && isSyncMS) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
+          calendarSyncService.createRemoteEvent('microsoft', updatedEv).then((res) => {
+            if (res && res.externalId) {
+              taskStore.updateCalendarEvent(eventId, { microsoftEventId: res.externalId, externalId: res.externalId, provider: 'microsoft' });
+            }
+          }).catch(() => {});
+        }
+      }
+
       if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
         calendarSyncService.pushEventUpdate(updatedEv);
       }
@@ -4780,11 +4905,35 @@ export class CalendarView {
         isLocked,
         useTimeBank,
         emoji: this.currentEmoji,
-        category
+        category,
+        provider: isSyncGoogle ? 'google' : (isSyncMS ? 'microsoft' : 'local')
       });
-      if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventCreate === 'function') {
-        calendarSyncService.pushEventCreate(newEv);
+
+      // Remember sticky preference
+      if (typeof taskStore.setOutboundSyncPreference === 'function') {
+        taskStore.setOutboundSyncPreference('google', isSyncGoogle);
+        taskStore.setOutboundSyncPreference('microsoft', isSyncMS);
       }
+
+      if (isSyncGoogle) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
+          calendarSyncService.createRemoteEvent('google', newEv).then((res) => {
+            if (res && res.externalId) {
+              taskStore.updateCalendarEvent(newEv.id, { googleEventId: res.externalId, externalId: res.externalId });
+            }
+          }).catch(() => {});
+        }
+      }
+      if (isSyncMS) {
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
+          calendarSyncService.createRemoteEvent('microsoft', newEv).then((res) => {
+            if (res && res.externalId) {
+              taskStore.updateCalendarEvent(newEv.id, { microsoftEventId: res.externalId, externalId: res.externalId });
+            }
+          }).catch(() => {});
+        }
+      }
+
       this._showToast('✓ Event created');
     }
 
@@ -4844,34 +4993,10 @@ export class CalendarView {
   }
 
   _getCategoryColor(category) {
-    const cat = (category || 'general').trim().toLowerCase();
-    switch (cat) {
-      case 'work': return '#2563eb'; // Royal Blue
-      case 'study': return '#7c3aed'; // Vibrant Purple
-      case 'break': return '#d97706'; // Amber (strictly reserved for breaks)
-      case 'personal': return '#0d9488'; // Deep Teal
-      case 'meeting': return '#d946ef'; // Vivid Fuchsia
-      case 'health':
-      case 'exercise':
-      case 'fitness': return '#e11d48'; // Rose
-      case 'reading': return '#0891b2'; // Cyan
-      case 'coding':
-      case 'dev': return '#4f46e5'; // Indigo
-      case 'social': return '#ec4899'; // Pink
-      case 'travel': return '#0284c7'; // Sky Blue
-      case 'food':
-      case 'dining': return '#f97316'; // Coral / Food
-      case 'finance': return '#10b981'; // Emerald
-      default: {
-        const colors = ['#2563eb', '#7c3aed', '#0d9488', '#0891b2', '#4f46e5', '#db2777', '#8b5cf6', '#d946ef'];
-        let hash = 0;
-        for (let i = 0; i < cat.length; i++) {
-          hash = cat.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const idx = Math.abs(hash) % colors.length;
-        return colors[idx];
-      }
+    if (typeof getCategoryColor === 'function') {
+      return getCategoryColor(category);
     }
+    return '#3b82f6';
   }
 
   _formatDateISO(d) {

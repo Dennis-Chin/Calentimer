@@ -533,22 +533,75 @@ export class CalendarSyncService {
   }
 
   /**
-   * Pushes an event delete to the appropriate connected provider.
-   * @param {object} event 
+   * Pushes a new event create to an external provider directly from a task or event object.
+   * @param {string} provider ('google' | 'microsoft')
+   * @param {object} taskOrEvent
+   * @returns {Promise<object|null>}
    */
-  async pushEventDelete(event) {
-    if (!event || !event.externalId) return false;
-    const provider = (event.provider || event.source || 'local');
-    if (provider === 'local') return false;
-
+  async createRemoteEvent(provider, taskOrEvent) {
+    if (!provider || provider === 'local' || !taskOrEvent) return null;
     const adapter = this.adapters[provider];
-    if (!adapter || !this.isProviderConnected(provider)) return false;
+    if (!adapter || !this.isProviderConnected(provider)) return null;
+
+    const todayStr = (typeof taskStore.getTodayDateString === 'function')
+      ? taskStore.getTodayDateString()
+      : new Date().toISOString().split('T')[0];
+
+    const calEvent = {
+      id: taskOrEvent.id || ('event-' + Date.now()),
+      title: taskOrEvent.title || 'Event',
+      date: taskOrEvent.date || todayStr,
+      startTime: taskOrEvent.startTime || taskOrEvent.fixedStartTime || '09:00',
+      endTime: taskOrEvent.endTime || '10:00',
+      plannedDuration: taskOrEvent.plannedDuration || 30,
+      category: taskOrEvent.category || 'General',
+      emoji: taskOrEvent.emoji || '📌',
+      color: taskOrEvent.color || null,
+      provider: provider,
+      source: provider
+    };
 
     try {
-      await adapter.deleteEvent(event.externalId);
+      const res = await adapter.createEvent(calEvent);
+      if (res && res.externalId) {
+        return res;
+      }
+    } catch (err) {
+      console.warn(`CalendarSyncService: Failed to create remote event on ${provider}:`, err);
+    }
+    return null;
+  }
+
+  /**
+   * Pushes an event delete to the appropriate connected provider.
+   * Accepts an event object, a task object, or an external ID string.
+   * @param {object|string} eventOrTask 
+   * @param {string} [provider]
+   * @returns {Promise<boolean>}
+   */
+  async pushEventDelete(eventOrTask, provider) {
+    if (!eventOrTask) return false;
+    let externalId = null;
+    let prov = provider || null;
+
+    if (typeof eventOrTask === 'string') {
+      externalId = eventOrTask;
+    } else {
+      externalId = eventOrTask.externalId || (prov === 'google' ? eventOrTask.googleEventId : (prov === 'microsoft' ? eventOrTask.microsoftEventId : null)) || eventOrTask.googleEventId || eventOrTask.microsoftEventId;
+      if (!prov) {
+        prov = eventOrTask.provider || eventOrTask.source || (eventOrTask.googleEventId ? 'google' : (eventOrTask.microsoftEventId ? 'microsoft' : null));
+      }
+    }
+
+    if (!externalId || !prov || prov === 'local') return false;
+    const adapter = this.adapters[prov];
+    if (!adapter || !this.isProviderConnected(prov)) return false;
+
+    try {
+      await adapter.deleteEvent(externalId);
       return true;
     } catch (err) {
-      console.warn(`CalendarSyncService: Outbound delete error (${provider}):`, err);
+      console.warn(`CalendarSyncService: Outbound delete error (${prov}):`, err);
       return false;
     }
   }
@@ -561,7 +614,7 @@ export class CalendarSyncService {
     if (this.isAutoSyncRunning) return;
     this.isAutoSyncRunning = true;
 
-    // 1. Visibility Change Listener (Fetch delta when user returns to app)
+    // 1. Visibility & Focus Change Listeners (Fetch delta when user returns to app)
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       this._visibilityHandler = () => {
         if (document.visibilityState === 'visible') {
@@ -574,14 +627,24 @@ export class CalendarSyncService {
       document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
-    // 2. 60-Second Background Polling Timer
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      this._focusHandler = () => {
+        const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
+        if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
+          this.syncAll().catch(() => {});
+        }
+      };
+      window.addEventListener('focus', this._focusHandler);
+    }
+
+    // 2. 15-Second Active Polling Timer for near real-time update appearance
     if (typeof setInterval === 'function') {
       this.autoSyncTimer = setInterval(() => {
         const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
         if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
           this.syncAll().catch(() => {});
         }
-      }, 60000);
+      }, 15000);
     }
   }
 
@@ -594,6 +657,10 @@ export class CalendarSyncService {
     if (this._visibilityHandler && typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this._visibilityHandler);
       this._visibilityHandler = null;
+    }
+    if (this._focusHandler && typeof window !== 'undefined') {
+      window.removeEventListener('focus', this._focusHandler);
+      this._focusHandler = null;
     }
   }
 }

@@ -17,75 +17,107 @@
 export const CATEGORY_DEFINITIONS = {
   Break: {
     name: 'Break',
-    color: '#d97706', // Amber
+    color: '#f59e0b', // Warm Amber (strictly reserved for breaks)
     defaultEmoji: '☕'
   },
   Study: {
     name: 'Study',
-    color: '#7c3aed', // Vibrant Purple
+    color: '#8b5cf6', // Vibrant Purple / Iris
     defaultEmoji: '📚'
   },
   Work: {
     name: 'Work',
-    color: '#2563eb', // Royal Blue
+    color: '#3b82f6', // Vibrant Electric Blue
     defaultEmoji: '💼'
   },
   Meeting: {
     name: 'Meeting',
-    color: '#d946ef', // Vivid Fuchsia
+    color: '#d946ef', // Vivid Fuchsia / Magenta
     defaultEmoji: '👥'
   },
   Coding: {
     name: 'Coding',
-    color: '#4f46e5', // Royal Indigo
+    color: '#6366f1', // Royal Indigo / Tech
     defaultEmoji: '💻'
   },
   Fitness: {
     name: 'Fitness',
-    color: '#e11d48', // Rose / Red
+    color: '#f43f5e', // Bright Rose
     defaultEmoji: '🏋️'
   },
   Health: {
     name: 'Health',
-    color: '#0d9488', // Deep Teal
+    color: '#06b6d4', // Bright Cyan / Aqua (strictly distinct from Personal)
     defaultEmoji: '🩺'
   },
   Personal: {
     name: 'Personal',
-    color: '#0d9488', // Deep Teal
+    color: '#10b981', // Vibrant Emerald / Mint (strictly distinct from Health)
     defaultEmoji: '🌿'
   },
   Social: {
     name: 'Social',
-    color: '#ec4899', // Pink
+    color: '#ec4899', // Hot Pink
     defaultEmoji: '🎉'
   },
   Reading: {
     name: 'Reading',
-    color: '#0891b2', // Cyan
+    color: '#0284c7', // Sky Blue
     defaultEmoji: '📖'
   },
   Travel: {
     name: 'Travel',
-    color: '#0284c7', // Sky Blue
+    color: '#a855f7', // Bright Orchid / Purple
     defaultEmoji: '✈️'
   },
   Food: {
     name: 'Food',
-    color: '#f97316', // Coral / Orange
+    color: '#f97316', // Warm Coral Orange
     defaultEmoji: '🍱'
   },
   Finance: {
     name: 'Finance',
-    color: '#10b981', // Emerald
+    color: '#14b8a6', // Deep Teal
     defaultEmoji: '💰'
   },
   General: {
     name: 'General',
-    color: '#8b5cf6', // Violet
+    color: '#0ea5e9', // Vivid Azure
     defaultEmoji: '📌'
   }
 };
+
+/**
+ * Returns the standardized, high-contrast hex color for any category name.
+ * Provides unified color resolution across Today's Schedule, the Calendar Tab, and Full Calendar.
+ * @param {string} category 
+ * @returns {string} Hex color
+ */
+export function getCategoryColor(category) {
+  if (!category) return CATEGORY_DEFINITIONS.General.color;
+  const clean = String(category).trim().toLowerCase();
+
+  const keys = Object.keys(CATEGORY_DEFINITIONS);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase() === clean) {
+      return CATEGORY_DEFINITIONS[keys[i]].color;
+    }
+  }
+
+  if (clean === 'dev' || clean === 'programming') return CATEGORY_DEFINITIONS.Coding.color;
+  if (clean === 'exercise' || clean === 'gym' || clean === 'workout') return CATEGORY_DEFINITIONS.Fitness.color;
+  if (clean === 'dining' || clean === 'meal' || clean === 'lunch' || clean === 'dinner') return CATEGORY_DEFINITIONS.Food.color;
+  if (clean === 'medical' || clean === 'doctor') return CATEGORY_DEFINITIONS.Health.color;
+  if (clean === 'errand' || clean === 'home' || clean === 'admin') return CATEGORY_DEFINITIONS.Personal.color;
+
+  const fallbackColors = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f43f5e', '#ec4899', '#6366f1', '#14b8a6', '#0284c7', '#f97316'];
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % fallbackColors.length;
+  return fallbackColors[idx];
+}
 
 // Domain classification rules ordered by priority
 const CLASSIFICATION_RULES = [
@@ -351,7 +383,35 @@ export function classifyEvent(title, description, existingColor) {
   };
 }
 
+/**
+ * Returns an array of all distinct emojis used across category definitions and classification rules.
+ * @returns {string[]}
+ */
+export function getAllClassificationEmojis() {
+  const emojiSet = new Set();
+  const catKeys = Object.keys(CATEGORY_DEFINITIONS);
+  for (let i = 0; i < catKeys.length; i++) {
+    if (CATEGORY_DEFINITIONS[catKeys[i]].defaultEmoji) {
+      emojiSet.add(CATEGORY_DEFINITIONS[catKeys[i]].defaultEmoji);
+    }
+  }
+  for (let i = 0; i < CLASSIFICATION_RULES.length; i++) {
+    const rule = CLASSIFICATION_RULES[i];
+    if (rule.defaultEmoji) emojiSet.add(rule.defaultEmoji);
+    const groups = rule.keywords;
+    for (let j = 0; j < groups.length; j++) {
+      if (groups[j].emoji) emojiSet.add(groups[j].emoji);
+    }
+  }
+  for (let i = 0; i < DETERMINISTIC_FALLBACK_EMOJIS.length; i++) {
+    emojiSet.add(DETERMINISTIC_FALLBACK_EMOJIS[i]);
+  }
+  return Array.from(emojiSet);
+}
+
 export default {
   CATEGORY_DEFINITIONS,
-  classifyEvent
+  classifyEvent,
+  getCategoryColor,
+  getAllClassificationEmojis
 };
