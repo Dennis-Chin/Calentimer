@@ -510,6 +510,41 @@ btnModeChronological.dispatchSimulatedEvent('click');
 assert(btnModeChronological.classList.contains('active'), 'Clicking Chronological activates chronological segment');
 assert(!btnModeSequential.classList.contains('active'), 'Sequential segment deactivated');
 
+// Test horizontal swipe toggle while touching a task card in slide-up drawer (taskDrawer)
+const mockTaskCard = createMockElement('div');
+mockTaskCard.className = 'task-card';
+taskDrawer.appendChild(mockTaskCard);
+
+// 1. Swiping RIGHT on task card in taskDrawer (Chronological -> Sequential)
+taskDrawer.dispatchSimulatedEvent('touchstart', {
+  target: mockTaskCard,
+  touches: [{ clientX: 100, clientY: 200 }]
+});
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  target: mockTaskCard,
+  touches: [{ clientX: 160, clientY: 202 }]
+});
+taskDrawer.dispatchSimulatedEvent('touchend', {
+  target: mockTaskCard,
+  changedTouches: [{ clientX: 160, clientY: 202 }]
+});
+assert(btnModeSequential.classList.contains('active'), 'Swiping RIGHT while touching a task card in slide-up drawer toggles on Sequential mode');
+
+// 2. Swiping LEFT on task card in taskDrawer (Sequential -> Chronological)
+taskDrawer.dispatchSimulatedEvent('touchstart', {
+  target: mockTaskCard,
+  touches: [{ clientX: 160, clientY: 200 }]
+});
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  target: mockTaskCard,
+  touches: [{ clientX: 100, clientY: 202 }]
+});
+taskDrawer.dispatchSimulatedEvent('touchend', {
+  target: mockTaskCard,
+  changedTouches: [{ clientX: 100, clientY: 202 }]
+});
+assert(btnModeChronological.classList.contains('active'), 'Swiping LEFT while touching a task card in slide-up drawer toggles on Chronological mode');
+
 console.log('\n--- 8. Testing Today\'s Schedule (Menu Bar) Pull-Down & Press-Hold Guard ---');
 const indexHtmlContent = readFileSync(path.resolve('./index.html'), 'utf8');
 const appJsContent = readFileSync(path.resolve('./app.js'), 'utf8');

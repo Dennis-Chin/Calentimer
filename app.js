@@ -2397,6 +2397,8 @@ function setupScheduleHorizontalSwipeToggle(container) {
   if (!container || container._hasHSwipeToggle) return;
   container._hasHSwipeToggle = true;
 
+  const isSlideUpDrawer = container.id === 'taskDrawer' || Boolean(container.closest && container.closest('#taskDrawer'));
+
   let touchStartX = 0;
   let touchStartY = 0;
   let isHSwiping = false;
@@ -2405,12 +2407,26 @@ function setupScheduleHorizontalSwipeToggle(container) {
   container.addEventListener('touchstart', (e) => {
     if (isDraggingTask) return;
     if (!e.touches || e.touches.length !== 1) return;
-    // If touch originates on a task card, ignore so user can swipe-to-delete or cancel without toggling mode
-    if (e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block, .todo-block, .todo-item-wrapper')) {
-      touchOnTask = true;
-      isHSwiping = false;
-      return;
+
+    if (!isSlideUpDrawer) {
+      // In calendarModal (menu bar tab), tasks have swipe-to-delete, so swiping on a task card
+      // is reserved for swipe-to-delete and must not trigger chronological/sequential toggle.
+      if (e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block, .todo-block, .todo-item-wrapper')) {
+        touchOnTask = true;
+        isHSwiping = false;
+        return;
+      }
+    } else {
+      // In taskDrawer (slide up tab), there is no swipe-to-delete (tasks have an explicit X button),
+      // so swiping on a task card allows toggling between chronological and sequential!
+      // Only suppress if user initiated a task reorder drag handle interaction.
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
+        touchOnTask = true;
+        isHSwiping = false;
+        return;
+      }
     }
+
     touchOnTask = false;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
