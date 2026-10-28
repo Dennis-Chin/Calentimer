@@ -288,6 +288,16 @@ const classifierContent = fs.readFileSync(path.resolve(process.cwd(), 'eventClas
 assert(classifierContent.includes('export function getCategoryColor('), 'eventClassifier.js exports getCategoryColor() single source of truth');
 assert(classifierContent.includes('export function getAllClassificationEmojis('), 'eventClassifier.js exports getAllClassificationEmojis()');
 
+console.log('\n--- 9. Testing Outbound Color Sync & Local Event Preservation ---');
+const gAdapterContent = fs.readFileSync(path.resolve(process.cwd(), 'googleCalendarAdapter.js'), 'utf8');
+const syncServiceContent = fs.readFileSync(path.resolve(process.cwd(), 'calendarSyncService.js'), 'utf8');
+assert(gAdapterContent.includes('getGoogleColorId('), 'googleCalendarAdapter.js implements getGoogleColorId()');
+assert(gAdapterContent.includes('payload.colorId ='), 'googleCalendarAdapter.js attaches colorId to outbound payload');
+assert(msAdapterContent.includes('getMicrosoftColorCategory('), 'microsoftCalendarAdapter.js implements getMicrosoftColorCategory()');
+assert(msAdapterContent.includes('getMicrosoftColorCategory(event.category') && msAdapterContent.includes('categories.push(colorCategory)'), 'microsoftCalendarAdapter.js attaches color category to outbound payload');
+assert(calContent.includes('isLocalItem') && calContent.includes("ev.id.startsWith('cal-event-')"), 'calendarView.js exempts local items from cloud visibility filters');
+assert(syncServiceContent.includes('isLocalItem') && syncServiceContent.includes("existing.id.startsWith('cal-event-')"), 'calendarSyncService.js protects local items from deletion on cloud cancellation');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

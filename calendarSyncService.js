@@ -10,6 +10,7 @@
 import { taskStore } from './taskStore.js';
 import { googleCalendarAdapter } from './googleCalendarAdapter.js';
 import { microsoftCalendarAdapter } from './microsoftCalendarAdapter.js';
+import { getCategoryColor } from './eventClassifier.js';
 
 export class CalendarSyncService {
   constructor(options) {
@@ -314,18 +315,35 @@ export class CalendarSyncService {
       // 1. Deletion / Cancellation in cloud
       if (incoming.isCancelled || incoming.status === 'cancelled' || incoming.deleted) {
         if (existing) {
-          if (typeof taskStore.addDeletedId === 'function') {
-            taskStore.addDeletedId(existing.id);
-          }
-          const idx = updatedEvents.findIndex(e => e.id === existing.id);
-          if (idx !== -1) {
-            updatedEvents.splice(idx, 1);
-            deleted++;
-            if (existing.date === todayStr) {
-              hasTodayChanges = true;
-              if (typeof taskStore.getTasks === 'function' && typeof taskStore.saveTasks === 'function') {
-                const remainingTasks = taskStore.getTasks().filter(t => t.id !== existing.id);
-                taskStore.saveTasks(remainingTasks);
+          const isLocalItem = Boolean(
+            (existing.id && (existing.id.startsWith('cal-event-') || existing.id.startsWith('task-'))) ||
+            existing.source === 'local' ||
+            existing.origin === 'local'
+          );
+          if (isLocalItem) {
+            // Local Calentimer item: detach external sync pairing, do NOT delete local item
+            if (provider === 'google') existing.googleEventId = null;
+            if (provider === 'microsoft') existing.microsoftEventId = null;
+            existing.externalId = null;
+            existing.provider = 'local';
+            existing.isDirty = false;
+            existing.lastModified = Date.now();
+            updated++;
+          } else {
+            // Pure external event imported from cloud: proceed with deletion
+            if (typeof taskStore.addDeletedId === 'function') {
+              taskStore.addDeletedId(existing.id);
+            }
+            const idx = updatedEvents.findIndex(e => e.id === existing.id);
+            if (idx !== -1) {
+              updatedEvents.splice(idx, 1);
+              deleted++;
+              if (existing.date === todayStr) {
+                hasTodayChanges = true;
+                if (typeof taskStore.getTasks === 'function' && typeof taskStore.saveTasks === 'function') {
+                  const remainingTasks = taskStore.getTasks().filter(t => t.id !== existing.id);
+                  taskStore.saveTasks(remainingTasks);
+                }
               }
             }
           }
@@ -547,16 +565,32 @@ export class CalendarSyncService {
       ? taskStore.getTodayDateString()
       : new Date().toISOString().split('T')[0];
 
+    const startTime = taskOrEvent.startTime || taskOrEvent.fixedStartTime || '09:00';
+    const durMin = taskOrEvent.plannedDuration || 30;
+    let endTime = taskOrEvent.endTime;
+    if (!endTime && startTime) {
+      const parts = startTime.split(':');
+      const startMin = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+      const endTotal = (startMin + durMin) % 1440;
+      const endH = Math.floor(endTotal / 60);
+      const endM = endTotal % 60;
+      endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+    }
+    if (!endTime) endTime = '10:00';
+
+    const category = taskOrEvent.category || 'General';
+    const resolvedColor = taskOrEvent.color || (typeof getCategoryColor === 'function' ? getCategoryColor(category) : '#3b82f6');
+
     const calEvent = {
       id: taskOrEvent.id || ('event-' + Date.now()),
       title: taskOrEvent.title || 'Event',
       date: taskOrEvent.date || todayStr,
-      startTime: taskOrEvent.startTime || taskOrEvent.fixedStartTime || '09:00',
-      endTime: taskOrEvent.endTime || '10:00',
-      plannedDuration: taskOrEvent.plannedDuration || 30,
-      category: taskOrEvent.category || 'General',
+      startTime: startTime,
+      endTime: endTime,
+      plannedDuration: durMin,
+      category: category,
       emoji: taskOrEvent.emoji || '📌',
-      color: taskOrEvent.color || null,
+      color: resolvedColor,
       provider: provider,
       source: provider
     };

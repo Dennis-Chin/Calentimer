@@ -634,6 +634,77 @@ export class GoogleCalendarAdapter {
   }
 
   /**
+   * Maps Calentimer category and/or hex color to the closest Google Calendar colorId ("1" to "11").
+   * @param {string} [category]
+   * @param {string} [colorHex]
+   * @returns {string} Google Calendar colorId ("1" to "11")
+   */
+  getGoogleColorId(category, colorHex) {
+    const cleanCat = category ? String(category).trim().toLowerCase() : '';
+    const CATEGORY_COLOR_MAP = {
+      'work': '9',       // Blueberry (Dark Blue)
+      'study': '3',      // Grape (Purple)
+      'break': '6',      // Tangerine (Orange)
+      'coding': '9',     // Blueberry
+      'dev': '9',        // Blueberry
+      'programming': '9',// Blueberry
+      'meeting': '3',    // Grape
+      'fitness': '11',   // Tomato (Red)
+      'exercise': '11',  // Tomato
+      'gym': '11',       // Tomato
+      'workout': '11',   // Tomato
+      'health': '7',     // Peacock (Cyan / Light Blue)
+      'medical': '7',    // Peacock
+      'personal': '2',   // Sage (Soft Green)
+      'errand': '2',     // Sage
+      'social': '4',     // Flamingo (Coral / Pink)
+      'food': '6',       // Tangerine
+      'dining': '6',     // Tangerine
+      'reading': '7',    // Peacock
+      'travel': '3',     // Grape
+      'finance': '10',   // Basil (Dark Green)
+      'general': '7'     // Peacock
+    };
+
+    if (cleanCat && CATEGORY_COLOR_MAP[cleanCat]) {
+      return CATEGORY_COLOR_MAP[cleanCat];
+    }
+
+    // If explicit hex provided, find closest Google Calendar color via Euclidean RGB distance
+    const hex = colorHex || null;
+    if (hex && typeof hex === 'string' && hex.charAt(0) === '#') {
+      let h = hex.slice(1);
+      if (h.length === 3) {
+        h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+      }
+      const targetR = parseInt(h.slice(0, 2), 16) || 0;
+      const targetG = parseInt(h.slice(2, 4), 16) || 0;
+      const targetB = parseInt(h.slice(4, 6), 16) || 0;
+
+      let closestId = '9';
+      let minDistance = Infinity;
+
+      const colorIds = Object.keys(GOOGLE_EVENT_COLORS);
+      for (let i = 0; i < colorIds.length; i++) {
+        const id = colorIds[i];
+        const gHex = GOOGLE_EVENT_COLORS[id].slice(1);
+        const gr = parseInt(gHex.slice(0, 2), 16) || 0;
+        const gg = parseInt(gHex.slice(2, 4), 16) || 0;
+        const gb = parseInt(gHex.slice(4, 6), 16) || 0;
+
+        const dist = Math.pow(targetR - gr, 2) + Math.pow(targetG - gg, 2) + Math.pow(targetB - gb, 2);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestId = id;
+        }
+      }
+      return closestId;
+    }
+
+    return '9'; // Default Blueberry
+  }
+
+  /**
    * Converts Calentimer event to Google Calendar API JSON payload.
    * @param {object} event 
    * @returns {object}
@@ -650,7 +721,9 @@ export class GoogleCalendarAdapter {
     const startDateTime = `${date}T${startTime}:00`;
     const endDateTime = `${date}T${endTime}:00`;
 
-    return {
+    const colorId = this.getGoogleColorId(event.category, event.color);
+
+    const payload = {
       summary: event.title || 'Calentimer Task',
       description: `Managed by Calentimer${event.category ? ' • Category: ' + event.category : ''}`,
       start: {
@@ -662,6 +735,12 @@ export class GoogleCalendarAdapter {
         timeZone: timeZone
       }
     };
+
+    if (colorId) {
+      payload.colorId = String(colorId);
+    }
+
+    return payload;
   }
 
   _parseTimeToMinutes(timeStr) {

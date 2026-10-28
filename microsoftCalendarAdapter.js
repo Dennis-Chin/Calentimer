@@ -996,6 +996,78 @@ export class MicrosoftCalendarAdapter {
   }
 
   /**
+   * Maps Calentimer category and/or hex color to the best Outlook color category name.
+   * e.g. 'Blue category', 'Orange category', 'Purple category', etc.
+   * @param {string} [category]
+   * @param {string} [colorHex]
+   * @returns {string} Outlook color category name
+   */
+  getMicrosoftColorCategory(category, colorHex) {
+    const cleanCat = category ? String(category).trim().toLowerCase() : '';
+    const CATEGORY_OUTLOOK_MAP = {
+      'work': 'Blue category',
+      'study': 'Purple category',
+      'break': 'Orange category',
+      'coding': 'Blue category',
+      'dev': 'Blue category',
+      'programming': 'Blue category',
+      'meeting': 'Purple category',
+      'fitness': 'Red category',
+      'exercise': 'Red category',
+      'gym': 'Red category',
+      'workout': 'Red category',
+      'health': 'Teal category',
+      'medical': 'Teal category',
+      'personal': 'Green category',
+      'errand': 'Green category',
+      'social': 'Cranberry category',
+      'food': 'Peach category',
+      'dining': 'Peach category',
+      'reading': 'Blue category',
+      'travel': 'Purple category',
+      'finance': 'Green category',
+      'general': 'Teal category'
+    };
+
+    if (cleanCat && CATEGORY_OUTLOOK_MAP[cleanCat]) {
+      return CATEGORY_OUTLOOK_MAP[cleanCat];
+    }
+
+    // Match hex via distance against MICROSOFT_CATEGORY_NAME_MAP
+    const hex = colorHex || null;
+    if (hex && typeof hex === 'string' && hex.charAt(0) === '#') {
+      let h = hex.slice(1);
+      if (h.length === 3) {
+        h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+      }
+      const targetR = parseInt(h.slice(0, 2), 16) || 0;
+      const targetG = parseInt(h.slice(2, 4), 16) || 0;
+      const targetB = parseInt(h.slice(4, 6), 16) || 0;
+
+      let closestName = 'Blue category';
+      let minDistance = Infinity;
+
+      const catNames = Object.keys(MICROSOFT_CATEGORY_NAME_MAP);
+      for (let i = 0; i < catNames.length; i++) {
+        const catKey = catNames[i];
+        const mHex = MICROSOFT_CATEGORY_NAME_MAP[catKey].slice(1);
+        const mr = parseInt(mHex.slice(0, 2), 16) || 0;
+        const mg = parseInt(mHex.slice(2, 4), 16) || 0;
+        const mb = parseInt(mHex.slice(4, 6), 16) || 0;
+
+        const dist = Math.pow(targetR - mr, 2) + Math.pow(targetG - mg, 2) + Math.pow(targetB - mb, 2);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestName = catKey.charAt(0).toUpperCase() + catKey.slice(1);
+        }
+      }
+      return closestName;
+    }
+
+    return 'Blue category';
+  }
+
+  /**
    * Converts Calentimer event to Microsoft Graph JSON payload.
    * @param {object} event 
    * @returns {object}
@@ -1015,6 +1087,10 @@ export class MicrosoftCalendarAdapter {
     const categories = [];
     if (event.category) {
       categories.push(event.category);
+    }
+    const colorCategory = this.getMicrosoftColorCategory(event.category, event.color);
+    if (colorCategory && categories.indexOf(colorCategory) === -1) {
+      categories.push(colorCategory);
     }
 
     return {

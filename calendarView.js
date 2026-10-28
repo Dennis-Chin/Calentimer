@@ -164,7 +164,7 @@ export class CalendarView {
   }
 
   isOpen() {
-    return Boolean(this.elements.backdrop && !this.elements.backdrop.classList.contains('hidden'));
+    return Boolean(this.elements && this.elements.backdrop && !this.elements.backdrop.classList.contains('hidden'));
   }
 
   _cancelActiveEventDrag() {
@@ -1360,6 +1360,14 @@ export class CalendarView {
 
     return allEvents.filter(ev => {
       if (!ev) return false;
+      const isLocalItem = Boolean(
+        (ev.id && (ev.id.startsWith('cal-event-') || ev.id.startsWith('task-'))) ||
+        ev.source === 'local' ||
+        ev.origin === 'local'
+      );
+      if (isLocalItem) {
+        return true;
+      }
       const prov = (ev.provider || ev.source) ? (ev.provider || ev.source) : 'local';
       if (prov === 'google' && !isGoogleVis) return false;
       if (prov === 'microsoft' && !isMsVis) return false;
@@ -4856,15 +4864,18 @@ export class CalendarView {
         isLocked,
         useTimeBank,
         emoji: this.currentEmoji,
-        category
+        category,
+        color: this._getCategoryColor(category)
       };
 
       if (!isSyncGoogle && this.selectedEvent && (this.selectedEvent.provider === 'google' || this.selectedEvent.googleEventId)) {
         updateData.googleEventId = null;
+        updateData.externalId = null;
         if (this.selectedEvent.provider === 'google') updateData.provider = 'local';
       }
       if (!isSyncMS && this.selectedEvent && (this.selectedEvent.provider === 'microsoft' || this.selectedEvent.microsoftEventId)) {
         updateData.microsoftEventId = null;
+        updateData.externalId = null;
         if (this.selectedEvent.provider === 'microsoft') updateData.provider = 'local';
       }
 
@@ -4875,7 +4886,18 @@ export class CalendarView {
         if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
           calendarSyncService.createRemoteEvent('google', updatedEv).then((res) => {
             if (res && res.externalId) {
-              taskStore.updateCalendarEvent(eventId, { googleEventId: res.externalId, externalId: res.externalId, provider: 'google' });
+              const hash = (typeof calendarSyncService.computeSyncHash === 'function')
+                ? calendarSyncService.computeSyncHash(Object.assign({}, updatedEv, { externalId: res.externalId, googleEventId: res.externalId }))
+                : null;
+              taskStore.updateCalendarEvent(eventId, {
+                googleEventId: res.externalId,
+                externalId: res.externalId,
+                provider: 'google',
+                syncHash: hash,
+                etag: res.etag || null,
+                isDirty: false
+              });
+              this.render();
             }
           }).catch(() => {});
         }
@@ -4884,7 +4906,18 @@ export class CalendarView {
         if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
           calendarSyncService.createRemoteEvent('microsoft', updatedEv).then((res) => {
             if (res && res.externalId) {
-              taskStore.updateCalendarEvent(eventId, { microsoftEventId: res.externalId, externalId: res.externalId, provider: 'microsoft' });
+              const hash = (typeof calendarSyncService.computeSyncHash === 'function')
+                ? calendarSyncService.computeSyncHash(Object.assign({}, updatedEv, { externalId: res.externalId, microsoftEventId: res.externalId }))
+                : null;
+              taskStore.updateCalendarEvent(eventId, {
+                microsoftEventId: res.externalId,
+                externalId: res.externalId,
+                provider: 'microsoft',
+                syncHash: hash,
+                etag: res.etag || null,
+                isDirty: false
+              });
+              this.render();
             }
           }).catch(() => {});
         }
@@ -4896,6 +4929,7 @@ export class CalendarView {
       this._showToast('✓ Event updated');
     } else {
       // Add new
+      const resolvedColor = this._getCategoryColor(category);
       const newEv = taskStore.addCalendarEvent({
         title,
         date,
@@ -4906,6 +4940,9 @@ export class CalendarView {
         useTimeBank,
         emoji: this.currentEmoji,
         category,
+        color: resolvedColor,
+        source: 'local',
+        origin: 'local',
         provider: isSyncGoogle ? 'google' : (isSyncMS ? 'microsoft' : 'local')
       });
 
@@ -4919,7 +4956,17 @@ export class CalendarView {
         if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
           calendarSyncService.createRemoteEvent('google', newEv).then((res) => {
             if (res && res.externalId) {
-              taskStore.updateCalendarEvent(newEv.id, { googleEventId: res.externalId, externalId: res.externalId });
+              const hash = (typeof calendarSyncService.computeSyncHash === 'function')
+                ? calendarSyncService.computeSyncHash(Object.assign({}, newEv, { externalId: res.externalId, googleEventId: res.externalId }))
+                : null;
+              taskStore.updateCalendarEvent(newEv.id, {
+                googleEventId: res.externalId,
+                externalId: res.externalId,
+                syncHash: hash,
+                etag: res.etag || null,
+                isDirty: false
+              });
+              this.render();
             }
           }).catch(() => {});
         }
@@ -4928,7 +4975,17 @@ export class CalendarView {
         if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.createRemoteEvent === 'function') {
           calendarSyncService.createRemoteEvent('microsoft', newEv).then((res) => {
             if (res && res.externalId) {
-              taskStore.updateCalendarEvent(newEv.id, { microsoftEventId: res.externalId, externalId: res.externalId });
+              const hash = (typeof calendarSyncService.computeSyncHash === 'function')
+                ? calendarSyncService.computeSyncHash(Object.assign({}, newEv, { externalId: res.externalId, microsoftEventId: res.externalId }))
+                : null;
+              taskStore.updateCalendarEvent(newEv.id, {
+                microsoftEventId: res.externalId,
+                externalId: res.externalId,
+                syncHash: hash,
+                etag: res.etag || null,
+                isDirty: false
+              });
+              this.render();
             }
           }).catch(() => {});
         }

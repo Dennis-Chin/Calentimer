@@ -596,6 +596,87 @@ if (typeof global.document === 'undefined') {
   }
   assert(unsupportedCaught, 'Rejects unsupported hash algorithm');
 
+  // --- 8. Testing Outbound Event Color Mapping & Disappearing Event Protection ---
+  console.log('\n--- 8. Testing Outbound Event Color Mapping & Disappearing Event Protection ---');
+  assert(typeof googleCalendarAdapter.getGoogleColorId === 'function', 'googleCalendarAdapter implements getGoogleColorId()');
+  assert(googleCalendarAdapter.getGoogleColorId('Work') === '9', 'Work category maps to Google colorId 9 (Blueberry)');
+  assert(googleCalendarAdapter.getGoogleColorId('Break') === '6', 'Break category maps to Google colorId 6 (Tangerine)');
+  assert(googleCalendarAdapter.getGoogleColorId('Study') === '3', 'Study category maps to Google colorId 3 (Grape)');
+  assert(googleCalendarAdapter.getGoogleColorId('Fitness') === '11', 'Fitness category maps to Google colorId 11 (Tomato)');
+  assert(googleCalendarAdapter.getGoogleColorId('Health') === '7', 'Health category maps to Google colorId 7 (Peacock)');
+  assert(googleCalendarAdapter.getGoogleColorId('Personal') === '2', 'Personal category maps to Google colorId 2 (Sage)');
+
+  const gPayload = googleCalendarAdapter.mapToGooglePayload({
+    title: 'Focus Sprint',
+    category: 'Work',
+    date: '2026-10-28',
+    startTime: '10:00',
+    endTime: '11:00'
+  });
+  assert(gPayload && gPayload.colorId === '9', 'Google Calendar payload includes colorId: "9" for Work');
+
+  assert(typeof microsoftCalendarAdapter.getMicrosoftColorCategory === 'function', 'microsoftCalendarAdapter implements getMicrosoftColorCategory()');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Work') === 'Blue category', 'Work category maps to Microsoft "Blue category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Break') === 'Orange category', 'Break category maps to Microsoft "Orange category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Study') === 'Purple category', 'Study category maps to Microsoft "Purple category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Fitness') === 'Red category', 'Fitness category maps to Microsoft "Red category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Health') === 'Teal category', 'Health category maps to Microsoft "Teal category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Personal') === 'Green category', 'Personal category maps to Microsoft "Green category"');
+
+  const colorMsPayload = microsoftCalendarAdapter.mapToMicrosoftPayload({
+    title: 'Break Time',
+    category: 'Break',
+    date: '2026-10-28',
+    startTime: '11:00',
+    endTime: '11:15'
+  });
+  assert(colorMsPayload && colorMsPayload.categories && colorMsPayload.categories.indexOf('Orange category') !== -1, 'Microsoft Graph payload includes "Orange category" in categories for Break');
+  assert(colorMsPayload && colorMsPayload.categories && colorMsPayload.categories.indexOf('Break') !== -1, 'Microsoft Graph payload preserves "Break" in categories');
+
+  // Test that unpairing/cloud cancellation NEVER deletes a local Calentimer event
+  const localCalEvent = taskStore.addCalendarEvent({
+    id: 'cal-event-keep-me-123',
+    title: 'Critical Project Work',
+    category: 'Work',
+    date: '2026-10-28',
+    startTime: '14:00',
+    endTime: '15:00',
+    externalId: 'ext-google-to-unpair-99',
+    googleEventId: 'ext-google-to-unpair-99',
+    provider: 'google',
+    source: 'local'
+  });
+  assert(Boolean(taskStore.getCalendarEventById('cal-event-keep-me-123')), 'Local event created and stored');
+
+  const syncEngine = new CalendarSyncService();
+  const reconResult = syncEngine._reconcileInboundEvents('google', [
+    { externalId: 'ext-google-to-unpair-99', status: 'cancelled' }
+  ]);
+  const preservedEvent = taskStore.getCalendarEventById('cal-event-keep-me-123');
+  assert(Boolean(preservedEvent), 'Local Calentimer event was NOT deleted on cloud cancellation');
+  assert(preservedEvent && preservedEvent.externalId === null, 'Remote externalId cleared on unpair/cancellation');
+  assert(preservedEvent && preservedEvent.googleEventId === null, 'googleEventId cleared on unpair/cancellation');
+  assert(preservedEvent && preservedEvent.provider === 'local', 'provider detached back to local');
+
+  // Test that an external-only imported event DOES get deleted on cloud cancellation
+  const extImportedEvent = taskStore.addCalendarEvent({
+    id: 'cal-gcal-remote-only-456',
+    title: 'Remote Standup',
+    category: 'Meeting',
+    date: '2026-10-28',
+    startTime: '16:00',
+    endTime: '16:30',
+    externalId: 'ext-remote-del-77',
+    provider: 'google',
+    source: 'google'
+  });
+  assert(Boolean(taskStore.getCalendarEventById('cal-gcal-remote-only-456')), 'External imported event created');
+  syncEngine._reconcileInboundEvents('google', [
+    { externalId: 'ext-remote-del-77', status: 'cancelled' }
+  ]);
+  const deletedEvent = taskStore.getCalendarEventById('cal-gcal-remote-only-456');
+  assert(deletedEvent === null, 'Pure external event was properly deleted when cancelled in cloud');
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

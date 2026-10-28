@@ -1044,7 +1044,7 @@ function setupRotaryWheel() {
     updateScheduleUI(runtime.currentSchedule);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     renderCalendarModal();
-    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
+    if (calendarView && typeof calendarView.render === 'function' && typeof calendarView.isOpen === 'function' && calendarView.isOpen()) {
       calendarView.render();
     }
     dismissedOverlapPairs.clear();
@@ -2965,7 +2965,7 @@ function syncDynamicScheduleTimesToCalendar() {
   }
   if (updatedAnyCal) {
     taskStore.saveCalendarEvents(calEvents);
-    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
+    if (calendarView && typeof calendarView.render === 'function' && typeof calendarView.isOpen === 'function' && calendarView.isOpen()) {
       calendarView.render();
     }
   }
@@ -4360,11 +4360,25 @@ function saveCurrentTaskEdit() {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
       calendarSyncService.pushEventDelete(prevTask, 'google').catch(() => {});
     }
-    taskStore.updateTask(currentEditTaskId, { googleEventId: null });
+    taskStore.updateTask(currentEditTaskId, { googleEventId: null, externalId: null, provider: 'local' });
   } else if (!prevGoogle && nextGoogle) {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
-      calendarSyncService.createRemoteEvent('google', Object.assign({}, prevTask, { title, plannedDuration, category, fixedStartTime, emoji })).then(res => {
-        if (res && res.externalId) taskStore.updateTask(currentEditTaskId, { googleEventId: res.externalId });
+      const taskPayload = Object.assign({}, prevTask, {
+        title,
+        plannedDuration,
+        category,
+        fixedStartTime,
+        emoji,
+        color: (prevTask && prevTask.color) ? prevTask.color : (typeof getCategoryHexColor === 'function' ? getCategoryHexColor(category) : null)
+      });
+      calendarSyncService.createRemoteEvent('google', taskPayload).then(res => {
+        if (res && res.externalId) {
+          taskStore.updateTask(currentEditTaskId, {
+            googleEventId: res.externalId,
+            externalId: res.externalId,
+            provider: 'google'
+          });
+        }
       }).catch(() => {});
     }
   }
@@ -4374,11 +4388,25 @@ function saveCurrentTaskEdit() {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
       calendarSyncService.pushEventDelete(prevTask, 'microsoft').catch(() => {});
     }
-    taskStore.updateTask(currentEditTaskId, { microsoftEventId: null });
+    taskStore.updateTask(currentEditTaskId, { microsoftEventId: null, externalId: null, provider: 'local' });
   } else if (!prevMS && nextMS) {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
-      calendarSyncService.createRemoteEvent('microsoft', Object.assign({}, prevTask, { title, plannedDuration, category, fixedStartTime, emoji })).then(res => {
-        if (res && res.externalId) taskStore.updateTask(currentEditTaskId, { microsoftEventId: res.externalId });
+      const taskPayload = Object.assign({}, prevTask, {
+        title,
+        plannedDuration,
+        category,
+        fixedStartTime,
+        emoji,
+        color: (prevTask && prevTask.color) ? prevTask.color : (typeof getCategoryHexColor === 'function' ? getCategoryHexColor(category) : null)
+      });
+      calendarSyncService.createRemoteEvent('microsoft', taskPayload).then(res => {
+        if (res && res.externalId) {
+          taskStore.updateTask(currentEditTaskId, {
+            microsoftEventId: res.externalId,
+            externalId: res.externalId,
+            provider: 'microsoft'
+          });
+        }
       }).catch(() => {});
     }
   }
@@ -6199,14 +6227,26 @@ function setupNavigationAndModals() {
     if (syncGoogle) {
       if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
         calendarSyncService.createRemoteEvent('google', newTask).then(res => {
-          if (res && res.externalId) taskStore.updateTask(newTask.id, { googleEventId: res.externalId });
+          if (res && res.externalId) {
+            taskStore.updateTask(newTask.id, {
+              googleEventId: res.externalId,
+              externalId: res.externalId,
+              provider: 'google'
+            });
+          }
         }).catch(() => {});
       }
     }
     if (syncMS) {
       if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
         calendarSyncService.createRemoteEvent('microsoft', newTask).then(res => {
-          if (res && res.externalId) taskStore.updateTask(newTask.id, { microsoftEventId: res.externalId });
+          if (res && res.externalId) {
+            taskStore.updateTask(newTask.id, {
+              microsoftEventId: res.externalId,
+              externalId: res.externalId,
+              provider: 'microsoft'
+            });
+          }
         }).catch(() => {});
       }
     }

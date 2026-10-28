@@ -1130,6 +1130,10 @@ export class TaskStore {
         color: task.color || null,
         colorId: task.colorId || null,
         source: task.source || 'local',
+        origin: task.origin || 'local',
+        provider: task.provider || 'local',
+        googleEventId: task.googleEventId || null,
+        microsoftEventId: task.microsoftEventId || null,
         externalId: task.externalId || null,
         lastModified: task.lastModified || Date.now()
       };
@@ -1169,6 +1173,10 @@ export class TaskStore {
         startTime: calEvent.startTime,
         endTime: calEvent.endTime,
         source: calEvent.source || 'local',
+        origin: calEvent.origin || 'local',
+        provider: calEvent.provider || 'local',
+        googleEventId: calEvent.googleEventId || null,
+        microsoftEventId: calEvent.microsoftEventId || null,
         externalId: calEvent.externalId || null,
         lastModified: calEvent.lastModified || Date.now()
       };
@@ -1249,6 +1257,10 @@ export class TaskStore {
             startTime: calEvent.startTime || null,
             endTime: calEvent.endTime || null,
             source: calEvent.source || 'local',
+            origin: calEvent.origin || 'local',
+            provider: calEvent.provider || 'local',
+            googleEventId: calEvent.googleEventId || null,
+            microsoftEventId: calEvent.microsoftEventId || null,
             externalId: calEvent.externalId || null,
             lastModified: calEvent.lastModified || Date.now()
           };
@@ -1320,6 +1332,10 @@ export class TaskStore {
             emoji: task.emoji || '📌',
             category: task.category || 'General',
             source: task.source || 'local',
+            origin: task.origin || 'local',
+            provider: task.provider || 'local',
+            googleEventId: task.googleEventId || null,
+            microsoftEventId: task.microsoftEventId || null,
             externalId: task.externalId || null,
             lastModified: task.lastModified || Date.now()
           };
@@ -1342,6 +1358,12 @@ export class TaskStore {
             if (task.colorId && existingEvent.colorId !== task.colorId) { existingEvent.colorId = task.colorId; updated = true; }
             if (existingEvent.color && !task.color) { task.color = existingEvent.color; }
             if (existingEvent.colorId && !task.colorId) { task.colorId = existingEvent.colorId; }
+            if (task.googleEventId && existingEvent.googleEventId !== task.googleEventId) { existingEvent.googleEventId = task.googleEventId; updated = true; }
+            if (task.microsoftEventId && existingEvent.microsoftEventId !== task.microsoftEventId) { existingEvent.microsoftEventId = task.microsoftEventId; updated = true; }
+            if (task.externalId && existingEvent.externalId !== task.externalId) { existingEvent.externalId = task.externalId; updated = true; }
+            if (existingEvent.googleEventId && !task.googleEventId) { task.googleEventId = existingEvent.googleEventId; }
+            if (existingEvent.microsoftEventId && !task.microsoftEventId) { task.microsoftEventId = existingEvent.microsoftEventId; }
+            if (existingEvent.externalId && !task.externalId) { task.externalId = existingEvent.externalId; }
             const lockedState = Boolean(task.isLocked);
             if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
             if (updated) {
