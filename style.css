@@ -2832,136 +2832,190 @@ body {
   background: rgba(0, 0, 0, 0.2);
 }
 
-/* Compact Add Task Modal (Fits all fields and toggles on screen without scrolling) */
-.add-task-modal {
-  max-height: 90vh;
+/* ==========================================================================
+   Universal Modal Drag Handle Bar
+   ========================================================================== */
+.cal-drag-handle-bar {
+  width: 42px;
+  height: 4.5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  margin: 6px auto 2px;
+  cursor: grab;
+  flex-shrink: 0;
+  transition: background 0.2s ease, transform 0.15s ease;
+  touch-action: pan-y;
 }
 
-.add-task-modal .modal-body {
-  padding: 10px 16px 14px;
-  max-height: calc(90vh - 56px);
-  gap: 5px;
+[data-theme="light"] .cal-drag-handle-bar {
+  background: rgba(15, 23, 42, 0.22);
 }
 
-.add-task-modal .task-type-segment-control {
-  margin-bottom: 6px;
+.cal-drag-handle-bar:active {
+  background: var(--primary);
+  transform: scaleX(1.15);
+}
+
+/* ==========================================================================
+   Compact Add Task & Edit Task Modals (Fits all fields on screen without scrolling)
+   ========================================================================== */
+.add-task-modal,
+#addTaskModal,
+#taskEditModal {
+  max-height: 96vh;
+  max-height: 96dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.add-task-modal .modal-header,
+#addTaskModal .modal-header,
+#taskEditModal .modal-header {
+  padding: 6px 16px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.add-task-modal .modal-body,
+#addTaskModal .modal-body,
+#taskEditModal .modal-body {
+  padding: 6px 14px 8px;
+  max-height: calc(96vh - 50px);
+  max-height: calc(96dvh - 50px);
+  gap: 3px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.add-task-modal .modal-body::-webkit-scrollbar,
+#addTaskModal .modal-body::-webkit-scrollbar,
+#taskEditModal .modal-body::-webkit-scrollbar {
+  display: none;
+}
+
+.add-task-modal .task-type-segment-control,
+#addTaskModal .task-type-segment-control {
+  margin: 2px 0 4px 0;
   padding: 2px;
 }
 
-.add-task-modal .type-segment-btn {
-  padding: 7px 12px;
-  font-size: 0.88rem;
-}
-
-.add-task-modal .edit-task-form-group {
-  margin-bottom: 6px;
-}
-
-.add-task-modal .edit-task-label {
-  font-size: 0.74rem;
-  margin-bottom: 2px;
-}
-
-.add-task-modal .edit-task-input {
-  padding: 7px 10px;
-  font-size: 0.85rem;
-}
-
-.add-task-modal .quick-duration-chips {
-  margin-top: 2px;
-  margin-bottom: 6px;
-  gap: 5px;
-}
-
-.add-task-modal .duration-chip {
-  padding: 4px 8px;
-  font-size: 0.75rem;
-}
-
-.add-task-modal .category-chips-list {
-  margin-top: 4px;
-}
-
-.add-task-modal .setting-row {
-  padding: 6px 10px;
-  margin-top: 4px;
-}
-
-.add-task-modal .edit-modal-footer {
-  margin-top: 8px;
-  padding-top: 4px;
-}
-
-.add-task-modal .btn-modal-save {
-  padding: 10px;
-  font-size: 0.92rem;
-}
-
-/* Compact Edit Task Modal (Fits all fields and toggles on screen without scrolling) */
-#taskEditModal {
-  max-height: 90vh;
-  max-height: 90dvh;
-}
-
-#taskEditModal .modal-body {
-  padding: 8px 16px 12px;
-  max-height: calc(90vh - 56px);
-  max-height: calc(90dvh - 56px);
-  gap: 4px;
-  overflow-y: auto;
-}
-
-#taskEditModal .edit-task-form-group {
-  margin-bottom: 5px;
-}
-
-#taskEditModal .edit-task-label {
-  font-size: 0.72rem;
-  margin-bottom: 2px;
-}
-
-#taskEditModal .edit-task-input {
-  padding: 6px 10px;
-  font-size: 0.84rem;
-}
-
-#taskEditModal .quick-duration-chips {
-  margin-top: 2px;
-  margin-bottom: 4px;
-  gap: 4px;
-}
-
-#taskEditModal .duration-chip {
-  padding: 3px 8px;
-  font-size: 0.74rem;
-}
-
-#taskEditModal .category-chips-list {
-  margin-top: 2px;
-}
-
-#taskEditModal .setting-row {
+.add-task-modal .type-segment-btn,
+#addTaskModal .type-segment-btn {
   padding: 5px 10px;
-  margin-top: 4px;
-}
-
-#taskEditModal .setting-label {
   font-size: 0.82rem;
 }
 
-#taskEditModal .setting-desc {
-  font-size: 0.70rem;
+.add-task-modal .edit-task-form-group,
+#addTaskModal .edit-task-form-group,
+#taskEditModal .edit-task-form-group {
+  margin-bottom: 3px;
+  gap: 2px;
 }
 
+.add-task-modal .edit-task-label,
+#addTaskModal .edit-task-label,
+#taskEditModal .edit-task-label {
+  font-size: 0.70rem;
+  font-weight: 600;
+  margin-bottom: 1px;
+}
+
+.add-task-modal .edit-task-input,
+#addTaskModal .edit-task-input,
+#taskEditModal .edit-task-input {
+  padding: 5px 8px;
+  font-size: 0.84rem;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.add-task-modal .quick-duration-chips,
+#addTaskModal .quick-duration-chips,
+#taskEditModal .quick-duration-chips {
+  margin-top: 1px;
+  margin-bottom: 3px;
+  gap: 4px;
+}
+
+.add-task-modal .duration-chip,
+#addTaskModal .duration-chip,
+#taskEditModal .duration-chip {
+  padding: 2px 7px;
+  font-size: 0.72rem;
+}
+
+.add-task-modal .category-chips-list,
+#addTaskModal .category-chips-list,
+#taskEditModal .category-chips-list {
+  margin-top: 2px;
+  gap: 4px;
+  max-height: 40px;
+  overflow-y: auto;
+}
+
+.add-task-modal .setting-row,
+#addTaskModal .setting-row,
+#taskEditModal .setting-row {
+  padding: 3px 8px;
+  margin-top: 3px !important;
+  min-height: unset;
+}
+
+.add-task-modal .setting-label,
+#addTaskModal .setting-label,
+#taskEditModal .setting-label {
+  font-size: 0.78rem;
+}
+
+.add-task-modal .setting-desc,
+#addTaskModal .setting-desc,
+#taskEditModal .setting-desc {
+  display: none;
+}
+
+.add-task-modal .sync-destination-group,
+#addTaskModal .sync-destination-group,
+#taskEditModal .sync-destination-group {
+  padding: 4px 8px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  gap: 3px;
+}
+
+.add-task-modal .sync-destination-label,
+#addTaskModal .sync-destination-label,
+#taskEditModal .sync-destination-label {
+  font-size: 0.68rem;
+}
+
+.add-task-modal .sync-boxes-row,
+#addTaskModal .sync-boxes-row,
+#taskEditModal .sync-boxes-row {
+  gap: 8px;
+}
+
+.add-task-modal .sync-destination-box,
+#addTaskModal .sync-destination-box,
+#taskEditModal .sync-destination-box {
+  padding: 3px 8px;
+  font-size: 0.76rem;
+}
+
+.add-task-modal .edit-modal-footer,
+#addTaskModal .edit-modal-footer,
 #taskEditModal .edit-modal-footer {
   margin-top: 6px;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
+.add-task-modal .btn-modal-save,
+#addTaskModal .btn-modal-save,
 #taskEditModal .btn-modal-save,
 #taskEditModal .btn-modal-delete {
-  padding: 8px 14px;
-  font-size: 0.88rem;
+  padding: 7px 14px;
+  font-size: 0.84rem;
+  min-height: 34px;
 }
 
 /* Duration Input & Time Inputs with Clock Button Inside */
@@ -5727,19 +5781,29 @@ body {
 
 /* Event Inspector & Edit Modal: Compact layout to fit on screen without scrolling */
 .calendar-event-modal {
-  max-width: 460px;
-  max-height: 94vh;
-  max-height: 94dvh;
+  max-width: 440px;
+  max-height: 96vh;
+  max-height: 96dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
+.calendar-event-modal .modal-header {
+  padding: 6px 16px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
 .calendar-event-modal .modal-body {
-  max-height: calc(94vh - 54px);
-  max-height: calc(94dvh - 54px);
+  max-height: calc(96vh - 50px);
+  max-height: calc(96dvh - 50px);
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 8px 16px 12px;
+  padding: 6px 14px 8px;
   gap: 3px;
+  display: flex;
+  flex-direction: column;
 }
 
 .calendar-event-modal .modal-body::-webkit-scrollbar {
@@ -5747,27 +5811,31 @@ body {
 }
 
 .calendar-event-modal .task-type-segment-control {
-  margin-bottom: 4px;
+  margin: 2px 0 4px 0;
   padding: 2px;
 }
 
 .calendar-event-modal .type-segment-btn {
-  padding: 6px 10px;
-  font-size: 0.84rem;
+  padding: 5px 10px;
+  font-size: 0.82rem;
 }
 
 .calendar-event-modal .edit-task-form-group {
   margin-bottom: 3px;
+  gap: 2px;
 }
 
 .calendar-event-modal .edit-task-label {
-  font-size: 0.72rem;
-  margin-bottom: 2px;
+  font-size: 0.70rem;
+  font-weight: 600;
+  margin-bottom: 1px;
 }
 
 .calendar-event-modal .edit-task-input {
-  padding: 5px 10px;
+  padding: 5px 8px;
   font-size: 0.84rem;
+  height: 32px;
+  box-sizing: border-box;
 }
 
 .calendar-event-modal .quick-duration-chips {
@@ -5777,29 +5845,61 @@ body {
 }
 
 .calendar-event-modal .duration-chip {
-  padding: 3px 7px;
+  padding: 2px 7px;
   font-size: 0.72rem;
 }
 
 .calendar-event-modal .category-chips-list {
   margin-top: 2px;
   gap: 4px;
+  max-height: 40px;
+  overflow-y: auto;
 }
 
 .calendar-event-modal .setting-row {
-  padding: 4px 0;
-  margin-top: 2px;
+  padding: 3px 8px;
+  margin-top: 3px !important;
+  min-height: unset;
+}
+
+.calendar-event-modal .setting-label {
+  font-size: 0.78rem;
+}
+
+.calendar-event-modal .setting-desc {
+  display: none;
+}
+
+.calendar-event-modal .sync-destination-group {
+  padding: 4px 8px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  gap: 3px;
+}
+
+.calendar-event-modal .sync-destination-label {
+  font-size: 0.68rem;
+}
+
+.calendar-event-modal .sync-boxes-row {
+  gap: 8px;
+}
+
+.calendar-event-modal .sync-destination-box {
+  padding: 3px 8px;
+  font-size: 0.76rem;
 }
 
 /* Red Round Cancel Button */
 .btn-modal-cancel-danger {
-  padding: 9px 18px;
+  padding: 7px 14px;
   background: #ef4444;
   color: #ffffff;
   border: none;
   border-radius: var(--radius-full);
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
+  min-height: 34px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -5818,13 +5918,14 @@ body {
 
 .calendar-event-modal .btn-modal-save {
   border-radius: var(--radius-full);
-  padding: 9px 18px;
-  font-size: 0.88rem;
+  padding: 7px 14px;
+  font-size: 0.84rem;
+  min-height: 34px;
 }
 
 .calendar-event-footer {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 6px;
+  padding-top: 2px;
   border-top: 1px solid var(--border-subtle);
 }
 

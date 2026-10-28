@@ -1380,6 +1380,7 @@ export class CalendarView {
 
     return allEvents.filter(ev => {
       if (!ev) return false;
+      if (ev.title === '[Calentimer Cloud Sync]' || ev.summary === '[Calentimer Cloud Sync]') return false;
       const isLocalItem = Boolean(
         (ev.id && (ev.id.startsWith('cal-event-') || ev.id.startsWith('task-'))) ||
         ev.source === 'local' ||

@@ -1018,17 +1018,17 @@ export class MicrosoftCalendarAdapter {
       'exercise': 'Red category',
       'gym': 'Red category',
       'workout': 'Red category',
-      'health': 'Teal category',
-      'medical': 'Teal category',
-      'personal': 'Green category',
-      'errand': 'Green category',
+      'health': 'Red category',
+      'medical': 'Red category',
+      'personal': 'Orange category',
+      'errand': 'Orange category',
       'social': 'Cranberry category',
       'food': 'Peach category',
       'dining': 'Peach category',
       'reading': 'Blue category',
       'travel': 'Purple category',
-      'finance': 'Green category',
-      'general': 'Teal category'
+      'finance': 'Teal category',
+      'general': 'Steel category'
     };
 
     if (cleanCat && CATEGORY_OUTLOOK_MAP[cleanCat]) {

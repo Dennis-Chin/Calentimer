@@ -655,17 +655,17 @@ export class GoogleCalendarAdapter {
       'exercise': '11',  // Tomato
       'gym': '11',       // Tomato
       'workout': '11',   // Tomato
-      'health': '7',     // Peacock (Cyan / Light Blue)
-      'medical': '7',    // Peacock
-      'personal': '2',   // Sage (Soft Green)
-      'errand': '2',     // Sage
+      'health': '11',    // Tomato (Red)
+      'medical': '11',   // Tomato
+      'personal': '6',   // Tangerine (Sunset Orange)
+      'errand': '6',     // Tangerine
       'social': '4',     // Flamingo (Coral / Pink)
       'food': '6',       // Tangerine
       'dining': '6',     // Tangerine
-      'reading': '7',    // Peacock
+      'reading': '9',    // Blueberry
       'travel': '3',     // Grape
       'finance': '10',   // Basil (Dark Green)
-      'general': '7'     // Peacock
+      'general': '8'     // Graphite (Gray)
     };
 
     if (cleanCat && CATEGORY_COLOR_MAP[cleanCat]) {

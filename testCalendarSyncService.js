@@ -603,8 +603,8 @@ if (typeof global.document === 'undefined') {
   assert(googleCalendarAdapter.getGoogleColorId('Break') === '6', 'Break category maps to Google colorId 6 (Tangerine)');
   assert(googleCalendarAdapter.getGoogleColorId('Study') === '3', 'Study category maps to Google colorId 3 (Grape)');
   assert(googleCalendarAdapter.getGoogleColorId('Fitness') === '11', 'Fitness category maps to Google colorId 11 (Tomato)');
-  assert(googleCalendarAdapter.getGoogleColorId('Health') === '7', 'Health category maps to Google colorId 7 (Peacock)');
-  assert(googleCalendarAdapter.getGoogleColorId('Personal') === '2', 'Personal category maps to Google colorId 2 (Sage)');
+  assert(googleCalendarAdapter.getGoogleColorId('Health') === '11', 'Health category maps to Google colorId 11 (Tomato)');
+  assert(googleCalendarAdapter.getGoogleColorId('Personal') === '6', 'Personal category maps to Google colorId 6 (Tangerine)');
 
   const gPayload = googleCalendarAdapter.mapToGooglePayload({
     title: 'Focus Sprint',
@@ -620,8 +620,8 @@ if (typeof global.document === 'undefined') {
   assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Break') === 'Orange category', 'Break category maps to Microsoft "Orange category"');
   assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Study') === 'Purple category', 'Study category maps to Microsoft "Purple category"');
   assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Fitness') === 'Red category', 'Fitness category maps to Microsoft "Red category"');
-  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Health') === 'Teal category', 'Health category maps to Microsoft "Teal category"');
-  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Personal') === 'Green category', 'Personal category maps to Microsoft "Green category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Health') === 'Red category', 'Health category maps to Microsoft "Red category"');
+  assert(microsoftCalendarAdapter.getMicrosoftColorCategory('Personal') === 'Orange category', 'Personal category maps to Microsoft "Orange category"');
 
   const colorMsPayload = microsoftCalendarAdapter.mapToMicrosoftPayload({
     title: 'Break Time',
@@ -742,6 +742,43 @@ if (typeof global.document === 'undefined') {
   ]);
   assert(inboundSuppressResult.added === 0, 'Reconcile inbound skipped tombstoned external event without adding');
   assert(taskStore.getCalendarEventById('cal-gcal-suppressed-meeting-888') === null, 'Tombstoned external event was not resurrected in taskStore');
+
+  // --- 18. Testing Cross-Device Profile Save & Restore ---
+  console.log('\n--- 18. Testing Cross-Device Profile Save & Restore ---');
+  taskStore.addCategory('CrossDeviceDesign');
+  taskStore.saveTodoTasks([{ id: 'todo-cross-1', title: 'Buy groceries across devices', isCompleted: false }]);
+  const profileSaveOk = await syncService.saveCloudProfile('google');
+  assert(profileSaveOk === true, 'saveCloudProfile successfully saved backup event to connected provider');
+
+  // Simulate Device B signing in and receiving the cloud sync payload
+  const cloudProfilePayload = JSON.stringify({
+    _calentimer_cloud_profile: true,
+    version: 1,
+    savedAt: Date.now(),
+    categories: ['DeviceBCat1', 'DeviceBCat2'],
+    todos: [{ id: 'todo-device-b', title: 'Synced from Device A', isCompleted: false }],
+    events: [{ id: 'cal-event-device-b', title: 'Local Event From Device A', origin: 'local', createdInApp: true, date: '2026-10-28', startTime: '13:00', endTime: '14:00' }],
+    tasks: [],
+    timeBankSeconds: 1500,
+    hardStop: '19:30',
+    hardStopEnabled: true,
+    timespansEnabled: true
+  });
+
+  const deviceBReconcile = syncService._reconcileInboundEvents('google', [
+    {
+      id: 'cal-sync-profile-evt-1',
+      externalId: 'ext-sync-profile-1',
+      title: '[Calentimer Cloud Sync]',
+      description: cloudProfilePayload
+    }
+  ]);
+
+  assert(deviceBReconcile.added === 0, 'Profile sync event is strictly hidden from calendar timeline');
+  assert(taskStore.getCategories().indexOf('DeviceBCat1') !== -1, 'Categories restored across devices');
+  assert(taskStore.getTodoTasks().some(t => t.id === 'todo-device-b'), 'To-do tasks transferred across devices');
+  assert(taskStore.getCalendarEventById('cal-event-device-b') !== null, 'Local calendar events transferred across devices');
+  assert(taskStore.getHardStop() === '19:30', 'Settings (Hard Stop) restored across devices');
 
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);

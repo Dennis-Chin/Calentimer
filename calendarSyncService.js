@@ -24,6 +24,7 @@ export class CalendarSyncService {
     this.autoSyncTimer = null;
     this._visibilityHandler = null;
     this.isAutoSyncRunning = false;
+    this.cloudSyncEventId = null;
   }
 
   /**
@@ -103,6 +104,13 @@ export class CalendarSyncService {
 
       // Initial import delta
       await this.syncProvider(provider);
+
+      // Save/Restore Cross-Device Profile payload
+      if (!this.cloudSyncEventId) {
+        try {
+          await this.saveCloudProfile(provider);
+        } catch (_) {}
+      }
 
       this._notifySyncStatus(false, { action: 'connect_success', provider: provider, email: email });
       return { success: true, email: email };
@@ -198,6 +206,9 @@ export class CalendarSyncService {
       if (typeof taskStore.setLastSyncTimestamp === 'function') {
         taskStore.setLastSyncTimestamp('all', Date.now());
       }
+      try {
+        await this.saveCloudProfile();
+      } catch (_) {}
     } finally {
       this._notifySyncStatus(false, { action: 'syncAll_complete', results: results });
     }
@@ -312,6 +323,14 @@ export class CalendarSyncService {
     for (let i = 0; i < incomingList.length; i++) {
       const incoming = incomingList[i];
       if (!incoming || !incoming.externalId) continue;
+
+      // Cross-Device Profile Shield: Intercept cloud sync event, restore profile, and hide from timeline
+      const incTitle = incoming.title || incoming.summary || '';
+      if (incTitle === '[Calentimer Cloud Sync]' || (incoming.id && incoming.id.indexOf('cal-sync-profile') !== -1)) {
+        this._restoreCloudProfile(incoming);
+        echoes++;
+        continue;
+      }
 
       // Tombstone Shield: Check if this external event was deleted locally in Calentimer
       if ((incoming.id && deletedIds.has(incoming.id)) || (incoming.externalId && deletedIds.has(incoming.externalId))) {
@@ -681,6 +700,142 @@ export class CalendarSyncService {
       return true;
     } catch (err) {
       console.warn(`CalendarSyncService: Outbound delete error (${prov}):`, err);
+      return false;
+    }
+  }
+
+  // ==========================================
+  // 4b. Cross-Device Cloud Profile Backup & Restore
+  // ==========================================
+
+  _restoreCloudProfile(incoming) {
+    if (!incoming) return;
+    try {
+      this.cloudSyncEventId = incoming.id || incoming.externalId || this.cloudSyncEventId;
+      const desc = incoming.description || (incoming.extendedProperties && incoming.extendedProperties.private && incoming.extendedProperties.private.calentimer_data) || '';
+      if (!desc) return;
+      let data = null;
+      try {
+        data = JSON.parse(desc);
+      } catch (_) {
+        return;
+      }
+      if (!data || !data._calentimer_cloud_profile) return;
+
+      // 1. Categories
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        for (let c = 0; c < data.categories.length; c++) {
+          const cat = data.categories[c];
+          if (cat && typeof taskStore.addCategory === 'function') {
+            taskStore.addCategory(cat);
+          }
+        }
+      }
+
+      // 2. To-Dos
+      if (Array.isArray(data.todos) && data.todos.length > 0) {
+        const curTodos = (typeof taskStore.getTodoTasks === 'function') ? taskStore.getTodoTasks() : [];
+        if (curTodos.length === 0) {
+          if (typeof taskStore.saveTodoTasks === 'function') taskStore.saveTodoTasks(data.todos);
+        } else {
+          const existingIds = new Set(curTodos.map(t => t.id));
+          const toAdd = data.todos.filter(t => !existingIds.has(t.id));
+          if (toAdd.length > 0 && typeof taskStore.saveTodoTasks === 'function') {
+            taskStore.saveTodoTasks(curTodos.concat(toAdd));
+          }
+        }
+      }
+
+      // 3. Local Calendar Events
+      if (Array.isArray(data.events) && data.events.length > 0) {
+        const curEvents = (typeof taskStore.getCalendarEvents === 'function') ? taskStore.getCalendarEvents() : [];
+        const existingEventIds = new Set(curEvents.map(e => e.id));
+        const newEvents = data.events.filter(e => e && e.id && !existingEventIds.has(e.id));
+        if (newEvents.length > 0 && typeof taskStore.saveCalendarEvents === 'function') {
+          taskStore.saveCalendarEvents(curEvents.concat(newEvents));
+        }
+      }
+
+      // 4. Schedule Tasks
+      if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+        const curTasks = (typeof taskStore.getTasks === 'function') ? taskStore.getTasks() : [];
+        if (curTasks.length === 0 && typeof taskStore.saveTasks === 'function') {
+          taskStore.saveTasks(data.tasks);
+        }
+      }
+
+      // 5. Time Bank & Settings
+      if (typeof data.timeBankSeconds === 'number' && typeof taskStore.saveTimeBankBalance === 'function') {
+        const curBank = (typeof taskStore.getTimeBankBalance === 'function') ? taskStore.getTimeBankBalance() : 0;
+        if (curBank === 0) {
+          taskStore.saveTimeBankBalance(data.timeBankSeconds);
+        }
+      }
+      if (data.hardStop && typeof taskStore.saveHardStop === 'function') {
+        taskStore.saveHardStop(data.hardStop);
+      }
+      if (typeof data.hardStopEnabled === 'boolean' && typeof taskStore.setHardStopEnabled === 'function') {
+        taskStore.setHardStopEnabled(data.hardStopEnabled);
+      }
+      if (typeof data.timespansEnabled === 'boolean' && typeof taskStore.setTimespansEnabled === 'function') {
+        taskStore.setTimespansEnabled(data.timespansEnabled);
+      }
+    } catch (err) {
+      console.warn('Failed restoring Calentimer cloud profile:', err);
+    }
+  }
+
+  async saveCloudProfile(provider) {
+    const prov = provider || (this.isProviderConnected('google') ? 'google' : (this.isProviderConnected('microsoft') ? 'microsoft' : null));
+    if (!prov) return null;
+    const adapter = this.adapters[prov];
+    if (!adapter || !this.isProviderConnected(prov)) return null;
+
+    const profile = {
+      _calentimer_cloud_profile: true,
+      version: 1,
+      savedAt: Date.now(),
+      categories: (typeof taskStore.getCategories === 'function') ? taskStore.getCategories() : [],
+      todos: (typeof taskStore.getTodoTasks === 'function') ? taskStore.getTodoTasks() : [],
+      events: ((typeof taskStore.getCalendarEvents === 'function') ? taskStore.getCalendarEvents() : []).filter(e => e && (e.origin === 'local' || e.createdInApp || e.source === 'local')),
+      tasks: (typeof taskStore.getTasks === 'function') ? taskStore.getTasks() : [],
+      timeBankSeconds: (typeof taskStore.getTimeBankBalance === 'function') ? taskStore.getTimeBankBalance() : 0,
+      hardStop: (typeof taskStore.getHardStop === 'function') ? taskStore.getHardStop() : '18:00',
+      hardStopEnabled: (typeof taskStore.getHardStopEnabled === 'function') ? taskStore.getHardStopEnabled() : true,
+      timespansEnabled: (typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true
+    };
+
+    const payloadStr = JSON.stringify(profile);
+    const syncEventData = {
+      title: '[Calentimer Cloud Sync]',
+      description: payloadStr,
+      date: '2030-01-01',
+      startTime: '00:00',
+      endTime: '00:05',
+      isLocked: false,
+      origin: 'local',
+      createdInApp: true,
+      category: 'General',
+      color: '#64748b'
+    };
+
+    try {
+      if (this.cloudSyncEventId) {
+        syncEventData.externalId = this.cloudSyncEventId;
+        if (adapter && typeof adapter.updateEvent === 'function') {
+          await adapter.updateEvent(syncEventData);
+        }
+      } else {
+        if (adapter && typeof adapter.createEvent === 'function') {
+          const created = await adapter.createEvent(syncEventData);
+          if (created && (created.externalId || created.id)) {
+            this.cloudSyncEventId = created.externalId || created.id;
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn(`saveCloudProfile error for ${prov}:`, err);
       return false;
     }
   }

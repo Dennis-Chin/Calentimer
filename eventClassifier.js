@@ -47,12 +47,12 @@ export const CATEGORY_DEFINITIONS = {
   },
   Health: {
     name: 'Health',
-    color: '#06b6d4', // Bright Cyan / Aqua (strictly distinct from Personal)
+    color: '#e11d48', // Vibrant Crimson / Rose Red (strictly distinct from cyan/light blue active status)
     defaultEmoji: '🩺'
   },
   Personal: {
     name: 'Personal',
-    color: '#10b981', // Vibrant Emerald / Mint (strictly distinct from Health)
+    color: '#ea580c', // Warm Terracotta / Sunset Orange (strictly distinct from completed green status)
     defaultEmoji: '🌿'
   },
   Social: {
@@ -77,19 +77,62 @@ export const CATEGORY_DEFINITIONS = {
   },
   Finance: {
     name: 'Finance',
-    color: '#14b8a6', // Deep Teal
+    color: '#0d9488', // Deep Teal
     defaultEmoji: '💰'
   },
   General: {
     name: 'General',
-    color: '#0ea5e9', // Vivid Azure
+    color: '#64748b', // Slate Steel
     defaultEmoji: '📌'
   }
 };
 
 /**
+ * Ensures category colours can never be the exact same colour as statuses:
+ * - Active: light blue / cyan (#00f0ff, #38bdf8, #7dd3fc, #06b6d4, #0ea5e9)
+ * - Done: light green / emerald (#10b981, #00ff88, #34d399, #4ade80)
+ * Remaps them to distinct, accessible colors.
+ * @param {string} hex
+ * @returns {string} Sanitized hex color
+ */
+export function sanitizeCategoryColor(hex) {
+  if (!hex || typeof hex !== 'string') return CATEGORY_DEFINITIONS.General.color;
+  const cleanHex = hex.trim().toLowerCase();
+
+  // Colliding Light Blues / Cyans (Active Status)
+  if (
+    cleanHex === '#00f0ff' ||
+    cleanHex === '#38bdf8' ||
+    cleanHex === '#7dd3fc' ||
+    cleanHex === '#06b6d4' ||
+    cleanHex === '#0ea5e9' ||
+    cleanHex === '#22d3ee' ||
+    cleanHex === '#67e8f9'
+  ) {
+    return '#2563eb'; // Deep Royal Blue
+  }
+
+  // Colliding Light Greens / Emeralds (Done / Completed Status)
+  if (
+    cleanHex === '#10b981' ||
+    cleanHex === '#00ff88' ||
+    cleanHex === '#34d399' ||
+    cleanHex === '#4ade80' ||
+    cleanHex === '#86efac' ||
+    cleanHex === '#a7f3d0' ||
+    cleanHex === '#059669' ||
+    cleanHex === '#00e57a'
+  ) {
+    return '#ea580c'; // Warm Terracotta / Sunset Orange
+  }
+
+  return cleanHex;
+}
+
+/**
  * Returns the standardized, high-contrast hex color for any category name.
  * Provides unified color resolution across Today's Schedule, the Calendar Tab, and Full Calendar.
+ * Strictly guarantees category colors can never collide with active or completed status indicators.
  * @param {string} category 
  * @returns {string} Hex color
  */
@@ -100,23 +143,23 @@ export function getCategoryColor(category) {
   const keys = Object.keys(CATEGORY_DEFINITIONS);
   for (let i = 0; i < keys.length; i++) {
     if (keys[i].toLowerCase() === clean) {
-      return CATEGORY_DEFINITIONS[keys[i]].color;
+      return sanitizeCategoryColor(CATEGORY_DEFINITIONS[keys[i]].color);
     }
   }
 
-  if (clean === 'dev' || clean === 'programming') return CATEGORY_DEFINITIONS.Coding.color;
-  if (clean === 'exercise' || clean === 'gym' || clean === 'workout') return CATEGORY_DEFINITIONS.Fitness.color;
-  if (clean === 'dining' || clean === 'meal' || clean === 'lunch' || clean === 'dinner') return CATEGORY_DEFINITIONS.Food.color;
-  if (clean === 'medical' || clean === 'doctor') return CATEGORY_DEFINITIONS.Health.color;
-  if (clean === 'errand' || clean === 'home' || clean === 'admin') return CATEGORY_DEFINITIONS.Personal.color;
+  if (clean === 'dev' || clean === 'programming') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Coding.color);
+  if (clean === 'exercise' || clean === 'gym' || clean === 'workout') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Fitness.color);
+  if (clean === 'dining' || clean === 'meal' || clean === 'lunch' || clean === 'dinner') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Food.color);
+  if (clean === 'medical' || clean === 'doctor') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Health.color);
+  if (clean === 'errand' || clean === 'home' || clean === 'admin') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Personal.color);
 
-  const fallbackColors = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f43f5e', '#ec4899', '#6366f1', '#14b8a6', '#0284c7', '#f97316'];
+  const fallbackColors = ['#3b82f6', '#8b5cf6', '#e11d48', '#ea580c', '#f43f5e', '#ec4899', '#6366f1', '#0d9488', '#0284c7', '#f97316'];
   let hash = 0;
   for (let i = 0; i < clean.length; i++) {
     hash = clean.charCodeAt(i) + ((hash << 5) - hash);
   }
   const idx = Math.abs(hash) % fallbackColors.length;
-  return fallbackColors[idx];
+  return sanitizeCategoryColor(fallbackColors[idx]);
 }
 
 // Domain classification rules ordered by priority

@@ -2457,6 +2457,142 @@ function setupCalendarModalPullToDismiss() {
 }
 
 // ==========================================
+// Universal Modal Pull-to-Dismiss Gesture
+// (Matches Today's Schedule & Drawer pull down resistance and animation)
+// ==========================================
+function setupModalPullToDismiss(modal, onDismiss) {
+  if (!modal || modal._hasPullToDismiss) return;
+  modal._hasPullToDismiss = true;
+
+  let touchStartY = 0;
+  let touchStartX = 0;
+  let isPullingDown = false;
+  let didPullDown = false;
+
+  const onTouchStart = (e) => {
+    if (isDraggingTask || isSwipingCardToDelete) return;
+    // Exclude touches on interactive form controls and drag handles
+    if (e.target.closest('input, textarea, select, .duration-clock-addon-btn, .time-clock-addon-btn, .btn-add-category, .chip-delete, .category-chip-delete, [data-action="pick-calendar-emoji"], [data-action="drag-handle"], .btn-swipe-delete, .edit-task-emoji-badge, .btn-icon-action, button')) {
+      return;
+    }
+    if (!e.touches || e.touches.length !== 1) return;
+
+    const activeScroll = modal.querySelector('.modal-body') || modal;
+    const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+    const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header'));
+
+    if (isAtTop || isHeaderTouch) {
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      isPullingDown = false;
+      didPullDown = false;
+    }
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchStartY || !e.touches || e.touches.length !== 1) return;
+    if (isDraggingTask || isSwipingCardToDelete) {
+      if (isPullingDown) {
+        modal.style.removeProperty('transform');
+        modal.classList.remove('will-minimise');
+        isPullingDown = false;
+      }
+      return;
+    }
+    const currentY = e.touches[0].clientY;
+    const currentX = e.touches[0].clientX;
+    const deltaY = currentY - touchStartY;
+    const deltaX = currentX - touchStartX;
+
+    // If gesture is horizontal, abort pull down
+    if (Math.abs(deltaX) > 8 && Math.abs(deltaX) * 1.2 >= Math.abs(deltaY)) {
+      if (isPullingDown) {
+        modal.style.removeProperty('transform');
+        modal.classList.remove('will-minimise');
+        isPullingDown = false;
+      }
+      return;
+    }
+
+    if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
+      const activeScroll = modal.querySelector('.modal-body') || modal;
+      const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+      const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header'));
+
+      if (isAtTop || isHeaderTouch) {
+        isPullingDown = true;
+        didPullDown = true;
+        if (e.cancelable) e.preventDefault();
+        const rubberbandY = Math.min(deltaY * 0.28, 140);
+        modal.style.transition = 'none';
+        modal.style.transform = 'translate3d(0, ' + rubberbandY + 'px, 0)';
+
+        if (deltaY >= 65) {
+          modal.classList.add('will-minimise');
+        } else {
+          modal.classList.remove('will-minimise');
+        }
+      }
+    } else if (deltaY <= 0 && isPullingDown) {
+      modal.classList.remove('will-minimise');
+    }
+  };
+
+  const onTouchEnd = () => {
+    if (didPullDown) {
+      const suppressClick = (clickEv) => {
+        clickEv.stopPropagation();
+        clickEv.preventDefault();
+        window.removeEventListener('click', suppressClick, true);
+      };
+      window.addEventListener('click', suppressClick, true);
+      setTimeout(() => {
+        window.removeEventListener('click', suppressClick, true);
+      }, 350);
+    }
+
+    if (!isPullingDown) {
+      touchStartY = 0;
+      touchStartX = 0;
+      didPullDown = false;
+      modal.classList.remove('will-minimise');
+      return;
+    }
+    isPullingDown = false;
+    const willMinimise = modal.classList.contains('will-minimise');
+    modal.classList.remove('will-minimise');
+
+    touchStartY = 0;
+    touchStartX = 0;
+
+    if (willMinimise) {
+      modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+      modal.style.transform = 'translate3d(0, 100vh, 0)';
+      mobileServices.hapticBuzz();
+      setTimeout(() => {
+        modal.style.removeProperty('transform');
+        modal.style.removeProperty('transition');
+        if (typeof onDismiss === 'function') {
+          onDismiss();
+        }
+      }, 270);
+    } else {
+      modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      modal.style.transform = 'translate3d(0, 0, 0)';
+      setTimeout(() => {
+        modal.style.removeProperty('transform');
+        modal.style.removeProperty('transition');
+      }, 250);
+    }
+  };
+
+  modal.addEventListener('touchstart', onTouchStart, { passive: true });
+  modal.addEventListener('touchmove', onTouchMove, { passive: false });
+  modal.addEventListener('touchend', onTouchEnd, { passive: true });
+  modal.addEventListener('touchcancel', onTouchEnd, { passive: true });
+}
+
+// ==========================================
 // Today's Schedule Horizontal Swipe Toggle (Chronological <-> Sequential)
 // ==========================================
 function setupScheduleHorizontalSwipeToggle(container) {
@@ -3406,9 +3542,9 @@ function getCategoryHexColor(category) {
     case 'work': return '#3b82f6';
     case 'study': return '#8b5cf6';
     case 'break': return '#f59e0b';
-    case 'personal': return '#10b981';
+    case 'personal': return '#ea580c';
     case 'meeting': return '#d946ef';
-    case 'health': return '#06b6d4';
+    case 'health': return '#e11d48';
     case 'fitness': return '#f43f5e';
     case 'reading': return '#0284c7';
     case 'coding':
@@ -3417,8 +3553,8 @@ function getCategoryHexColor(category) {
     case 'travel': return '#a855f7';
     case 'food':
     case 'dining': return '#f97316';
-    case 'finance': return '#14b8a6';
-    default: return '#0ea5e9';
+    case 'finance': return '#0d9488';
+    default: return '#64748b';
   }
 }
 
@@ -3430,7 +3566,8 @@ function setupTaskPipeline() {
   setupInteractiveTaskDrag(taskListContainer);
 }
 
-function renderTaskList(tasks) {
+function renderTaskList(rawTasks) {
+  const tasks = (rawTasks || []).filter(t => t && t.title !== '[Calentimer Cloud Sync]');
   taskCountBadge.textContent = `${tasks.length} task${tasks.length === 1 ? '' : 's'}`;
   taskListContainer.innerHTML = '';
 
@@ -4657,7 +4794,8 @@ function renderCalendarModal() {
   calendarTimelineList.innerHTML = '';
 
   const finishLine = document.getElementById('calendarFinishLine');
-  const tasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || [];
+  const rawTasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || [];
+  const tasks = rawTasks.filter(t => t && t.title !== '[Calentimer Cloud Sync]');
   if (tasks.length === 0) {
     calendarTimelineList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:24px 0;">No scheduled events for today.</div>';
     if (finishLine) finishLine.style.display = 'none';
@@ -7208,6 +7346,28 @@ function setupNavigationAndModals() {
   setupScheduleHorizontalSwipeToggle(document.getElementById('taskDrawer'));
   setupScheduleHorizontalSwipeToggle(document.getElementById('calendarModal'));
 
+  // Universal Pull-to-Dismiss on Add Task, Edit Task, To-Do, and Calendar Event Modals
+  const elAddTaskModal = document.getElementById('addTaskModal');
+  if (elAddTaskModal) {
+    setupModalPullToDismiss(elAddTaskModal, closeAddTaskModal);
+  }
+  const elTaskEditModal = document.getElementById('taskEditModal');
+  if (elTaskEditModal) {
+    setupModalPullToDismiss(elTaskEditModal, closeTaskEditModal);
+  }
+  const elTodoModal = document.getElementById('todoModal');
+  if (elTodoModal) {
+    setupModalPullToDismiss(elTodoModal, closeTodo);
+  }
+  const elCalEventModal = document.getElementById('calendarEventModal');
+  if (elCalEventModal) {
+    setupModalPullToDismiss(elCalEventModal, () => {
+      if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.closeEventInspector === 'function') {
+        calendarView.closeEventInspector();
+      }
+    });
+  }
+
   const btnCalendarAddTask = document.getElementById('btnCalendarAddTask');
   const btnCalendarAddBreak = document.getElementById('btnCalendarAddBreak');
   const btnCalendarAddTodo = document.getElementById('btnCalendarAddTodo');
@@ -7356,6 +7516,9 @@ function setupNavigationAndModals() {
     todoModalBackdrop.addEventListener('click', (e) => {
       if (e.target === todoModalBackdrop) closeTodo();
     });
+    todoModalBackdrop.addEventListener('touchstart', (e) => {
+      if (e.target === todoModalBackdrop) closeTodo();
+    }, { passive: true });
   }
 
   if (btnClearTodoTasks) {
