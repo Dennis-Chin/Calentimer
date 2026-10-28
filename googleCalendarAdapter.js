@@ -156,10 +156,14 @@ export class GoogleCalendarAdapter {
       }
 
       // 3. Client ID Configuration Check
-      if (!this.clientId || this.clientId === DEFAULT_CLIENT_ID || this.clientId.indexOf('YOUR_GOOGLE_CLIENT_ID') !== -1) {
+      const effectiveClientId = (OAUTH_CONFIG && OAUTH_CONFIG.google && OAUTH_CONFIG.google.clientId)
+        ? OAUTH_CONFIG.google.clientId
+        : this.clientId;
+      if (!effectiveClientId || effectiveClientId === DEFAULT_CLIENT_ID || effectiveClientId.indexOf('YOUR_GOOGLE_CLIENT_ID') !== -1) {
         reject(new Error('Please set your Google OAuth Client ID in oauthConfig.js before connecting.'));
         return;
       }
+      this.clientId = effectiveClientId;
 
       // 4. Browser GIS Client Check
       const hasGoogle = typeof window !== 'undefined' && window !== null && window.google && window.google.accounts && window.google.accounts.oauth2;

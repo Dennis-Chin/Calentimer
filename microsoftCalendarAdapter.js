@@ -13,7 +13,7 @@ import { OAUTH_CONFIG } from './oauthConfig.js';
 import { classifyEvent } from './eventClassifier.js';
 
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
-const DEFAULT_CLIENT_ID = '15001074-5d3f-42d1-97fd-f61ea17c5be9';
+const DEFAULT_CLIENT_ID = '00000000-0000-0000-0000-000000000000';
 const SCOPES = ['Calendars.ReadWrite', 'User.Read'];
 
 // Microsoft Outlook / 365 Preset 0-24 Category Palette Colors
@@ -97,6 +97,10 @@ export class MicrosoftCalendarAdapter {
    * Initializes adapter and attempts to restore stored access token or MSAL instance.
    */
   init() {
+    if (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId && OAUTH_CONFIG.microsoft.clientId !== DEFAULT_CLIENT_ID) {
+      this.clientId = OAUTH_CONFIG.microsoft.clientId;
+    }
+
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
         const savedToken = sessionStorage.getItem('calentimer_ms_token');
@@ -221,10 +225,14 @@ export class MicrosoftCalendarAdapter {
       }
 
       // 4. Client ID Configuration Check
-      if (!this.clientId || this.clientId === DEFAULT_CLIENT_ID || this.clientId.indexOf('YOUR_MICROSOFT_CLIENT_ID') !== -1) {
+      const effectiveClientId = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && OAUTH_CONFIG.microsoft.clientId)
+        ? OAUTH_CONFIG.microsoft.clientId
+        : this.clientId;
+      if (!effectiveClientId || effectiveClientId === DEFAULT_CLIENT_ID || effectiveClientId.indexOf('YOUR_MICROSOFT_CLIENT_ID') !== -1) {
         reject(new Error('Please set your Microsoft Application (client) ID in oauthConfig.js before connecting.'));
         return;
       }
+      this.clientId = effectiveClientId;
 
       // 5. Browser MSAL SDK Check
       const hasMsal = typeof window !== 'undefined' && window !== null && window.msal && window.msal.PublicClientApplication;
