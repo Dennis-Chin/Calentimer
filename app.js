@@ -1984,6 +1984,29 @@ function setupControls() {
     if (!isDrawerTouching || !e.touches || e.touches.length !== 1) return;
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
+
+    if (!taskDrawer.classList.contains('collapsed')) {
+      const drawerContentEl = document.getElementById('drawerContent');
+      const isHeaderTouch = Boolean(e.target.closest('#drawerHeader, .drawer-header'));
+      const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
+
+      // If user is scrolling inside drawer content and not yet at the top, continually anchor
+      // the touch start position to current finger position. When they finally reach the top,
+      // downward pull resistance starts fresh from that exact point (requiring the full 65px drag
+      // rather than jumping directly into minimisation).
+      if (!isHeaderTouch && !isAtTop) {
+        drawerTouchStartY = currentY;
+        drawerTouchStartX = currentX;
+        drawerTouchStartTime = Date.now();
+        if (isDrawerPullingDown) {
+          isDrawerPullingDown = false;
+          taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.removeProperty('transform');
+        }
+        return;
+      }
+    }
+
     const deltaY = currentY - drawerTouchStartY;
     const deltaX = currentX - drawerTouchStartX;
 
@@ -2027,7 +2050,9 @@ function setupControls() {
             taskDrawer.classList.remove('will-minimise');
           }
         } else if (deltaY <= 0 && isDrawerPullingDown) {
+          isDrawerPullingDown = false;
           taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.removeProperty('transform');
         }
       }
     }

@@ -435,6 +435,54 @@ taskDrawer.dispatchSimulatedEvent('touchend', {
 });
 assert(!taskDrawer.classList.contains('collapsed'), 'Drawer remains OPEN if user pulls back up before release');
 
+console.log('\n--- 5b. Testing Scroll-to-Top Resistance in Today\'s Schedule Tab ---');
+// Ensure drawer is open
+if (taskDrawer.classList.contains('collapsed')) {
+  drawerHeader.dispatchSimulatedEvent('click');
+}
+assert(!taskDrawer.classList.contains('collapsed'), 'Drawer is open for scroll-to-top test');
+
+// 1. User starts scrolled down inside drawerContent (scrollTop = 120)
+drawerContent.scrollTop = 120;
+taskDrawer.dispatchSimulatedEvent('touchstart', {
+  touches: [{ clientX: 190, clientY: 200 }]
+});
+
+// 2. Swiping down to scroll up: finger at Y = 280 (moved 80px), but scrollTop is still > 0
+drawerContent.scrollTop = 40;
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 190, clientY: 280 }]
+});
+assert(!taskDrawer.classList.contains('will-minimise'), 'Does not minimise while scrolling content up (scrollTop > 0)');
+
+// 3. User reaches the top: scrollTop reaches 0 at Y = 320
+drawerContent.scrollTop = 0;
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 190, clientY: 320 }]
+});
+assert(!taskDrawer.classList.contains('will-minimise'), 'Does not immediately trigger will-minimise upon reaching the top');
+
+// 4. User swipes a tiny bit more past the top (Y = 340, 20px from top < 65px threshold)
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 190, clientY: 340 }]
+});
+assert(!taskDrawer.classList.contains('will-minimise'), 'Small swipe past top (20px) retains full resistance and does not trigger will-minimise');
+
+// 5. User pulls with full resistance (Y = 390, 70px from top >= 65px threshold)
+taskDrawer.dispatchSimulatedEvent('touchmove', {
+  touches: [{ clientX: 190, clientY: 390 }]
+});
+assert(taskDrawer.classList.contains('will-minimise'), 'Gains .will-minimise once full 65px resistance threshold is met past top');
+
+// 6. Release to minimise
+taskDrawer.dispatchSimulatedEvent('touchend', {
+  changedTouches: [{ clientX: 190, clientY: 390 }]
+});
+assert(taskDrawer.classList.contains('collapsed'), 'Drawer minimises cleanly after full resistance downward swipe from top');
+
+// Reopen for subsequent tests
+drawerHeader.dispatchSimulatedEvent('click');
+
 console.log('\n--- 6. Testing Mobile Hardware Back Button Navigation & Dismissal ---');
 // Ensure tab/drawer is open
 if (taskDrawer.classList.contains('collapsed')) {
