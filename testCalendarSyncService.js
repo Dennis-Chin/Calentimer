@@ -677,6 +677,72 @@ if (typeof global.document === 'undefined') {
   const deletedEvent = taskStore.getCalendarEventById('cal-gcal-remote-only-456');
   assert(deletedEvent === null, 'Pure external event was properly deleted when cancelled in cloud');
 
+  console.log('\n--- 17. Testing External Calendar Deletion Safety Shield ---');
+  taskStore.setGoogleCalendarConnected(true);
+  taskStore.setMicrosoftCalendarConnected(true);
+
+  const initialGoogleDeletes = mockGoogle.getDeletedExternalIds().length;
+  const initialMsDeletes = mockMicrosoft.getDeletedExternalIds().length;
+
+  // 1. Block external Google event deletion
+  const externalGoogleEvent = {
+    id: 'cal-gcal-important-board-meeting-1',
+    externalId: 'ext-gcal-board-123',
+    origin: 'external',
+    createdInApp: false,
+    source: 'google',
+    provider: 'google'
+  };
+  const blockedGcalDelete = await syncService.pushEventDelete(externalGoogleEvent, 'google');
+  assert(blockedGcalDelete === false, 'pushEventDelete safely blocked deletion of external Google event');
+  assert(mockGoogle.getDeletedExternalIds().length === initialGoogleDeletes, 'Google adapter deleteEvent was NEVER called for external event');
+
+  // 2. Block external Microsoft event deletion
+  const externalMsEvent = {
+    id: 'cal-ms-important-client-pitch-2',
+    externalId: 'ext-ms-pitch-456',
+    origin: 'external',
+    createdInApp: false,
+    source: 'microsoft',
+    provider: 'microsoft'
+  };
+  const blockedMsDelete = await syncService.pushEventDelete(externalMsEvent, 'microsoft');
+  assert(blockedMsDelete === false, 'pushEventDelete safely blocked deletion of external Microsoft event');
+  assert(mockMicrosoft.getDeletedExternalIds().length === initialMsDeletes, 'Microsoft adapter deleteEvent was NEVER called for external event');
+
+  // 3. Block raw string ID deletion (no proven in-app provenance)
+  const blockedRawString = await syncService.pushEventDelete('some-random-external-id-789', 'google');
+  assert(blockedRawString === false, 'pushEventDelete safely blocked deletion from unverified raw string ID');
+  assert(mockGoogle.getDeletedExternalIds().length === initialGoogleDeletes, 'Google adapter deleteEvent was NEVER called for raw string ID');
+
+  // 4. Allow Calentimer-created event deletion when deselecting sync
+  const appCreatedEvent = {
+    id: 'task-app-study-session-77',
+    externalId: 'ext-mirror-google-777',
+    origin: 'local',
+    createdInApp: true,
+    provider: 'google',
+    source: 'local'
+  };
+  const allowedAppDelete = await syncService.pushEventDelete(appCreatedEvent, 'google');
+  assert(allowedAppDelete === true, 'pushEventDelete allows deletion of Calentimer-originated mirror event');
+  assert(mockGoogle.getDeletedExternalIds().indexOf('ext-mirror-google-777') !== -1, 'Google adapter deleteEvent was called to clean up Calentimer mirror');
+
+  // 5. Inbound Tombstone Suppression: Verify deleted external event is not resurrected on next delta
+  taskStore.addDeletedId('ext-gcal-suppressed-meeting-888');
+  const inboundSuppressResult = syncService._reconcileInboundEvents('google', [
+    {
+      id: 'cal-gcal-suppressed-meeting-888',
+      externalId: 'ext-gcal-suppressed-meeting-888',
+      title: 'Suppressed External Meeting',
+      date: '2026-10-28',
+      startTime: '11:00',
+      endTime: '12:00'
+    }
+  ]);
+  assert(inboundSuppressResult.added === 0, 'Reconcile inbound skipped tombstoned external event without adding');
+  assert(taskStore.getCalendarEventById('cal-gcal-suppressed-meeting-888') === null, 'Tombstoned external event was not resurrected in taskStore');
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

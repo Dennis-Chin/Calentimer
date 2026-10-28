@@ -472,14 +472,34 @@ export class CalendarView {
       el.btnDeleteEvent.addEventListener('click', () => {
         if (this.selectedEvent && this.selectedEvent.id) {
           const evToDelete = this.selectedEvent;
+          const isCreatedInApp = Boolean(
+            (evToDelete.origin === 'local' || evToDelete.createdInApp === true) ||
+            (evToDelete.id && (evToDelete.id.indexOf('cal-event-') === 0 || evToDelete.id.indexOf('task-') === 0))
+          );
+          const isExplicitlyExternal = Boolean(
+            evToDelete.origin === 'external' ||
+            evToDelete.createdInApp === false ||
+            (evToDelete.id && (evToDelete.id.indexOf('cal-gcal-') === 0 || evToDelete.id.indexOf('cal-ms-') === 0 || evToDelete.id.indexOf('cal-sync-') === 0))
+          );
+
           taskStore.deleteCalendarEvent(evToDelete.id);
-          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
-            calendarSyncService.pushEventDelete(evToDelete);
+          if (evToDelete.externalId && typeof taskStore.addDeletedId === 'function') {
+            taskStore.addDeletedId(evToDelete.externalId);
           }
+
+          if (isCreatedInApp && !isExplicitlyExternal) {
+            if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+              calendarSyncService.pushEventDelete(evToDelete);
+            }
+            this._showToast('🗑️ Event deleted');
+          } else {
+            // External imported event: strictly protected from remote deletion!
+            this._showToast('🗑️ Event removed from Calentimer (external calendar unchanged)');
+          }
+
           mobileServices.hapticTap();
           this.closeEventInspector();
           this.render();
-          this._showToast('🗑️ Event deleted');
         }
       });
     }
@@ -4843,15 +4863,49 @@ export class CalendarView {
     const isSyncMS = el.calEventSyncMS ? Boolean(el.calEventSyncMS.checked) : false;
 
     if (eventId) {
-      // Unpair remote deletion: if previously paired and now unchecked, delete remote event
+      const isCreatedInApp = Boolean(
+        this.selectedEvent && (
+          (this.selectedEvent.origin === 'local' || this.selectedEvent.createdInApp === true) ||
+          (this.selectedEvent.id && (this.selectedEvent.id.indexOf('cal-event-') === 0 || this.selectedEvent.id.indexOf('task-') === 0))
+        )
+      );
+      const isExplicitlyExternal = Boolean(
+        this.selectedEvent && (
+          this.selectedEvent.origin === 'external' ||
+          this.selectedEvent.createdInApp === false ||
+          (this.selectedEvent.id && (this.selectedEvent.id.indexOf('cal-gcal-') === 0 || this.selectedEvent.id.indexOf('cal-ms-') === 0 || this.selectedEvent.id.indexOf('cal-sync-') === 0))
+        )
+      );
+
+      let didUnpairExternal = false;
+
+      // Unpair Google:
       if (this._initialGooglePaired && !isSyncGoogle) {
-        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
-          calendarSyncService.pushEventDelete(this.selectedEvent, 'google');
+        if (isCreatedInApp && !isExplicitlyExternal) {
+          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+            calendarSyncService.pushEventDelete(this.selectedEvent, 'google');
+          }
+        } else {
+          // Imported Google event: NEVER delete remotely!
+          didUnpairExternal = true;
+          if (this.selectedEvent && this.selectedEvent.externalId && typeof taskStore.addDeletedId === 'function') {
+            taskStore.addDeletedId(this.selectedEvent.externalId);
+          }
         }
       }
+
+      // Unpair Microsoft:
       if (this._initialMSPaired && !isSyncMS) {
-        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
-          calendarSyncService.pushEventDelete(this.selectedEvent, 'microsoft');
+        if (isCreatedInApp && !isExplicitlyExternal) {
+          if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+            calendarSyncService.pushEventDelete(this.selectedEvent, 'microsoft');
+          }
+        } else {
+          // Imported Microsoft event: NEVER delete remotely!
+          didUnpairExternal = true;
+          if (this.selectedEvent && this.selectedEvent.externalId && typeof taskStore.addDeletedId === 'function') {
+            taskStore.addDeletedId(this.selectedEvent.externalId);
+          }
         }
       }
 
@@ -4872,11 +4926,15 @@ export class CalendarView {
         updateData.googleEventId = null;
         updateData.externalId = null;
         if (this.selectedEvent.provider === 'google') updateData.provider = 'local';
+        updateData.origin = 'local';
+        updateData.createdInApp = true;
       }
       if (!isSyncMS && this.selectedEvent && (this.selectedEvent.provider === 'microsoft' || this.selectedEvent.microsoftEventId)) {
         updateData.microsoftEventId = null;
         updateData.externalId = null;
         if (this.selectedEvent.provider === 'microsoft') updateData.provider = 'local';
+        updateData.origin = 'local';
+        updateData.createdInApp = true;
       }
 
       const updatedEv = taskStore.updateCalendarEvent(eventId, updateData);
@@ -4926,7 +4984,11 @@ export class CalendarView {
       if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventUpdate === 'function') {
         calendarSyncService.pushEventUpdate(updatedEv);
       }
-      this._showToast('✓ Event updated');
+      if (didUnpairExternal) {
+        this._showToast('✓ Unpaired in Calentimer (external calendar unchanged)');
+      } else {
+        this._showToast('✓ Event updated');
+      }
     } else {
       // Add new
       const resolvedColor = this._getCategoryColor(category);
@@ -4943,6 +5005,7 @@ export class CalendarView {
         color: resolvedColor,
         source: 'local',
         origin: 'local',
+        createdInApp: true,
         provider: isSyncGoogle ? 'google' : (isSyncMS ? 'microsoft' : 'local')
       });
 

@@ -1760,8 +1760,26 @@ function setupControls() {
   function openConfirmDeleteTaskModal(taskId, taskTitle) {
     pendingDeleteTaskId = taskId;
     pendingDeleteTaskTitle = taskTitle || 'this task';
+    const taskObj = taskStore.getTasks().find(t => t.id === taskId);
+    const isExternalTask = Boolean(
+      taskObj && (
+        taskObj.origin === 'external' ||
+        taskObj.createdInApp === false ||
+        taskObj.source === 'google' ||
+        taskObj.source === 'microsoft' ||
+        taskObj.googleEventId ||
+        taskObj.microsoftEventId
+      )
+    );
+
     if (confirmDeleteTaskTitle) confirmDeleteTaskTitle.textContent = `Delete "${pendingDeleteTaskTitle}"?`;
-    if (confirmDeleteTaskDesc) confirmDeleteTaskDesc.textContent = `Are you sure you want to remove "${pendingDeleteTaskTitle}" from today's schedule?`;
+    if (confirmDeleteTaskDesc) {
+      if (isExternalTask) {
+        confirmDeleteTaskDesc.textContent = `Are you sure you want to remove "${pendingDeleteTaskTitle}" from today's schedule? (Your external Google/Microsoft Calendar will not be affected.)`;
+      } else {
+        confirmDeleteTaskDesc.textContent = `Are you sure you want to remove "${pendingDeleteTaskTitle}" from today's schedule?`;
+      }
+    }
     if (confirmDeleteTaskModalBackdrop) confirmDeleteTaskModalBackdrop.classList.remove('hidden');
     mobileServices.hapticWarning();
   }
@@ -1794,6 +1812,10 @@ function setupControls() {
 
   // Centralized Unified Task Deletion
   function executeDeleteTask(taskId, taskTitle = 'Task') {
+    const taskObj = taskStore.getTasks().find(t => t.id === taskId);
+    if (taskObj && taskObj.externalId && typeof taskStore.addDeletedId === 'function') {
+      taskStore.addDeletedId(taskObj.externalId);
+    }
     taskStore.deleteTask(taskId);
     if (runtime) {
       runtime.deleteTask(taskId);
@@ -1814,7 +1836,12 @@ function setupControls() {
       calendarView.render();
     }
     mobileServices.hapticBuzz();
-    showToastNotification(`✓ Deleted "${taskTitle}"`);
+    const isExternal = Boolean(taskObj && (taskObj.origin === 'external' || taskObj.source === 'google' || taskObj.source === 'microsoft'));
+    if (isExternal) {
+      showToastNotification(`✓ Removed "${taskTitle}" (external calendar unchanged)`);
+    } else {
+      showToastNotification(`✓ Deleted "${taskTitle}"`);
+    }
   }
   window.executeDeleteTask = executeDeleteTask;
 
@@ -4355,12 +4382,32 @@ function saveCurrentTaskEdit() {
   const nextGoogle = Boolean(editSyncGoogle && editSyncGoogle.checked);
   const nextMS = Boolean(editSyncMS && editSyncMS.checked);
 
-  // Unpair Google -> Delete from remote Google Calendar
+  const isCreatedInApp = Boolean(
+    prevTask && (
+      (prevTask.origin === 'local' || prevTask.createdInApp === true) ||
+      (prevTask.id && (prevTask.id.indexOf('task-') === 0 || prevTask.id.indexOf('cal-event-') === 0))
+    )
+  );
+  const isExplicitlyExternal = Boolean(
+    prevTask && (
+      prevTask.origin === 'external' ||
+      prevTask.createdInApp === false ||
+      (prevTask.id && (prevTask.id.indexOf('cal-gcal-') === 0 || prevTask.id.indexOf('cal-ms-') === 0 || prevTask.id.indexOf('cal-sync-') === 0))
+    )
+  );
+
+  // Unpair Google:
   if (prevGoogle && !nextGoogle) {
-    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
-      calendarSyncService.pushEventDelete(prevTask, 'google').catch(() => {});
+    if (isCreatedInApp && !isExplicitlyExternal) {
+      if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
+        calendarSyncService.pushEventDelete(prevTask, 'google').catch(() => {});
+      }
+    } else {
+      if (prevTask && prevTask.externalId && typeof taskStore.addDeletedId === 'function') {
+        taskStore.addDeletedId(prevTask.externalId);
+      }
     }
-    taskStore.updateTask(currentEditTaskId, { googleEventId: null, externalId: null, provider: 'local' });
+    taskStore.updateTask(currentEditTaskId, { googleEventId: null, externalId: null, provider: 'local', origin: 'local', createdInApp: true });
   } else if (!prevGoogle && nextGoogle) {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
       const taskPayload = Object.assign({}, prevTask, {
@@ -4383,12 +4430,18 @@ function saveCurrentTaskEdit() {
     }
   }
 
-  // Unpair Microsoft -> Delete from remote Microsoft Calendar
+  // Unpair Microsoft:
   if (prevMS && !nextMS) {
-    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
-      calendarSyncService.pushEventDelete(prevTask, 'microsoft').catch(() => {});
+    if (isCreatedInApp && !isExplicitlyExternal) {
+      if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventDelete === 'function') {
+        calendarSyncService.pushEventDelete(prevTask, 'microsoft').catch(() => {});
+      }
+    } else {
+      if (prevTask && prevTask.externalId && typeof taskStore.addDeletedId === 'function') {
+        taskStore.addDeletedId(prevTask.externalId);
+      }
     }
-    taskStore.updateTask(currentEditTaskId, { microsoftEventId: null, externalId: null, provider: 'local' });
+    taskStore.updateTask(currentEditTaskId, { microsoftEventId: null, externalId: null, provider: 'local', origin: 'local', createdInApp: true });
   } else if (!prevMS && nextMS) {
     if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
       const taskPayload = Object.assign({}, prevTask, {
@@ -6221,7 +6274,11 @@ function setupNavigationAndModals() {
       fixedStartTime,
       isLocked: Boolean(isLocked),
       useTimeBank,
-      emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝')
+      emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝'),
+      source: 'local',
+      origin: 'local',
+      createdInApp: true,
+      provider: syncGoogle ? 'google' : (syncMS ? 'microsoft' : 'local')
     });
 
     if (syncGoogle) {

@@ -615,6 +615,8 @@ export class GoogleCalendarAdapter {
       externalCalendarId: item.calendarId || 'primary',
       provider: 'google',
       source: 'google',
+      origin: 'external',
+      createdInApp: false,
       title: title,
       date: dateStr,
       startTime: startTime,

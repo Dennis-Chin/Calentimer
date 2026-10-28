@@ -268,6 +268,11 @@ export class TaskStore {
       tags: (task && Array.isArray(task.tags)) ? task.tags : ((task && task.tags) ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
       emoji: (task && task.emoji) ? task.emoji : '📌',
       source: (task && task.source) ? task.source : 'local',
+      origin: (task && task.origin) ? task.origin : ((task && ((task.source === 'google' || task.source === 'microsoft') || (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0)))) ? 'external' : 'local'),
+      createdInApp: (task && task.createdInApp !== undefined) ? Boolean(task.createdInApp) : !Boolean(task && (task.origin === 'external' || (task.source === 'google' || task.source === 'microsoft') || (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0)))),
+      provider: (task && task.provider) ? task.provider : ((task && task.source) ? task.source : 'local'),
+      googleEventId: (task && task.googleEventId) ? task.googleEventId : null,
+      microsoftEventId: (task && task.microsoftEventId) ? task.microsoftEventId : null,
       externalId: (task && task.externalId) ? task.externalId : null,
       lastModified: now
     };
@@ -992,8 +997,12 @@ export class TaskStore {
       category: (eventData && eventData.category) ? eventData.category : 'General',
       provider: (eventData && eventData.provider) ? eventData.provider : ((eventData && eventData.source) ? eventData.source : 'local'),
       source: (eventData && eventData.source) ? eventData.source : ((eventData && eventData.provider) ? eventData.provider : 'local'),
+      origin: (eventData && eventData.origin) ? eventData.origin : ((eventData && ((eventData.source === 'google' || eventData.source === 'microsoft') || (eventData.id && (eventData.id.indexOf('cal-gcal-') === 0 || eventData.id.indexOf('cal-ms-') === 0 || eventData.id.indexOf('cal-sync-') === 0)))) ? 'external' : 'local'),
+      createdInApp: (eventData && eventData.createdInApp !== undefined) ? Boolean(eventData.createdInApp) : !Boolean(eventData && (eventData.origin === 'external' || (eventData.source === 'google' || eventData.source === 'microsoft') || (eventData.id && (eventData.id.indexOf('cal-gcal-') === 0 || eventData.id.indexOf('cal-ms-') === 0 || eventData.id.indexOf('cal-sync-') === 0)))),
       color: (eventData && eventData.color) ? eventData.color : null,
       colorId: (eventData && eventData.colorId) ? eventData.colorId : null,
+      googleEventId: (eventData && eventData.googleEventId) ? eventData.googleEventId : null,
+      microsoftEventId: (eventData && eventData.microsoftEventId) ? eventData.microsoftEventId : null,
       externalId: (eventData && eventData.externalId) ? eventData.externalId : null,
       externalCalendarId: (eventData && eventData.externalCalendarId) ? eventData.externalCalendarId : null,
       etag: (eventData && eventData.etag) ? eventData.etag : null,
@@ -1131,6 +1140,7 @@ export class TaskStore {
         colorId: task.colorId || null,
         source: task.source || 'local',
         origin: task.origin || 'local',
+        createdInApp: task.createdInApp !== undefined ? Boolean(task.createdInApp) : (task.origin === 'local' || (task.id && (task.id.indexOf('task-') === 0 || task.id.indexOf('cal-event-') === 0))),
         provider: task.provider || 'local',
         googleEventId: task.googleEventId || null,
         microsoftEventId: task.microsoftEventId || null,
@@ -1174,6 +1184,7 @@ export class TaskStore {
         endTime: calEvent.endTime,
         source: calEvent.source || 'local',
         origin: calEvent.origin || 'local',
+        createdInApp: calEvent.createdInApp !== undefined ? Boolean(calEvent.createdInApp) : (calEvent.origin === 'local' || (calEvent.id && (calEvent.id.indexOf('task-') === 0 || calEvent.id.indexOf('cal-event-') === 0))),
         provider: calEvent.provider || 'local',
         googleEventId: calEvent.googleEventId || null,
         microsoftEventId: calEvent.microsoftEventId || null,
@@ -1258,6 +1269,7 @@ export class TaskStore {
             endTime: calEvent.endTime || null,
             source: calEvent.source || 'local',
             origin: calEvent.origin || 'local',
+            createdInApp: calEvent.createdInApp !== undefined ? Boolean(calEvent.createdInApp) : (calEvent.origin === 'local' || (calEvent.id && (calEvent.id.indexOf('task-') === 0 || calEvent.id.indexOf('cal-event-') === 0))),
             provider: calEvent.provider || 'local',
             googleEventId: calEvent.googleEventId || null,
             microsoftEventId: calEvent.microsoftEventId || null,
@@ -1333,6 +1345,7 @@ export class TaskStore {
             category: task.category || 'General',
             source: task.source || 'local',
             origin: task.origin || 'local',
+            createdInApp: task.createdInApp !== undefined ? Boolean(task.createdInApp) : (task.origin === 'local' || (task.id && (task.id.indexOf('task-') === 0 || task.id.indexOf('cal-event-') === 0))),
             provider: task.provider || 'local',
             googleEventId: task.googleEventId || null,
             microsoftEventId: task.microsoftEventId || null,
@@ -1364,6 +1377,10 @@ export class TaskStore {
             if (existingEvent.googleEventId && !task.googleEventId) { task.googleEventId = existingEvent.googleEventId; }
             if (existingEvent.microsoftEventId && !task.microsoftEventId) { task.microsoftEventId = existingEvent.microsoftEventId; }
             if (existingEvent.externalId && !task.externalId) { task.externalId = existingEvent.externalId; }
+            if (task.origin && existingEvent.origin !== task.origin) { existingEvent.origin = task.origin; }
+            if (task.createdInApp !== undefined && existingEvent.createdInApp !== task.createdInApp) { existingEvent.createdInApp = task.createdInApp; }
+            if (existingEvent.origin && !task.origin) { task.origin = existingEvent.origin; }
+            if (existingEvent.createdInApp !== undefined && task.createdInApp === undefined) { task.createdInApp = existingEvent.createdInApp; }
             const lockedState = Boolean(task.isLocked);
             if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
             if (updated) {

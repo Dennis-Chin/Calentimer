@@ -977,6 +977,8 @@ export class MicrosoftCalendarAdapter {
       externalCalendarId: item.calendarId || 'primary',
       provider: 'microsoft',
       source: 'microsoft',
+      origin: 'external',
+      createdInApp: false,
       title: title,
       date: dateStr,
       startTime: startTime,

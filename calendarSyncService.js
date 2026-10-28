@@ -303,6 +303,9 @@ export class CalendarSyncService {
     const todayStr = (typeof taskStore.getTodayDateString === 'function')
       ? taskStore.getTodayDateString()
       : new Date().toISOString().split('T')[0];
+    const deletedIds = (typeof taskStore.getDeletedIds === 'function')
+      ? taskStore.getDeletedIds()
+      : new Set();
 
     const updatedEvents = [...allEvents];
 
@@ -310,15 +313,28 @@ export class CalendarSyncService {
       const incoming = incomingList[i];
       if (!incoming || !incoming.externalId) continue;
 
+      // Tombstone Shield: Check if this external event was deleted locally in Calentimer
+      if ((incoming.id && deletedIds.has(incoming.id)) || (incoming.externalId && deletedIds.has(incoming.externalId))) {
+        echoes++;
+        continue;
+      }
+
       const existing = eventMap.get(incoming.externalId);
 
       // 1. Deletion / Cancellation in cloud
       if (incoming.isCancelled || incoming.status === 'cancelled' || incoming.deleted) {
         if (existing) {
-          const isLocalItem = Boolean(
+          const isExplicitExternal = Boolean(
+            existing.origin === 'external' ||
+            existing.createdInApp === false ||
+            (existing.id && (existing.id.indexOf('cal-gcal-') === 0 || existing.id.indexOf('cal-ms-') === 0 || existing.id.indexOf('cal-sync-') === 0)) ||
+            ((existing.source === 'google' || existing.source === 'microsoft') && (!existing.origin || existing.origin !== 'local'))
+          );
+          const isLocalItem = !isExplicitExternal && Boolean(
             (existing.id && (existing.id.startsWith('cal-event-') || existing.id.startsWith('task-'))) ||
             existing.source === 'local' ||
-            existing.origin === 'local'
+            existing.origin === 'local' ||
+            existing.createdInApp === true
           );
           if (isLocalItem) {
             // Local Calentimer item: detach external sync pairing, do NOT delete local item
@@ -393,6 +409,8 @@ export class CalendarSyncService {
           id: incoming.id || ('cal-sync-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),
           provider: provider,
           source: provider,
+          origin: 'external',
+          createdInApp: false,
           isLocked: isLockedVal,
           syncHash: incomingHash,
           isDirty: false,
@@ -608,13 +626,40 @@ export class CalendarSyncService {
 
   /**
    * Pushes an event delete to the appropriate connected provider.
-   * Accepts an event object, a task object, or an external ID string.
+   * STRICT SAFETY SHIELD: Remote deletions are ONLY permitted for events originally
+   * created within Calentimer (origin === 'local' or createdInApp === true).
+   * External calendar meetings (origin === 'external') are strictly blocked from remote deletion.
    * @param {object|string} eventOrTask 
    * @param {string} [provider]
    * @returns {Promise<boolean>}
    */
   async pushEventDelete(eventOrTask, provider) {
     if (!eventOrTask) return false;
+
+    // Strict Provenance Verification (Safety Shield)
+    let isCreatedInApp = false;
+    let isExplicitlyExternal = false;
+
+    if (typeof eventOrTask === 'object' && eventOrTask !== null) {
+      if (eventOrTask.origin === 'external' || eventOrTask.createdInApp === false) {
+        isExplicitlyExternal = true;
+      }
+      const id = eventOrTask.id ? String(eventOrTask.id) : '';
+      if (id.indexOf('cal-gcal-') === 0 || id.indexOf('cal-ms-') === 0 || id.indexOf('cal-sync-') === 0) {
+        isExplicitlyExternal = true;
+      }
+      if (eventOrTask.origin === 'local' || eventOrTask.createdInApp === true) {
+        isCreatedInApp = true;
+      } else if (id.indexOf('task-') === 0 || id.indexOf('cal-event-') === 0) {
+        isCreatedInApp = true;
+      }
+    }
+
+    if (isExplicitlyExternal || !isCreatedInApp) {
+      console.warn('[SAFETY SHIELD] Blocked remote deletion of external calendar event:', typeof eventOrTask === 'object' ? eventOrTask.id : eventOrTask);
+      return false; // Safely refuse: user's real Google / Microsoft calendar is never touched
+    }
+
     let externalId = null;
     let prov = provider || null;
 
