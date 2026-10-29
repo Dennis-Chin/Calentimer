@@ -13,7 +13,7 @@ import { classifyEvent } from './eventClassifier.js';
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 const DEFAULT_CLIENT_ID = '938174201948-mock-client-id.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email';
+const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email';
 
 export const GOOGLE_EVENT_COLORS = {
   '1': '#7986cb',  // Lavender (Soft Blue)
@@ -244,10 +244,11 @@ export class GoogleCalendarAdapter {
     let cachedId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
       ? taskStore.getGoogleCalentimerCalendarId()
       : null;
+    if (cachedId === 'primary') cachedId = null;
 
     await this.ensureValidToken();
     if (!this.isAuthenticated()) {
-      return cachedId || 'primary';
+      return cachedId || null;
     }
 
     let allCals = [];
@@ -344,17 +345,31 @@ export class GoogleCalendarAdapter {
         const calId = createdCal.id;
 
         try {
-          await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList/${encodeURIComponent(calId)}`, {
-            method: 'PATCH',
+          await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`, {
+            method: 'POST',
             headers: {
               'Authorization': `Bearer ${this.accessToken}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+              id: calId,
               colorId: chosenColorId
             })
           });
-        } catch (_) {}
+        } catch (_) {
+          try {
+            await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList/${encodeURIComponent(calId)}`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                colorId: chosenColorId
+              })
+            });
+          } catch (_) {}
+        }
 
         if (typeof taskStore !== 'undefined') {
           if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
@@ -365,12 +380,15 @@ export class GoogleCalendarAdapter {
           }
         }
         return calId;
+      } else {
+        const errText = await createResp.text();
+        console.error('Google secondary calendar creation error:', createResp.status, errText);
       }
     } catch (e) {
       console.warn('Could not create Calentimer secondary Google calendar:', e);
     }
 
-    return cachedId || 'primary';
+    return cachedId || null;
   }
 
   /**
@@ -593,7 +611,8 @@ export class GoogleCalendarAdapter {
         let calSyncTokenExpired = false;
 
         do {
-          let url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(calId)}/events?singleEvents=true&maxResults=250`;
+          const apiCalId = isPrimary ? 'primary' : calId;
+          let url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(apiCalId)}/events?singleEvents=true&maxResults=250`;
           if (isPrimary && syncToken) {
             url += `&syncToken=${encodeURIComponent(syncToken)}`;
           } else {
@@ -688,7 +707,10 @@ export class GoogleCalendarAdapter {
     }
 
     const targetCalId = await this.getOrCreateCalentimerCalendar();
-    const calIdParam = encodeURIComponent(targetCalId || 'primary');
+    if (!targetCalId || targetCalId === 'primary') {
+      throw new Error('Unable to create or access dedicated "Calentimer" calendar. Events created in Calentimer will not be written to your primary personal calendar to protect your external schedule.');
+    }
+    const calIdParam = encodeURIComponent(targetCalId);
 
     const payload = this.mapToGooglePayload(calentimerEvent);
     const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${calIdParam}/events`, {

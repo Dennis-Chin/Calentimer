@@ -884,6 +884,73 @@ if (typeof global.document === 'undefined') {
   assert(retrievedExt && retrievedExt.color === '#e67c73', 'App event preserves imported external color (#e67c73)');
   assert(retrievedExt && retrievedExt.colorId === '4', 'App event preserves imported external colorId ("4")');
 
+  // --- 22. Testing Dedicated "Calentimer" Calendar Shield & Today Desync Prevention ---
+  {
+    console.log('\n--- 22. Testing Dedicated "Calentimer" Calendar Shield & Today Desync Prevention ---');
+    const { OAUTH_CONFIG: ocfg } = await import('./oauthConfig.js');
+    const { googleCalendarAdapter: gAdapter } = await import('./googleCalendarAdapter.js');
+    const { microsoftCalendarAdapter: mAdapter } = await import('./microsoftCalendarAdapter.js');
+
+    // 1. Google OAuth full calendar scope present
+    assert(
+      ocfg && ocfg.google && ocfg.google.scopes && ocfg.google.scopes.indexOf('https://www.googleapis.com/auth/calendar') !== -1,
+      'Google OAuth config includes full "https://www.googleapis.com/auth/calendar" scope for secondary calendar management'
+    );
+
+    // 2. Calentimer Calendar ID ignores and clears 'primary'
+    taskStore.setGoogleCalentimerCalendarId('primary');
+    assert(taskStore.getGoogleCalentimerCalendarId() === null, 'taskStore rejects and clears "primary" for Google Calentimer calendar ID');
+
+    taskStore.setMicrosoftCalentimerCalendarId('primary');
+    assert(taskStore.getMicrosoftCalentimerCalendarId() === null, 'taskStore rejects and clears "primary" for Microsoft Calentimer calendar ID');
+
+    taskStore.setGoogleCalentimerCalendarId('c_secondary_calentimer_123');
+    assert(taskStore.getGoogleCalentimerCalendarId() === 'c_secondary_calentimer_123', 'taskStore stores valid dedicated Calentimer secondary ID');
+
+    // 3. Provider tombstone clearing
+    taskStore.addDeletedId('cal-gcal-del-1', '2026-10-29');
+    taskStore.addDeletedId('cal-ms-del-1', '2026-10-29');
+    taskStore.addDeletedId('local-task-del-1', '2026-10-29');
+    taskStore.clearDeletedIdsForProvider('google');
+    const deletedIdsAfter = taskStore.getDeletedIds('2026-10-29');
+    assert(!deletedIdsAfter.has('cal-gcal-del-1'), 'clearDeletedIdsForProvider clears Google tombstones');
+    assert(deletedIdsAfter.has('cal-ms-del-1'), 'clearDeletedIdsForProvider preserves Microsoft tombstones');
+    assert(deletedIdsAfter.has('local-task-del-1'), 'clearDeletedIdsForProvider preserves local tombstones');
+
+    // 4. Outbound event create shield: Throws error if target is primary or missing
+    let googleThrewShield = false;
+    try {
+      const fakeAdapter = new gAdapter.constructor({ useMock: false });
+      fakeAdapter.accessToken = 'test_token';
+      fakeAdapter.getOrCreateCalentimerCalendar = async () => null;
+      await fakeAdapter.createEvent({ title: 'Test Shield Event', date: '2026-10-29' });
+    } catch (err) {
+      googleThrewShield = Boolean(err && err.message && err.message.indexOf('primary personal calendar') !== -1);
+    }
+    assert(googleThrewShield, 'Google adapter strictly throws and refuses to write events into primary personal calendar');
+
+    let msThrewShield = false;
+    try {
+      const fakeMsAdapter = new mAdapter.constructor({ useMock: false });
+      fakeMsAdapter.accessToken = 'test_token';
+      fakeMsAdapter.getOrCreateCalentimerCalendar = async () => null;
+      await fakeMsAdapter.createEvent({ title: 'Test Shield Event', date: '2026-10-29' });
+    } catch (err) {
+      msThrewShield = Boolean(err && err.message && err.message.indexOf('primary personal calendar') !== -1);
+    }
+    assert(msThrewShield, 'Microsoft adapter strictly throws and refuses to write events into primary personal calendar');
+
+    // 5. Zombie resurrection guard in syncScheduleAndCalendar
+    const todayDate = taskStore.getTodayDateString();
+    taskStore.saveTasks([
+      { id: 'cal-gcal-orphan-1', title: 'Disconnected Orphan Task', origin: 'external', provider: 'google', date: todayDate }
+    ]);
+    taskStore.saveCalendarEvents([]); // external calendar event is gone
+    taskStore.syncScheduleAndCalendar();
+    const tasksAfterSync = taskStore.getTasks();
+    assert(!tasksAfterSync.some(t => t.id === 'cal-gcal-orphan-1'), 'syncScheduleAndCalendar eliminates disconnected orphan external tasks without resurrecting them');
+  }
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

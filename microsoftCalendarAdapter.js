@@ -310,9 +310,13 @@ export class MicrosoftCalendarAdapter {
       ? taskStore.getMicrosoftCalentimerCalendarId()
       : null;
 
+    if (cachedId === 'primary') {
+      cachedId = null;
+    }
+
     await this.ensureValidToken();
     if (!this.isAuthenticated()) {
-      return cachedId || 'primary';
+      return cachedId || null;
     }
 
     let allCals = [];
@@ -420,7 +424,7 @@ export class MicrosoftCalendarAdapter {
       console.warn('Could not create Calentimer Microsoft calendar:', e);
     }
 
-    return cachedId || 'primary';
+    return cachedId || null;
   }
 
   /**
@@ -901,9 +905,10 @@ export class MicrosoftCalendarAdapter {
     }
 
     const targetCalId = await this.getOrCreateCalentimerCalendar();
-    const endpoint = (targetCalId && targetCalId !== 'primary')
-      ? `${GRAPH_API_BASE}/me/calendars/${encodeURIComponent(targetCalId)}/events`
-      : `${GRAPH_API_BASE}/me/events`;
+    if (!targetCalId || targetCalId === 'primary') {
+      throw new Error('Unable to create or access dedicated "Calentimer" calendar. Events created in Calentimer will not be written to your primary personal calendar to protect your external schedule.');
+    }
+    const endpoint = `${GRAPH_API_BASE}/me/calendars/${encodeURIComponent(targetCalId)}/events`;
 
     const payload = this.mapToMicrosoftPayload(calentimerEvent);
     const timeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)

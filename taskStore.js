@@ -171,6 +171,35 @@ export class TaskStore {
     } catch (_) {}
   }
 
+  /**
+   * Clears deleted tombstone records for a given provider (e.g. on fresh connect or full resync).
+   * @param {string} [provider] 'google' | 'microsoft' | 'all'
+   */
+  clearDeletedIdsForProvider(provider) {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.DELETED_IDS);
+      if (!raw) return;
+      const record = JSON.parse(raw);
+      if (!record || typeof record !== 'object') return;
+      const prefix = provider === 'google' ? 'cal-gcal-' : (provider === 'microsoft' ? 'cal-ms-' : null);
+      let changed = false;
+      Object.keys(record).forEach(dateKey => {
+        if (Array.isArray(record[dateKey])) {
+          const originalLen = record[dateKey].length;
+          if (prefix) {
+            record[dateKey] = record[dateKey].filter(id => id.indexOf(prefix) !== 0);
+          } else {
+            record[dateKey] = record[dateKey].filter(id => id.indexOf('cal-gcal-') !== 0 && id.indexOf('cal-ms-') !== 0);
+          }
+          if (record[dateKey].length !== originalLen) changed = true;
+        }
+      });
+      if (changed) {
+        safeSetItem(STORAGE_KEYS.DELETED_IDS, JSON.stringify(record));
+      }
+    } catch (_) {}
+  }
+
   onChange(callback) {
     this._listeners.add(callback);
     return () => this._listeners.delete(callback);
@@ -1382,6 +1411,14 @@ export class TaskStore {
           tasksChanged = true;
           return;
         }
+        const isExternal = (task && (task.origin === 'external' ||
+          task.source === 'google' || task.source === 'microsoft' ||
+          task.provider === 'google' || task.provider === 'microsoft' ||
+          (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0 || task.id.indexOf('cal-sync-') === 0))));
+        if (isExternal && !calMap.has(task.id)) {
+          tasksChanged = true;
+          return;
+        }
         tasksToKeep.push(task);
       });
 
@@ -1846,7 +1883,12 @@ export class TaskStore {
    */
   getGoogleCalentimerCalendarId() {
     try {
-      return safeGetItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID) || null;
+      const val = safeGetItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID);
+      if (val === 'primary') {
+        this.setGoogleCalentimerCalendarId(null);
+        return null;
+      }
+      return val || null;
     } catch (_) {
       return null;
     }
@@ -1857,7 +1899,7 @@ export class TaskStore {
    * @param {string|null} id
    */
   setGoogleCalentimerCalendarId(id) {
-    if (id) {
+    if (id && id !== 'primary') {
       safeSetItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID, String(id).trim());
     } else {
       try {
@@ -1876,7 +1918,12 @@ export class TaskStore {
    */
   getMicrosoftCalentimerCalendarId() {
     try {
-      return safeGetItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID) || null;
+      const val = safeGetItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID);
+      if (val === 'primary') {
+        this.setMicrosoftCalentimerCalendarId(null);
+        return null;
+      }
+      return val || null;
     } catch (_) {
       return null;
     }
@@ -1887,7 +1934,7 @@ export class TaskStore {
    * @param {string|null} id
    */
   setMicrosoftCalentimerCalendarId(id) {
-    if (id) {
+    if (id && id !== 'primary') {
       safeSetItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID, String(id).trim());
     } else {
       try {

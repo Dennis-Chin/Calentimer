@@ -126,7 +126,8 @@ export class CalendarView {
       chkDontAskConnectStartup: document.getElementById('chkDontAskConnectStartup'),
       confirmSyncNowModalBackdrop: document.getElementById('confirmSyncNowModalBackdrop'),
       btnConfirmSyncNow: document.getElementById('btnConfirmSyncNow'),
-      btnDismissSyncNow: document.getElementById('btnDismissSyncNow')
+      btnDismissSyncNow: document.getElementById('btnDismissSyncNow'),
+      btnCalToolbarSync: document.getElementById('btnCalToolbarSync')
     };
 
     this._bindEvents();
@@ -275,6 +276,26 @@ export class CalendarView {
           mobileServices.hapticTap();
           this.render();
           this._showToast(!currentVis ? 'Microsoft Calendar shown' : 'Microsoft Calendar hidden');
+        }
+      });
+    }
+
+    if (el.btnCalToolbarSync) {
+      el.btnCalToolbarSync.addEventListener('click', async () => {
+        mobileServices.hapticTap();
+        el.btnCalToolbarSync.classList.add('is-syncing');
+        try {
+          if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.syncAll === 'function') {
+            await calendarSyncService.syncAll(true);
+          }
+          if (typeof window.refreshAppScheduleFromStore === 'function') {
+            window.refreshAppScheduleFromStore();
+          }
+          this._showToast('✓ Calendar sync complete');
+        } catch (err) {
+          this._showToast('Sync error: ' + (err && err.message ? err.message : 'Failed'));
+        } finally {
+          el.btnCalToolbarSync.classList.remove('is-syncing');
         }
       });
     }

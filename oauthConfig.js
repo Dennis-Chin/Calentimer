@@ -11,7 +11,7 @@ export const OAUTH_CONFIG = {
   google: {
     // Google OAuth 2.0 Web Client ID (Public client identifier constrained to authorized JS origins)
     clientId: '1035094963980-d0r9um6iitp41m8jdnr0usnvp8vepc19.apps.googleusercontent.com',
-    scopes: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
+    scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
   },
   microsoft: {
     // Microsoft Application (client) ID configured for two-way sync

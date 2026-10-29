@@ -97,13 +97,30 @@ export class CalendarSyncService {
       if (provider === 'google') {
         if (typeof taskStore.setGoogleCalendarConnected === 'function') taskStore.setGoogleCalendarConnected(true);
         if (typeof taskStore.setGoogleUserEmail === 'function') taskStore.setGoogleUserEmail(email);
+        if (typeof taskStore.setGoogleSyncToken === 'function') taskStore.setGoogleSyncToken(null);
+        if (typeof taskStore.setGoogleSelectedCalendarIds === 'function') taskStore.setGoogleSelectedCalendarIds(null);
       } else if (provider === 'microsoft') {
         if (typeof taskStore.setMicrosoftCalendarConnected === 'function') taskStore.setMicrosoftCalendarConnected(true);
         if (typeof taskStore.setMicrosoftUserEmail === 'function') taskStore.setMicrosoftUserEmail(email);
+        if (typeof taskStore.setMicrosoftDeltaLink === 'function') taskStore.setMicrosoftDeltaLink(null);
+        if (typeof taskStore.setMicrosoftSelectedCalendarIds === 'function') taskStore.setMicrosoftSelectedCalendarIds(null);
       }
 
-      // Initial import delta
-      await this.syncProvider(provider);
+      if (typeof taskStore.clearDeletedIdsForProvider === 'function') {
+        taskStore.clearDeletedIdsForProvider(provider);
+      }
+
+      // Ensure dedicated Calentimer secondary calendar exists upfront
+      if (typeof adapter.getOrCreateCalentimerCalendar === 'function') {
+        try {
+          await adapter.getOrCreateCalentimerCalendar();
+        } catch (calErr) {
+          console.warn(`CalendarSyncService: Failed to get/create dedicated Calentimer calendar for ${provider}:`, calErr);
+        }
+      }
+
+      // Initial full import
+      await this.syncProvider(provider, true);
 
       // Save/Restore Cross-Device Profile payload
       if (!this.cloudSyncEventId) {
@@ -130,27 +147,48 @@ export class CalendarSyncService {
       if (typeof taskStore.setGoogleCalendarConnected === 'function') taskStore.setGoogleCalendarConnected(false);
       if (typeof taskStore.setGoogleSyncToken === 'function') taskStore.setGoogleSyncToken(null);
       if (typeof taskStore.setGoogleUserEmail === 'function') taskStore.setGoogleUserEmail(null);
+      if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') taskStore.setGoogleCalentimerCalendarId(null);
+      if (typeof taskStore.setGoogleSelectedCalendarIds === 'function') taskStore.setGoogleSelectedCalendarIds(null);
     } else if (provider === 'microsoft') {
       if (typeof taskStore.setMicrosoftCalendarConnected === 'function') taskStore.setMicrosoftCalendarConnected(false);
       if (typeof taskStore.setMicrosoftDeltaLink === 'function') taskStore.setMicrosoftDeltaLink(null);
       if (typeof taskStore.setMicrosoftUserEmail === 'function') taskStore.setMicrosoftUserEmail(null);
+      if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') taskStore.setMicrosoftCalentimerCalendarId(null);
+      if (typeof taskStore.setMicrosoftSelectedCalendarIds === 'function') taskStore.setMicrosoftSelectedCalendarIds(null);
     }
 
-    // Optionally remove imported events or mark them offline
+    if (typeof taskStore.clearDeletedIdsForProvider === 'function') {
+      taskStore.clearDeletedIdsForProvider(provider);
+    }
+
+    // Remove imported events from calendarEvents
     const allEvents = taskStore.getCalendarEvents();
     const remaining = allEvents.filter(ev => {
       const p = (ev && (ev.provider || ev.source)) ? (ev.provider || ev.source) : 'local';
-      return p !== provider;
+      const isIdMatch = ev && ev.id && (provider === 'google' ? ev.id.indexOf('cal-gcal-') === 0 : ev.id.indexOf('cal-ms-') === 0);
+      return p !== provider && !isIdMatch;
     });
 
     if (remaining.length !== allEvents.length) {
       taskStore.saveCalendarEvents(remaining);
-      const todayStr = (typeof taskStore.getTodayDateString === 'function')
-        ? taskStore.getTodayDateString()
-        : new Date().toISOString().split('T')[0];
-      if (typeof taskStore.syncScheduleAndCalendar === 'function') {
-        taskStore.syncScheduleAndCalendar(todayStr);
-      }
+    }
+
+    // Remove imported tasks from tasks
+    const allTasks = taskStore.getTasks();
+    const remainingTasks = allTasks.filter(t => {
+      const p = (t && (t.provider || t.source)) ? (t.provider || t.source) : 'local';
+      const isIdMatch = t && t.id && (provider === 'google' ? t.id.indexOf('cal-gcal-') === 0 : t.id.indexOf('cal-ms-') === 0);
+      return p !== provider && !isIdMatch;
+    });
+    if (remainingTasks.length !== allTasks.length) {
+      taskStore.saveTasks(remainingTasks);
+    }
+
+    const todayStr = (typeof taskStore.getTodayDateString === 'function')
+      ? taskStore.getTodayDateString()
+      : new Date().toISOString().split('T')[0];
+    if (typeof taskStore.syncScheduleAndCalendar === 'function') {
+      taskStore.syncScheduleAndCalendar(todayStr);
     }
 
     this._notifySyncStatus(false, { action: 'disconnect', provider: provider });
@@ -190,18 +228,20 @@ export class CalendarSyncService {
 
   /**
    * Syncs all connected providers.
+   * @param {boolean} [forceFullSync=false]
    */
-  async syncAll() {
+  async syncAll(forceFullSync) {
+    const isForce = Boolean(forceFullSync);
     if (this.isSyncing) return { skipped: true };
     this._notifySyncStatus(true, { action: 'syncAll' });
 
     const results = {};
     try {
       if (this.isProviderConnected('google')) {
-        results.google = await this.syncProvider('google');
+        results.google = await this.syncProvider('google', isForce);
       }
       if (this.isProviderConnected('microsoft')) {
-        results.microsoft = await this.syncProvider('microsoft');
+        results.microsoft = await this.syncProvider('microsoft', isForce);
       }
       if (typeof taskStore.setLastSyncTimestamp === 'function') {
         taskStore.setLastSyncTimestamp('all', Date.now());
@@ -219,8 +259,10 @@ export class CalendarSyncService {
    * Syncs a specific provider (Google or Microsoft).
    * Pulls deltas, reconciles conflicts, and pushes pending offline changes.
    * @param {string} provider 
+   * @param {boolean} [forceFullSync=false]
    */
-  async syncProvider(provider) {
+  async syncProvider(provider, forceFullSync) {
+    const isForce = Boolean(forceFullSync);
     const adapter = this.adapters[provider];
     if (!adapter) return { skipped: true, reason: 'No adapter' };
     const isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : false;
@@ -229,10 +271,18 @@ export class CalendarSyncService {
     }
 
     let token = null;
-    if (provider === 'google' && typeof taskStore.getGoogleSyncToken === 'function') {
-      token = taskStore.getGoogleSyncToken();
-    } else if (provider === 'microsoft' && typeof taskStore.getMicrosoftDeltaLink === 'function') {
-      token = taskStore.getMicrosoftDeltaLink();
+    if (!isForce) {
+      if (provider === 'google' && typeof taskStore.getGoogleSyncToken === 'function') {
+        token = taskStore.getGoogleSyncToken();
+      } else if (provider === 'microsoft' && typeof taskStore.getMicrosoftDeltaLink === 'function') {
+        token = taskStore.getMicrosoftDeltaLink();
+      }
+    } else {
+      if (provider === 'google' && typeof taskStore.setGoogleSyncToken === 'function') {
+        taskStore.setGoogleSyncToken(null);
+      } else if (provider === 'microsoft' && typeof taskStore.setMicrosoftDeltaLink === 'function') {
+        taskStore.setMicrosoftDeltaLink(null);
+      }
     }
 
     let deltaResult = null;
@@ -448,9 +498,9 @@ export class CalendarSyncService {
 
     if (added > 0 || updated > 0 || deleted > 0) {
       taskStore.saveCalendarEvents(updatedEvents);
-      if (hasTodayChanges && typeof taskStore.syncScheduleAndCalendar === 'function') {
-        taskStore.syncScheduleAndCalendar(todayStr);
-      }
+    }
+    if (typeof taskStore.syncScheduleAndCalendar === 'function') {
+      taskStore.syncScheduleAndCalendar(todayStr);
     }
 
     return { added, updated, deleted, echoes };

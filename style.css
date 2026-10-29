@@ -4391,6 +4391,27 @@ body {
   display: none;
 }
 
+.cal-provider-box-btn.cal-sync-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-cyan);
+}
+
+.cal-provider-box-btn.cal-sync-btn:hover {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--accent-cyan);
+  color: #00f0ff;
+}
+
+.cal-provider-box-btn.cal-sync-btn.is-syncing svg {
+  animation: spinSyncIcon 0.8s linear infinite;
+}
+
+@keyframes spinSyncIcon {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Settings section divider */
 .settings-section-divider {
   display: flex;

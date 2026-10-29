@@ -190,6 +190,35 @@ function updateHardStopPillsUI(enabled) {
   }
 }
 
+function refreshAppScheduleFromStore() {
+  const todayStr = (typeof taskStore.getTodayDateString === 'function')
+    ? taskStore.getTodayDateString()
+    : new Date().toISOString().split('T')[0];
+  if (typeof taskStore.syncScheduleAndCalendar === 'function') {
+    taskStore.syncScheduleAndCalendar(todayStr);
+  }
+  if (runtime) {
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+    if (typeof updateScheduleUI === 'function') {
+      updateScheduleUI(runtime.currentSchedule);
+    }
+    if (typeof updateActiveTaskDisplay === 'function') {
+      updateActiveTaskDisplay();
+    }
+    if (typeof renderTaskList === 'function') {
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+    }
+  }
+  if (typeof renderCalendarModal === 'function') {
+    renderCalendarModal();
+  }
+  if (calendarView && typeof calendarView.render === 'function') {
+    calendarView.render();
+  }
+}
+window.refreshAppScheduleFromStore = refreshAppScheduleFromStore;
+
 function initApp() {
   try {
     taskStore.syncScheduleAndCalendar();
@@ -230,6 +259,9 @@ function initApp() {
         }
         if (typeof window.syncCalendarSettingsUI === 'function') {
           window.syncCalendarSettingsUI();
+        }
+        if (!isSyncing && typeof refreshAppScheduleFromStore === 'function') {
+          refreshAppScheduleFromStore();
         }
       });
     }
@@ -7373,6 +7405,7 @@ function setupNavigationAndModals() {
         await calendarSyncService.disconnectProvider('google');
         showToastNotification('Google Calendar disconnected');
         syncCalendarSettingsUI();
+        refreshAppScheduleFromStore();
         if (calendarView) {
           calendarView.updateProviderToggleUI();
           calendarView.render();
@@ -7384,6 +7417,7 @@ function setupNavigationAndModals() {
           await calendarSyncService.connectProvider('google');
           btnSettingsGoogleConnect.disabled = false;
           syncCalendarSettingsUI();
+          refreshAppScheduleFromStore();
           if (calendarView) {
             calendarView.updateProviderToggleUI();
             calendarView.openSyncConfirmModal('Google');
@@ -7408,6 +7442,7 @@ function setupNavigationAndModals() {
         await calendarSyncService.disconnectProvider('microsoft');
         showToastNotification('Microsoft Calendar disconnected');
         syncCalendarSettingsUI();
+        refreshAppScheduleFromStore();
         if (calendarView) {
           calendarView.updateProviderToggleUI();
           calendarView.render();
@@ -7419,6 +7454,7 @@ function setupNavigationAndModals() {
           await calendarSyncService.connectProvider('microsoft');
           btnSettingsMSConnect.disabled = false;
           syncCalendarSettingsUI();
+          refreshAppScheduleFromStore();
           if (calendarView) {
             calendarView.updateProviderToggleUI();
             calendarView.openSyncConfirmModal('Microsoft');
@@ -7456,11 +7492,11 @@ function setupNavigationAndModals() {
       btnSettingsSyncAll.textContent = 'Syncing...';
       btnSettingsSyncAll.disabled = true;
       try {
-        await calendarSyncService.syncAll();
+        await calendarSyncService.syncAll(true);
         btnSettingsSyncAll.textContent = 'Sync Now';
         btnSettingsSyncAll.disabled = false;
         syncCalendarSettingsUI();
-        if (calendarView) calendarView.render();
+        refreshAppScheduleFromStore();
         showToastNotification('✓ Calendar sync complete');
       } catch (err) {
         btnSettingsSyncAll.textContent = 'Sync Now';
@@ -7481,6 +7517,7 @@ function setupNavigationAndModals() {
       try {
         await calendarSyncService.connectProvider('google');
         syncCalendarSettingsUI();
+        refreshAppScheduleFromStore();
         if (calendarView) {
           calendarView.updateProviderToggleUI();
           calendarView.openSyncConfirmModal('Google');
@@ -7503,6 +7540,7 @@ function setupNavigationAndModals() {
       try {
         await calendarSyncService.connectProvider('microsoft');
         syncCalendarSettingsUI();
+        refreshAppScheduleFromStore();
         if (calendarView) {
           calendarView.updateProviderToggleUI();
           calendarView.openSyncConfirmModal('Microsoft');
@@ -7524,9 +7562,9 @@ function setupNavigationAndModals() {
         calendarView.closeSyncConfirmModal();
       }
       try {
-        await calendarSyncService.syncAll();
+        await calendarSyncService.syncAll(true);
         syncCalendarSettingsUI();
-        if (calendarView) calendarView.render();
+        refreshAppScheduleFromStore();
         showToastNotification('✓ Events synced successfully!');
       } catch (err) {
         showToastNotification('Sync error: ' + (err && err.message ? err.message : 'Failed'));
