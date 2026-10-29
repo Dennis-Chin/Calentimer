@@ -305,6 +305,16 @@ assert(appContent.includes("'calendarConnectModalBackdrop'"), 'app.js handles ca
 assert(appContent.includes('!googleEmail && !msEmail'), 'app.js checks stored user emails to avoid unexpected startup connect modals');
 assert(calContent.includes('navItemTimer.click()'), 'calendarView.js wires Skip Connect directly to Timer return');
 
+console.log('\n--- 11. Testing Flexible Task End Time Span & Duration Preservation ---');
+const runtimeContent = fs.readFileSync(path.resolve(process.cwd(), 'timerRuntime.js'), 'utf8');
+const storeContent = fs.readFileSync(path.resolve(process.cwd(), 'taskStore.js'), 'utf8');
+const schedEngineContent = fs.readFileSync(path.resolve(process.cwd(), 'schedulerEngine.js'), 'utf8');
+assert(appContent.includes('// Padlock NOT enabled and end time hasn\'t been defined'), 'app.js documents unlocked flexible end time span preservation');
+assert(appContent.includes('endMin = (startMin + taskDur) % 1440'), 'app.js dynamically calculates end time from planned duration without shrinking');
+assert(runtimeContent.includes('this.taskDurationMs = plannedDur * 60 * 1000;') && runtimeContent.includes('task.endTime = formatMinutesToTime((nowMin + plannedDur) % 1440);'), 'timerRuntime.js preserves planned duration on unlocked tasks without fixed end time');
+assert(storeContent.includes('fixedEndTime: (task && task.fixedEndTime) ? task.fixedEndTime : null,'), 'taskStore.js supports fixedEndTime in addTask');
+assert(schedEngineContent.includes('fixedEndTime: task.fixedEndTime || null,'), 'schedulerEngine.js propagates fixedEndTime in calculateSchedule');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

@@ -687,12 +687,14 @@ export class TimerRuntime {
       : true;
 
     if (isTimespans) {
-      // Locked task with defined start & end times in Chronological mode:
-      // If the time is past the start time defined, the duration shortens such that start time switches to current time and duration is end time - current time
+      // Chronological mode:
       const origTask = (this.initialTasks && task && this.initialTasks.find(t => t.id === task.id)) || task;
       const isLockedTask = Boolean(origTask && origTask.isLocked);
       const startTimeVal = (origTask && (origTask.fixedStartTime || origTask.startTime)) || (task && (task.fixedStartTime || task.startTime));
-      const endTimeVal = (origTask && (origTask.fixedEndTime || origTask.endTime)) || (task && (task.fixedEndTime || task.endTime));
+      const hasDefinedEndTime = Boolean(origTask && origTask.fixedEndTime) || Boolean(task && task.fixedEndTime);
+      const endTimeVal = hasDefinedEndTime
+        ? ((origTask && origTask.fixedEndTime) || (task && task.fixedEndTime))
+        : ((origTask && origTask.endTime) || (task && task.endTime));
 
       if (isLockedTask && startTimeVal && endTimeVal) {
         const sMin = parseTimeToMinutes(startTimeVal);
@@ -715,8 +717,8 @@ export class TimerRuntime {
           this.accumulatedElapsedMs = 0;
           task.allocatedDuration = fullDurationMin;
         }
-      } else if (!isLockedTask && endTimeVal) {
-        // Chronological mode, unlocked: end time is fixed, start time becomes current time
+      } else if (!isLockedTask && hasDefinedEndTime) {
+        // Chronological mode, unlocked, but has explicitly defined fixed end time:
         const eMin = parseTimeToMinutes(endTimeVal);
         const now = new Date();
         const nowMin = (now.getHours() * 60) + now.getMinutes();
@@ -727,6 +729,17 @@ export class TimerRuntime {
         this.accumulatedElapsedMs = 0;
         task.startTime = formatMinutesToTime(nowMin);
         task.allocatedDuration = remainingDurationMin;
+      } else {
+        // Chronological mode, unlocked and end time hasn't been defined:
+        // Full defined duration is preserved without shrinking! Only time span shifts to current time.
+        const plannedDur = (task.allocatedDuration || task.plannedDuration || (origTask ? (origTask.allocatedDuration || origTask.plannedDuration) : 0) || 1);
+        this.taskDurationMs = plannedDur * 60 * 1000;
+        this.accumulatedElapsedMs = 0;
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        task.startTime = formatMinutesToTime(nowMin);
+        task.endTime = formatMinutesToTime((nowMin + plannedDur) % 1440);
+        task.allocatedDuration = plannedDur;
       }
     } else {
       // Sequential mode: tasks start sequentially with planned duration.

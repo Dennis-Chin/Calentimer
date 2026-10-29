@@ -295,6 +295,7 @@ export class TaskStore {
       isLocked: (task && task.isLocked !== undefined) ? Boolean(task.isLocked) : false,
       useTimeBank: (task && task.useTimeBank !== undefined) ? Boolean(task.useTimeBank) : false,
       fixedStartTime: (task && task.fixedStartTime) ? task.fixedStartTime : null,
+      fixedEndTime: (task && task.fixedEndTime) ? task.fixedEndTime : null,
       startTime: (task && task.startTime) ? task.startTime : null,
       endTime: (task && task.endTime) ? task.endTime : null,
       category: (task && task.category) ? task.category : 'General',
@@ -1230,6 +1231,8 @@ export class TaskStore {
         date: todayStr,
         startTime: startTime,
         endTime: endTime,
+        fixedStartTime: task.fixedStartTime || null,
+        fixedEndTime: task.fixedEndTime || null,
         plannedDuration: task.plannedDuration,
         isLocked: Boolean(task.isLocked),
         useTimeBank: task.useTimeBank !== false,
@@ -1267,7 +1270,8 @@ export class TaskStore {
       const tasks = this.getTasks();
       const existingIdx = tasks.findIndex(t => t.id === calEvent.id);
       const isEventLocked = Boolean(calEvent.isLocked);
-      const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
+      const fixedStart = isEventLocked ? (calEvent.fixedStartTime || calEvent.startTime || null) : (calEvent.fixedStartTime || null);
+      const fixedEnd = isEventLocked ? (calEvent.fixedEndTime || calEvent.endTime || null) : (calEvent.fixedEndTime || null);
       const taskPayload = {
         id: calEvent.id,
         title: calEvent.title,
@@ -1279,6 +1283,7 @@ export class TaskStore {
         isLocked: isEventLocked,
         useTimeBank: calEvent.useTimeBank !== false,
         fixedStartTime: fixedStart,
+        fixedEndTime: fixedEnd,
         startTime: calEvent.startTime,
         endTime: calEvent.endTime,
         source: calEvent.source || 'local',

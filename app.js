@@ -727,6 +727,8 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   if (isTimespans) {
     // Chronological Mode
     const isLockedTask = Boolean(activeTask.isLocked);
+    const hasDefinedEndTime = Boolean(activeTask.fixedEndTime);
+
     if (isLockedTask && activeTask.startTime && activeTask.endTime) {
       const sMin = parseTimeToMinutes(activeTask.startTime);
       let eMin = parseTimeToMinutes(activeTask.endTime);
@@ -748,38 +750,67 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
       }
     }
 
-    // Padlock NOT enabled in Chronological mode:
-    // Start time is current time dynamically changing, end time is fixed, duration dynamically changing
-    const now = new Date();
-    const nowMin = (now.getHours() * 60) + now.getMinutes();
-    const startStr = formatMinutesToTime(nowMin);
+    // Padlock NOT enabled in Chronological mode, but explicit fixed end time has been defined
+    if (!isLockedTask && hasDefinedEndTime) {
+      const now = new Date();
+      const nowMin = (now.getHours() * 60) + now.getMinutes();
+      const startStr = formatMinutesToTime(nowMin);
+      const endStr = activeTask.fixedEndTime;
+      const endMin = parseTimeToMinutes(endStr);
+      let diffMin = endMin - nowMin;
+      if (diffMin <= 0 && endMin < 360) diffMin += 1440;
+      const dynDurMin = Math.max(1, diffMin);
 
-    let endStr = activeTask.endTime;
-    let endMin;
-    if (endStr) {
-      endMin = parseTimeToMinutes(endStr);
-    } else {
-      const baseDur = activeTask.allocatedDuration || activeTask.plannedDuration || 30;
-      endMin = (nowMin + baseDur) % 1440;
-      endStr = formatMinutesToTime(endMin);
+      if (isIdle) {
+        activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+        if (totalDurEl) totalDurEl.textContent = `(${dynDurMin}m)`;
+        if (remainingSec === undefined) {
+          renderClockTime(dynDurMin * 60);
+        }
+      } else {
+        const taskStartMin = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
+        const runningStartStr = formatMinutesToTime(taskStartMin);
+        const remSec = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
+        const remMin = Math.max(1, Math.round(remSec / 60));
+        activeTaskTimeSpan.textContent = `${runningStartStr} → ${endStr}`;
+        if (totalDurEl) totalDurEl.textContent = `(${remMin}m)`;
+      }
+      return;
     }
 
-    const sMinVal = activeTask.startTime ? parseTimeToMinutes(activeTask.startTime) : -1;
-    let diffMin = endMin - nowMin;
-    if (diffMin <= 0 && sMinVal > endMin) diffMin += 1440;
-    const dynDurMin = Math.max(1, diffMin);
+    // Padlock NOT enabled and end time hasn't been defined:
+    // The defined duration is preserved without shrinking.
+    // The end time span is free to change dynamically as time moves!
+    const taskDur = activeTask.allocatedDuration || activeTask.plannedDuration || 30;
+    const now = new Date();
+    const nowMin = (now.getHours() * 60) + now.getMinutes();
 
     if (isIdle) {
+      const startMin = nowMin;
+      const endMin = (startMin + taskDur) % 1440;
+      const startStr = formatMinutesToTime(startMin);
+      const endStr = formatMinutesToTime(endMin);
+
       activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
-      if (totalDurEl) totalDurEl.textContent = `(${dynDurMin}m)`;
+      if (totalDurEl) totalDurEl.textContent = `(${taskDur}m)`;
       if (remainingSec === undefined) {
-        renderClockTime(dynDurMin * 60);
+        renderClockTime(taskDur * 60);
       }
     } else {
       const taskStartMin = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
       const runningStartStr = formatMinutesToTime(taskStartMin);
       const remSec = (remainingSec !== undefined) ? remainingSec : runtime.getRemainingSeconds();
       const remMin = Math.max(1, Math.round(remSec / 60));
+
+      let endMin;
+      if (runtime && runtime.isOverrunning) {
+        // Overrun support: shifts dynamically to current time + overrun
+        endMin = (nowMin + remMin) % 1440;
+      } else {
+        endMin = (taskStartMin + taskDur) % 1440;
+      }
+      const endStr = formatMinutesToTime(endMin);
+
       activeTaskTimeSpan.textContent = `${runningStartStr} → ${endStr}`;
       if (totalDurEl) totalDurEl.textContent = `(${remMin}m)`;
     }
@@ -4696,8 +4727,8 @@ function openTaskEditModal(taskId) {
   });
   if (editTaskCategory) editTaskCategory.value = task.category || 'General';
   if (editTaskFixedTime) editTaskFixedTime.value = task.fixedStartTime || '';
-  if (editTaskStartTime) editTaskStartTime.value = task.fixedStartTime || task.startTime || '';
-  if (editTaskEndTime) editTaskEndTime.value = task.endTime || '';
+  if (editTaskStartTime) editTaskStartTime.value = task.fixedStartTime || (task.isLocked ? task.startTime : '') || '';
+  if (editTaskEndTime) editTaskEndTime.value = task.fixedEndTime || (task.isLocked ? task.endTime : '') || '';
   if (editTaskIsLocked) editTaskIsLocked.checked = Boolean(task.isLocked);
   if (editTaskHeaderEmoji) editTaskHeaderEmoji.textContent = currentEditEmoji;
   if (editTaskTimeBank) editTaskTimeBank.checked = task.useTimeBank !== false;
@@ -4731,6 +4762,8 @@ function saveCurrentTaskEdit() {
   const plannedDuration = parseInt((() => { const _el = document.getElementById("editTaskDuration"); return _el ? _el.value : ""; })(), 10) || 30;
   const category = (() => { const _el = document.getElementById("editTaskCategory"); return _el ? _el.value : ""; })().trim() || 'General';
   const fixedStartTime = (() => { const _el = document.getElementById("editTaskStartTime"); return _el ? _el.value : ""; })() || (() => { const _el = document.getElementById("editTaskFixedTime"); return _el ? _el.value : ""; })() || null;
+  const endInput = document.getElementById('editTaskEndTime');
+  const fixedEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
   const isLocked = (() => { const _el = document.getElementById("editTaskIsLocked"); return _el ? _el.checked : false; })();
   const useTimeBank = document.getElementById('editTaskTimeBank') ? document.getElementById('editTaskTimeBank').checked : true;
   const emoji = currentEditEmoji || (() => { const _el = document.getElementById("editTaskHeaderEmoji"); return _el ? _el.textContent : ""; })().trim() || '📝';
@@ -4838,6 +4871,7 @@ function saveCurrentTaskEdit() {
     plannedDuration,
     category,
     fixedStartTime,
+    fixedEndTime,
     isLocked,
     useTimeBank,
     emoji,
@@ -4856,10 +4890,16 @@ function saveCurrentTaskEdit() {
   const activeTask = runtime ? runtime.getActiveTask() : null;
   if (activeTask && activeTask.id === currentEditTaskId) {
     activeTask.isLocked = isLocked;
+    activeTask.fixedStartTime = fixedStartTime;
+    activeTask.fixedEndTime = fixedEndTime;
   }
   if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
     const schedTask = runtime.currentSchedule.tasks.find(t => t.id === currentEditTaskId);
-    if (schedTask) schedTask.isLocked = isLocked;
+    if (schedTask) {
+      schedTask.isLocked = isLocked;
+      schedTask.fixedStartTime = fixedStartTime;
+      schedTask.fixedEndTime = fixedEndTime;
+    }
   }
   runtime.recalculate();
   syncDynamicScheduleTimesToCalendar();
@@ -6628,6 +6668,8 @@ function setupNavigationAndModals() {
     const fixedInput = document.getElementById('addModalFixedTime');
     const startInput = document.getElementById('addModalStartTime');
     const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
+    const endInput = document.getElementById('addModalEndTime');
+    const fixedEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
 
     const bankInput = document.getElementById('addModalTimeBank');
     const useTimeBank = bankInput ? bankInput.checked : false;
@@ -6657,6 +6699,7 @@ function setupNavigationAndModals() {
       plannedDuration: duration,
       category,
       fixedStartTime,
+      fixedEndTime,
       isLocked: Boolean(isLocked),
       useTimeBank,
       emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝'),

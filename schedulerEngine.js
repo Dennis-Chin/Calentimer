@@ -421,6 +421,7 @@ export function calculateSchedule(config) {
       isLocked: Boolean(task.isLocked),
       useTimeBank: task.useTimeBank !== undefined ? Boolean(task.useTimeBank) : false,
       fixedStartTime: task.fixedStartTime || null,
+      fixedEndTime: task.fixedEndTime || null,
       isImmovable: Boolean(task.isLocked),
       plannedDuration: Math.round(task.plannedDuration),
       allocatedDuration: allocated,

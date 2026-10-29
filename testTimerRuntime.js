@@ -203,6 +203,31 @@ assert(lockedTaskRt.taskDurationMs === remainingExpectedMin * 60 * 1000, `Durati
 assert(lockedTaskRt.accumulatedElapsedMs === 0, 'Accumulated elapsed resets to 0 as countdown begins fresh from current start');
 assert(lockedTaskRt.getRemainingSeconds() === remainingExpectedSec, `Remaining seconds matches shortened window (${remainingExpectedSec}s)`);
 
+console.log('\n--- 10. Testing Unlocked Task Duration Preservation in Chronological Mode on Start ---');
+const unlockedTaskRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: [
+    {
+      id: 'unlocked-active',
+      title: 'Flexible Study Sprint',
+      plannedDuration: 30,
+      startTime: startStr,
+      endTime: endStr,
+      isLocked: false
+    }
+  ]
+});
+
+unlockedTaskRt.start();
+// For unlocked tasks with no defined fixed end time: full duration is preserved!
+// Only start time switches to current time, and end time shifts dynamically (currentTime + 30m)
+assert(unlockedTaskRt.taskDurationMs === 30 * 60 * 1000, 'Unlocked task preserves full planned duration (30m) rather than shrinking');
+assert(unlockedTaskRt.getRemainingSeconds() === 30 * 60, 'Remaining seconds matches full planned duration (1800s)');
+assert(unlockedTaskRt.getActiveTask().allocatedDuration === 30, 'Active task allocatedDuration remains 30m');
+const expectedEndMin = (currentTotalMin + 30) % 1440;
+const expectedEndStr = `${String(Math.floor(expectedEndMin / 60)).padStart(2, '0')}:${String(expectedEndMin % 60).padStart(2, '0')}`;
+assert(unlockedTaskRt.getActiveTask().endTime === expectedEndStr, `End time span shifted freely to ${expectedEndStr}`);
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);
