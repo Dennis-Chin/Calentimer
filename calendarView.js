@@ -305,12 +305,21 @@ export class CalendarView {
       el.btnCloseConnectModal.addEventListener('click', () => this.closeConnectModal());
     }
     if (el.btnSkipConnect) {
-      el.btnSkipConnect.addEventListener('click', () => this.closeConnectModal());
+      el.btnSkipConnect.addEventListener('click', () => {
+        this.closeConnectModal();
+        const navItemTimer = document.getElementById('navItemTimer');
+        if (navItemTimer && typeof navItemTimer.click === 'function') {
+          navItemTimer.click();
+        }
+      });
     }
     if (el.connectModalBackdrop) {
       el.connectModalBackdrop.addEventListener('click', (e) => {
         if (e.target === el.connectModalBackdrop) this.closeConnectModal();
       });
+      el.connectModalBackdrop.addEventListener('touchstart', (e) => {
+        if (e.target === el.connectModalBackdrop) this.closeConnectModal();
+      }, { passive: true });
     }
     if (el.chkDontAskConnectStartup) {
       el.chkDontAskConnectStartup.addEventListener('change', () => {
@@ -326,6 +335,9 @@ export class CalendarView {
       el.confirmSyncNowModalBackdrop.addEventListener('click', (e) => {
         if (e.target === el.confirmSyncNowModalBackdrop) this.closeSyncConfirmModal();
       });
+      el.confirmSyncNowModalBackdrop.addEventListener('touchstart', (e) => {
+        if (e.target === el.confirmSyncNowModalBackdrop) this.closeSyncConfirmModal();
+      }, { passive: true });
     }
 
     // Event Inspector Handlers
@@ -1474,6 +1486,9 @@ export class CalendarView {
     const el = this.elements;
     if (!el || !el.connectModalBackdrop) return;
     el.connectModalBackdrop.classList.add('hidden');
+    if (typeof window !== 'undefined' && typeof window.ensureHistoryBuffer === 'function') {
+      window.ensureHistoryBuffer();
+    }
   }
 
   openSyncConfirmModal(providerName) {

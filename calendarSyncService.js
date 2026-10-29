@@ -265,9 +265,25 @@ export class CalendarSyncService {
     const isForce = Boolean(forceFullSync);
     const adapter = this.adapters[provider];
     if (!adapter) return { skipped: true, reason: 'No adapter' };
-    const isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : false;
+    let isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : true;
+    if (!isAuth && typeof adapter.ensureValidToken === 'function') {
+      try {
+        await adapter.ensureValidToken();
+      } catch (_) {}
+      isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : true;
+    }
+
     if (!this.isProviderConnected(provider) && !isAuth) {
       return { skipped: true, reason: 'Not connected' };
+    }
+
+    if (!isAuth) {
+      if (!isForce) {
+        return { skipped: true, reason: 'Session token expired; awaiting interactive renewal' };
+      } else {
+        const provName = provider === 'google' ? 'Google' : 'Microsoft';
+        throw new Error(`${provName} session expired. Tap Connect in Settings to renew.`);
+      }
     }
 
     let token = null;

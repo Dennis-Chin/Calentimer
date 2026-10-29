@@ -202,7 +202,7 @@ export class MicrosoftCalendarAdapter {
   }
 
   /**
-   * Clears token and signs out.
+   * Clears token and signs out explicitly (called only when user disconnects in Settings).
    */
   signOut() {
     this.accessToken = null;
@@ -226,6 +226,22 @@ export class MicrosoftCalendarAdapter {
       if (typeof taskStore.setMicrosoftUserEmail === 'function') {
         taskStore.setMicrosoftUserEmail(null);
       }
+    }
+  }
+
+  /**
+   * Clears in-memory and session token without destroying user's connected intent or email.
+   * Used for background token expiration and 401s so user is not forcibly logged out.
+   */
+  markTokenExpired() {
+    this.accessToken = null;
+    this.tokenExpiresAt = 0;
+
+    if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
+      try {
+        sessionStorage.removeItem('calentimer_ms_token');
+        sessionStorage.removeItem('calentimer_ms_expiry');
+      } catch (_) {}
     }
   }
 
@@ -776,7 +792,7 @@ export class MicrosoftCalendarAdapter {
       });
 
       if (resp.status === 401) {
-        this.signOut();
+        this.markTokenExpired();
         throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
       }
 
@@ -840,7 +856,7 @@ export class MicrosoftCalendarAdapter {
               }
             });
             if (secResp.status === 401) {
-              this.signOut();
+              this.markTokenExpired();
               throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
             }
             if (!secResp.ok) break;
@@ -926,7 +942,7 @@ export class MicrosoftCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
     }
 
@@ -995,7 +1011,7 @@ export class MicrosoftCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
     }
 
@@ -1048,7 +1064,7 @@ export class MicrosoftCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Microsoft Calendar session expired. Please tap Connect to renew.');
     }
 

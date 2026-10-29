@@ -312,7 +312,9 @@ const seedHiddenModals = [
   'addTaskModalBackdrop',
   'taskEditModalBackdrop',
   'categoryColorPaletteModalBackdrop',
-  'installAppModalBackdrop'
+  'installAppModalBackdrop',
+  'calendarConnectModalBackdrop',
+  'confirmSyncNowModalBackdrop'
 ];
 seedHiddenModals.forEach(id => {
   getOrCreateMockElement(id).className = 'modal-backdrop hidden';
@@ -498,6 +500,13 @@ assert(taskDrawer.classList.contains('collapsed'), '1st back press cleanly dismi
 // 2. Back Press when already on Timer screen: Naturally allows native navigation without trapping
 window.dispatchSimulatedEvent('popstate', {});
 assert(taskDrawer.classList.contains('collapsed'), 'Timer screen remains steady and ready for native browser back navigation');
+
+// 3. Back Press when Calendar Connect Modal is open: Cleanly dismisses modal without trapping user
+const calConnectModalEl = getOrCreateMockElement('calendarConnectModalBackdrop');
+calConnectModalEl.className = 'modal-backdrop'; // modal opened
+assert(!calConnectModalEl.classList.contains('hidden'), 'Calendar connect modal opened');
+window.dispatchSimulatedEvent('popstate', {});
+assert(calConnectModalEl.classList.contains('hidden'), 'Back press cleanly dismisses Calendar Connect modal without trapping user');
 
 console.log('\n--- 7. Testing Chronological vs Sequential Plan Mode Segmented Toggle ---');
 const btnModeChronological = getOrCreateMockElement('btnModeChronological');

@@ -298,6 +298,13 @@ assert(msAdapterContent.includes('getMicrosoftColorCategory(event.category') && 
 assert(calContent.includes('isLocalItem') && calContent.includes("ev.id.startsWith('cal-event-')"), 'calendarView.js exempts local items from cloud visibility filters');
 assert(syncServiceContent.includes('isLocalItem') && syncServiceContent.includes("existing.id.startsWith('cal-event-')"), 'calendarSyncService.js protects local items from deletion on cloud cancellation');
 
+console.log('\n--- 10. Testing Token Renewal & Mobile Back Modal Dismissal ---');
+assert(gAdapterContent.includes('markTokenExpired('), 'googleCalendarAdapter.js implements markTokenExpired()');
+assert(msAdapterContent.includes('markTokenExpired('), 'microsoftCalendarAdapter.js implements markTokenExpired()');
+assert(appContent.includes("'calendarConnectModalBackdrop'"), 'app.js handles calendarConnectModalBackdrop in subModals for mobile back button');
+assert(appContent.includes('!googleEmail && !msEmail'), 'app.js checks stored user emails to avoid unexpected startup connect modals');
+assert(calContent.includes('navItemTimer.click()'), 'calendarView.js wires Skip Connect directly to Timer return');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

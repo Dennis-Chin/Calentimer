@@ -129,7 +129,7 @@ export class GoogleCalendarAdapter {
   }
 
   /**
-   * Clears token and signs out.
+   * Clears token and signs out explicitly (called only when user disconnects in Settings).
    */
   signOut() {
     this.accessToken = null;
@@ -153,6 +153,22 @@ export class GoogleCalendarAdapter {
       if (typeof taskStore.setGoogleUserEmail === 'function') {
         taskStore.setGoogleUserEmail(null);
       }
+    }
+  }
+
+  /**
+   * Clears in-memory and session token without destroying user's connected intent or email.
+   * Used for background token expiration and 401s so user is not forcibly logged out.
+   */
+  markTokenExpired() {
+    this.accessToken = null;
+    this.tokenExpiresAt = 0;
+
+    if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
+      try {
+        sessionStorage.removeItem('calentimer_gcal_token');
+        sessionStorage.removeItem('calentimer_gcal_expiry');
+      } catch (_) {}
     }
   }
 
@@ -220,7 +236,11 @@ export class GoogleCalendarAdapter {
           }
         };
 
-        this.tokenClient.requestAccessToken({ prompt: '' });
+        const reqOpts = { prompt: '' };
+        if (this.userEmail) {
+          reqOpts.hint = this.userEmail;
+        }
+        this.tokenClient.requestAccessToken(reqOpts);
       } catch (_) {
         if (!settled) {
           settled = true;
@@ -630,7 +650,7 @@ export class GoogleCalendarAdapter {
           });
 
           if (resp.status === 401) {
-            this.signOut();
+            this.markTokenExpired();
             throw new Error('Google Calendar session expired. Please tap Connect to renew.');
           }
 
@@ -723,7 +743,7 @@ export class GoogleCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Google Calendar session expired. Please tap Connect to renew.');
     }
 
@@ -777,7 +797,7 @@ export class GoogleCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Google Calendar session expired. Please tap Connect to renew.');
     }
 
@@ -825,7 +845,7 @@ export class GoogleCalendarAdapter {
     });
 
     if (resp.status === 401) {
-      this.signOut();
+      this.markTokenExpired();
       throw new Error('Google Calendar session expired. Please tap Connect to renew.');
     }
 

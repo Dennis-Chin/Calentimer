@@ -62,6 +62,7 @@ if (typeof global.document === 'undefined') {
 
     return {
       init: () => {},
+      isAuthenticated: () => isConnected,
       requestAccessToken: async () => {
         isConnected = true;
         return 'mock_token_abc123';
@@ -949,6 +950,49 @@ if (typeof global.document === 'undefined') {
     taskStore.syncScheduleAndCalendar();
     const tasksAfterSync = taskStore.getTasks();
     assert(!tasksAfterSync.some(t => t.id === 'cal-gcal-orphan-1'), 'syncScheduleAndCalendar eliminates disconnected orphan external tasks without resurrecting them');
+
+    // 6. Token Expiration Safety, Non-Blocking Background Sync & Connection Preservation
+    console.log('\n--- 12. Testing Token Expiration Safety, Non-Blocking Background Sync & Connection Preservation ---');
+    taskStore.setGoogleCalendarConnected(true);
+    taskStore.setGoogleUserEmail('testuser@gmail.com');
+    const testGoogleAdapter = new gAdapter.constructor({ useMock: true });
+    testGoogleAdapter.accessToken = 'expiring_token_123';
+    testGoogleAdapter.tokenExpiresAt = Date.now() + 60000;
+    assert(testGoogleAdapter.isAuthenticated(), 'Google adapter authenticated before expiration');
+
+    testGoogleAdapter.markTokenExpired();
+    assert(!testGoogleAdapter.isAuthenticated(), 'markTokenExpired clears authentication status');
+    assert(taskStore.getGoogleCalendarConnected() === true, 'markTokenExpired preserves taskStore.getGoogleCalendarConnected');
+    assert(taskStore.getGoogleUserEmail() === 'testuser@gmail.com', 'markTokenExpired preserves taskStore.getGoogleUserEmail');
+
+    taskStore.setMicrosoftCalendarConnected(true);
+    taskStore.setMicrosoftUserEmail('testuser@outlook.com');
+    const testMsAdapter = new mAdapter.constructor({ useMock: true });
+    testMsAdapter.accessToken = 'expiring_ms_token_123';
+    testMsAdapter.tokenExpiresAt = Date.now() + 60000;
+    assert(testMsAdapter.isAuthenticated(), 'Microsoft adapter authenticated before expiration');
+
+    testMsAdapter.markTokenExpired();
+    assert(!testMsAdapter.isAuthenticated(), 'markTokenExpired clears Microsoft authentication status');
+    assert(taskStore.getMicrosoftCalendarConnected() === true, 'markTokenExpired preserves taskStore.getMicrosoftCalendarConnected');
+    assert(taskStore.getMicrosoftUserEmail() === 'testuser@outlook.com', 'markTokenExpired preserves taskStore.getMicrosoftUserEmail');
+
+    // Background auto-sync (isForce = false) gracefully skips without throwing when token expired
+    const testSyncService = new CalendarSyncService({
+      googleAdapter: testGoogleAdapter,
+      microsoftAdapter: testMsAdapter
+    });
+    const bgSyncResult = await testSyncService.syncProvider('google', false);
+    assert(bgSyncResult && bgSyncResult.skipped === true, 'Background auto-sync gracefully skips when session token expired without throwing error');
+
+    // Explicit manual sync (isForce = true) throws informative error for toast notification
+    let manualSyncThrew = false;
+    try {
+      await testSyncService.syncProvider('google', true);
+    } catch (manualErr) {
+      manualSyncThrew = Boolean(manualErr && manualErr.message && manualErr.message.indexOf('Google session expired') !== -1);
+    }
+    assert(manualSyncThrew, 'Manual sync throws informative user error when session expired');
   }
 
   console.log('\n========================================');

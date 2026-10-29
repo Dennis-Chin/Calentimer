@@ -266,11 +266,13 @@ function initApp() {
       });
     }
 
-    // Startup Onboarding Prompt (if not skipped and neither provider connected)
+    // Startup Onboarding Prompt (only for first-time users who have never connected a calendar and not skipped)
     const skipPrompt = (typeof taskStore.getSkipConnectPrompt === 'function') ? taskStore.getSkipConnectPrompt() : false;
     const googleConn = (typeof taskStore.getGoogleCalendarConnected === 'function') ? taskStore.getGoogleCalendarConnected() : false;
     const msConn = (typeof taskStore.getMicrosoftCalendarConnected === 'function') ? taskStore.getMicrosoftCalendarConnected() : false;
-    if (!skipPrompt && !googleConn && !msConn) {
+    const googleEmail = (typeof taskStore.getGoogleUserEmail === 'function') ? taskStore.getGoogleUserEmail() : null;
+    const msEmail = (typeof taskStore.getMicrosoftUserEmail === 'function') ? taskStore.getMicrosoftUserEmail() : null;
+    if (!skipPrompt && !googleConn && !msConn && !googleEmail && !msEmail) {
       setTimeout(() => {
         if (calendarView && typeof calendarView.openConnectModal === 'function') {
           calendarView.openConnectModal();
@@ -8155,6 +8157,8 @@ function setupNavigationAndModals() {
 
     // 2. Innermost Dialogs & Pickers (close the child modal first before closing any parent tab)
     const subModals = [
+      'calendarConnectModalBackdrop',
+      'confirmSyncNowModalBackdrop',
       'categoryColorPaletteModalBackdrop',
       'installAppModalBackdrop',
       'confirmDeleteTodoModalBackdrop',
@@ -8173,7 +8177,7 @@ function setupNavigationAndModals() {
     for (let s = 0; s < subModals.length; s++) {
       const el = document.getElementById(subModals[s]);
       if (el && !el.classList.contains('hidden')) {
-        const closeBtn = el.querySelector('.btn-close-modal, .btn-confirm-cancel, .btn-modal-cancel-danger, #btnCloseCalEventModal, #btnCloseTaskEdit, #btnCloseAddTaskModal, #btnCloseAddTodoModal');
+        const closeBtn = el.querySelector('.btn-close-modal, .btn-confirm-cancel, .btn-modal-cancel-danger, #btnCloseCalendarConnectModal, #btnSkipConnect, #btnDismissSyncNow, #btnCloseCalEventModal, #btnCloseTaskEdit, #btnCloseAddTaskModal, #btnCloseAddTodoModal');
         if (closeBtn) {
           closeBtn.click();
         } else {
