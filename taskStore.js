@@ -33,7 +33,10 @@ const STORAGE_KEYS = {
   MS_USER_EMAIL: 'calentimer_ms_user_email_v1',
   OUTBOUND_SYNC_PREF: 'calentimer_outbound_sync_pref_v1',
   GOOGLE_SELECTED_CALS: 'calentimer_google_selected_cals_v1',
-  MS_SELECTED_CALS: 'calentimer_ms_selected_cals_v1'
+  MS_SELECTED_CALS: 'calentimer_ms_selected_cals_v1',
+  GOOGLE_CALENTIMER_CAL_ID: 'calentimer_gcal_calentimer_id_v1',
+  MS_CALENTIMER_CAL_ID: 'calentimer_ms_calentimer_id_v1',
+  CALENTIMER_CAL_COLORS: 'calentimer_cal_colors_v1'
 };
 
 const memoryStorage = {};
@@ -1764,6 +1767,102 @@ export class TaskStore {
       } else {
         safeSetItem(STORAGE_KEYS.MS_SELECTED_CALS, '[]');
       }
+      this._notify();
+    } catch (_) {}
+  }
+
+  /**
+   * Retrieves the dedicated Calentimer secondary calendar ID for Google Calendar.
+   * @returns {string|null}
+   */
+  getGoogleCalentimerCalendarId() {
+    try {
+      return safeGetItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Stores the dedicated Calentimer secondary calendar ID for Google Calendar.
+   * @param {string|null} id
+   */
+  setGoogleCalentimerCalendarId(id) {
+    if (id) {
+      safeSetItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID, String(id).trim());
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.GOOGLE_CALENTIMER_CAL_ID];
+    }
+    this._notify();
+  }
+
+  /**
+   * Retrieves the dedicated Calentimer secondary calendar ID for Microsoft Outlook.
+   * @returns {string|null}
+   */
+  getMicrosoftCalentimerCalendarId() {
+    try {
+      return safeGetItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Stores the dedicated Calentimer secondary calendar ID for Microsoft Outlook.
+   * @param {string|null} id
+   */
+  setMicrosoftCalentimerCalendarId(id) {
+    if (id) {
+      safeSetItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID, String(id).trim());
+    } else {
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage !== null) {
+          localStorage.removeItem(STORAGE_KEYS.MS_CALENTIMER_CAL_ID);
+        }
+      } catch (_) {}
+      delete memoryStorage[STORAGE_KEYS.MS_CALENTIMER_CAL_ID];
+    }
+    this._notify();
+  }
+
+  /**
+   * Retrieves user's chosen or acknowledged color for the Calentimer mirror calendar.
+   * @param {string} provider ('google' | 'microsoft')
+   * @returns {string|null}
+   */
+  getCalentimerCalendarColor(provider) {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.CALENTIMER_CAL_COLORS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return parsed[provider] || null;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Persists acknowledged color for the Calentimer mirror calendar.
+   * @param {string} provider ('google' | 'microsoft')
+   * @param {string} colorHex
+   */
+  setCalentimerCalendarColor(provider, colorHex) {
+    try {
+      let current = {};
+      const raw = safeGetItem(STORAGE_KEYS.CALENTIMER_CAL_COLORS);
+      if (raw) {
+        try { current = JSON.parse(raw) || {}; } catch (_) {}
+      }
+      current[provider] = colorHex ? String(colorHex).trim() : null;
+      safeSetItem(STORAGE_KEYS.CALENTIMER_CAL_COLORS, JSON.stringify(current));
       this._notify();
     } catch (_) {}
   }

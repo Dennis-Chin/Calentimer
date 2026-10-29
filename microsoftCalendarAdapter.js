@@ -12,6 +12,7 @@ import { taskStore } from './taskStore.js';
 import { OAUTH_CONFIG } from './oauthConfig.js';
 import { classifyEvent } from './eventClassifier.js';
 import { ensureWebCryptoPolyfill } from './cryptoPolyfill.js';
+import { areColorsSimilar } from './googleCalendarAdapter.js';
 
 if (typeof ensureWebCryptoPolyfill === 'function') {
   ensureWebCryptoPolyfill();
@@ -229,6 +230,200 @@ export class MicrosoftCalendarAdapter {
   }
 
   /**
+   * Silently refreshes or verifies Microsoft OAuth access token if nearing expiration.
+   * @returns {Promise<string|null>}
+   */
+  async ensureValidToken() {
+    if (this.mockTransport) return this.accessToken;
+    if (this.useMock) return this.accessToken || 'mock-ms-token';
+
+    if (this.accessToken && (!this.tokenExpiresAt || Date.now() < this.tokenExpiresAt - 120000)) {
+      return this.accessToken;
+    }
+
+    if (!this.msalInstance) {
+      const hasMsal = typeof window !== 'undefined' && window !== null && window.msal && window.msal.PublicClientApplication;
+      if (!hasMsal) return this.accessToken;
+      const activeRedirectUri = this.getRedirectUri();
+      this._currentMsalRedirectUri = activeRedirectUri;
+      this.msalInstance = new window.msal.PublicClientApplication({
+        auth: {
+          clientId: this.clientId,
+          authority: 'https://login.microsoftonline.com/common',
+          redirectUri: activeRedirectUri,
+          navigateToLoginRequestUrl: false
+        },
+        cache: {
+          cacheLocation: 'sessionStorage',
+          storeAuthStateInCookie: false
+        }
+      });
+      if (typeof this.msalInstance.initialize === 'function') {
+        try { await this.msalInstance.initialize(); } catch (_) {}
+      }
+    }
+
+    const accounts = (typeof this.msalInstance.getAllAccounts === 'function')
+      ? this.msalInstance.getAllAccounts()
+      : [];
+    if (!accounts || accounts.length === 0) {
+      return this.accessToken;
+    }
+
+    const loginScopes = (OAUTH_CONFIG && OAUTH_CONFIG.microsoft && Array.isArray(OAUTH_CONFIG.microsoft.scopes))
+      ? OAUTH_CONFIG.microsoft.scopes
+      : SCOPES;
+
+    try {
+      const res = await this.msalInstance.acquireTokenSilent({
+        scopes: loginScopes,
+        account: accounts[0],
+        redirectUri: this.getRedirectUri()
+      });
+      if (res && res.accessToken) {
+        const expiresIn = (res.expiresOn && res.expiresOn instanceof Date)
+          ? Math.max(60, Math.floor((res.expiresOn.getTime() - Date.now()) / 1000))
+          : 3600;
+        this.setToken(res.accessToken, expiresIn);
+        return res.accessToken;
+      }
+    } catch (_) {}
+
+    return this.accessToken;
+  }
+
+  /**
+   * Discovers or creates the dedicated secondary "Calentimer" calendar in Microsoft Outlook.
+   * Applies the Neon Light Blue -> Neon Light Green -> Standout Fallback color collision cascade.
+   * @returns {Promise<string>} calendarId
+   */
+  async getOrCreateCalentimerCalendar() {
+    if (this.mockTransport && typeof this.mockTransport.getOrCreateCalentimerCalendar === 'function') {
+      return this.mockTransport.getOrCreateCalentimerCalendar();
+    }
+
+    if (this.useMock) {
+      return 'ms-mock-calentimer-calendar-id';
+    }
+
+    let cachedId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+      ? taskStore.getMicrosoftCalentimerCalendarId()
+      : null;
+
+    await this.ensureValidToken();
+    if (!this.isAuthenticated()) {
+      return cachedId || 'primary';
+    }
+
+    let allCals = [];
+    try {
+      const resp = await fetch(`${GRAPH_API_BASE}/me/calendars`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && Array.isArray(data.value)) {
+          allCals = data.value;
+        }
+      }
+    } catch (_) {}
+
+    // Check if Calentimer calendar already exists
+    let existing = null;
+    for (let i = 0; i < allCals.length; i++) {
+      const c = allCals[i];
+      if (c && c.name && c.name.trim().toLowerCase() === 'calentimer') {
+        existing = c;
+        break;
+      }
+    }
+
+    if (existing) {
+      const hex = existing.hexColor || (existing.color && MICROSOFT_CALENDAR_COLORS[existing.color]) || '#0078d4';
+      if (typeof taskStore !== 'undefined') {
+        if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') {
+          taskStore.setMicrosoftCalentimerCalendarId(existing.id);
+        }
+        if (typeof taskStore.setCalentimerCalendarColor === 'function') {
+          taskStore.setCalentimerCalendarColor('microsoft', hex);
+        }
+      }
+      return existing.id;
+    }
+
+    // Color collision cascade for Microsoft:
+    // 1. Neon light blue ('lightBlue' / #0078d4)
+    // 2. Neon light green ('lightGreen' / #107c41)
+    // 3. Standout fallback ('maxColor' / #5c2d91 or 'lightOrange' / #ff8c00)
+    const existingHexes = allCals.map(c => c.hexColor || (c.color && MICROSOFT_CALENDAR_COLORS[c.color])).filter(Boolean);
+    const NEON_BLUE = '#00d2ff';
+    const MS_LIGHT_BLUE = '#0078d4';
+    const NEON_GREEN = '#00e676';
+    const MS_LIGHT_GREEN = '#107c41';
+
+    let chosenColorEnum = 'lightBlue';
+    let chosenHex = '#00d2ff';
+
+    const hasBlueConflict = existingHexes.some(c => areColorsSimilar(c, NEON_BLUE) || areColorsSimilar(c, MS_LIGHT_BLUE));
+    if (!hasBlueConflict) {
+      chosenColorEnum = 'lightBlue';
+      chosenHex = '#00d2ff';
+    } else {
+      const hasGreenConflict = existingHexes.some(c => areColorsSimilar(c, NEON_GREEN) || areColorsSimilar(c, MS_LIGHT_GREEN));
+      if (!hasGreenConflict) {
+        chosenColorEnum = 'lightGreen';
+        chosenHex = '#00e676';
+      } else {
+        const hasPurpleConflict = existingHexes.some(c => areColorsSimilar(c, '#5c2d91'));
+        if (!hasPurpleConflict) {
+          chosenColorEnum = 'maxColor';
+          chosenHex = '#5c2d91';
+        } else {
+          chosenColorEnum = 'lightOrange';
+          chosenHex = '#ff8c00';
+        }
+      }
+    }
+
+    try {
+      const createResp = await fetch(`${GRAPH_API_BASE}/me/calendars`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'Calentimer',
+          color: chosenColorEnum
+        })
+      });
+
+      if (createResp.ok) {
+        const createdCal = await createResp.json();
+        const calId = createdCal.id;
+        const hex = createdCal.hexColor || chosenHex;
+
+        if (typeof taskStore !== 'undefined') {
+          if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') {
+            taskStore.setMicrosoftCalentimerCalendarId(calId);
+          }
+          if (typeof taskStore.setCalentimerCalendarColor === 'function') {
+            taskStore.setCalentimerCalendarColor('microsoft', hex);
+          }
+        }
+        return calId;
+      }
+    } catch (e) {
+      console.warn('Could not create Calentimer Microsoft calendar:', e);
+    }
+
+    return cachedId || 'primary';
+  }
+
+  /**
    * Initiates authentication with Microsoft Identity / Graph API.
    * Uses silent token acquisition when possible, falling back to MSAL popup.
    * Resolves with access token on success.
@@ -438,6 +633,7 @@ export class MicrosoftCalendarAdapter {
    * @returns {Promise<Array<{id: string, name: string, summary: string, primary: boolean, isDefaultCalendar: boolean, hexColor: string, backgroundColor: string}>>}
    */
   async fetchCalendarList() {
+    await this.ensureValidToken();
     if (!this.isAuthenticated() || this.useMock) {
       return [{
         id: 'primary',
@@ -465,6 +661,19 @@ export class MicrosoftCalendarAdapter {
             const c = data.value[i];
             if (!c || !c.id) continue;
             const hex = c.hexColor || (c.color && MICROSOFT_CALENDAR_COLORS[c.color]) || '#0078d4';
+
+            // Check for "Calentimer" calendar and dynamically acknowledge color changes made externally
+            if (c.name && c.name.trim().toLowerCase() === 'calentimer') {
+              if (typeof taskStore !== 'undefined') {
+                if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') {
+                  taskStore.setMicrosoftCalentimerCalendarId(c.id);
+                }
+                if (typeof taskStore.setCalentimerCalendarColor === 'function') {
+                  taskStore.setCalentimerCalendarColor('microsoft', hex);
+                }
+              }
+            }
+
             cals.push({
               id: c.id,
               name: c.name || 'Calendar',
@@ -519,6 +728,7 @@ export class MicrosoftCalendarAdapter {
       };
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Microsoft Calendar');
     }
@@ -678,22 +888,29 @@ export class MicrosoftCalendarAdapter {
       const created = Object.assign({}, calentimerEvent, {
         externalId: extId,
         provider: 'microsoft',
-        etag: 'etag-ms-' + Date.now()
+        etag: 'etag-ms-' + Date.now(),
+        isCalentimerMirror: true
       });
       this._mockEvents.push(created);
       return created;
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Microsoft Calendar');
     }
+
+    const targetCalId = await this.getOrCreateCalentimerCalendar();
+    const endpoint = (targetCalId && targetCalId !== 'primary')
+      ? `${GRAPH_API_BASE}/me/calendars/${encodeURIComponent(targetCalId)}/events`
+      : `${GRAPH_API_BASE}/me/events`;
 
     const payload = this.mapToMicrosoftPayload(calentimerEvent);
     const timeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : 'UTC';
 
-    const resp = await fetch(`${GRAPH_API_BASE}/me/events`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
@@ -714,7 +931,12 @@ export class MicrosoftCalendarAdapter {
     }
 
     const created = await resp.json();
-    return this.mapToCalentimerEvent(created, calentimerEvent.color);
+    const mapped = this.mapToCalentimerEvent(created, calentimerEvent.color);
+    if (mapped) {
+      mapped.externalCalendarId = targetCalId;
+      mapped.isCalentimerMirror = true;
+    }
+    return mapped;
   }
 
   /**
@@ -737,7 +959,7 @@ export class MicrosoftCalendarAdapter {
       }
       if (!this._mockEvents) this._mockEvents = [];
       const idx = this._mockEvents.findIndex(e => e.externalId === calentimerEvent.externalId);
-      const updated = Object.assign({}, calentimerEvent, { etag: 'etag-ms-upd-' + Date.now() });
+      const updated = Object.assign({}, calentimerEvent, { etag: 'etag-ms-upd-' + Date.now(), isCalentimerMirror: true });
       if (idx !== -1) {
         this._mockEvents[idx] = updated;
       } else {
@@ -746,6 +968,7 @@ export class MicrosoftCalendarAdapter {
       return updated;
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Microsoft Calendar');
     }
@@ -777,7 +1000,11 @@ export class MicrosoftCalendarAdapter {
     }
 
     const updated = await resp.json();
-    return this.mapToCalentimerEvent(updated, calentimerEvent.color);
+    const mapped = this.mapToCalentimerEvent(updated, calentimerEvent.color);
+    if (mapped) {
+      mapped.isCalentimerMirror = true;
+    }
+    return mapped;
   }
 
   /**
@@ -802,6 +1029,7 @@ export class MicrosoftCalendarAdapter {
       return true;
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Microsoft Calendar');
     }

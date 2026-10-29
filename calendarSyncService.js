@@ -462,16 +462,28 @@ export class CalendarSyncService {
 
     const allEvents = taskStore.getCalendarEvents();
     const dirtyEvents = allEvents.filter(ev => {
-      const p = (ev && (ev.provider || ev.source)) ? (ev.provider || ev.source) : 'local';
-      return p === provider && Boolean(ev.isDirty);
+      if (!ev || !ev.isDirty) return false;
+      const p = (ev.provider || ev.source || 'local');
+      if (provider === 'google') {
+        return Boolean(p === 'google' || ev.googleEventId || (p === 'local' && ev.externalId));
+      }
+      if (provider === 'microsoft') {
+        return Boolean(p === 'microsoft' || ev.microsoftEventId || (p === 'local' && ev.externalId));
+      }
+      return false;
     });
 
     let pushed = 0;
     for (let i = 0; i < dirtyEvents.length; i++) {
       const ev = dirtyEvents[i];
       try {
-        if (ev.externalId) {
-          const res = await adapter.updateEvent(ev);
+        const extId = provider === 'google'
+          ? (ev.googleEventId || (ev.provider === 'google' ? ev.externalId : null))
+          : (ev.microsoftEventId || (ev.provider === 'microsoft' ? ev.externalId : null));
+
+        if (extId) {
+          const updatePayload = Object.assign({}, ev, { externalId: extId });
+          const res = await adapter.updateEvent(updatePayload);
           if (res) {
             ev.etag = res.etag;
             ev.syncHash = this.computeSyncHash(ev);
@@ -481,8 +493,11 @@ export class CalendarSyncService {
           }
         } else {
           const res = await adapter.createEvent(ev);
-          if (res) {
-            ev.externalId = res.externalId;
+          if (res && (res.externalId || res.id)) {
+            const newExtId = res.externalId || res.id;
+            if (provider === 'google') ev.googleEventId = newExtId;
+            if (provider === 'microsoft') ev.microsoftEventId = newExtId;
+            ev.externalId = newExtId;
             ev.etag = res.etag;
             ev.syncHash = this.computeSyncHash(ev);
             ev.isDirty = false;
@@ -844,46 +859,94 @@ export class CalendarSyncService {
   // 5. Lifecycle & Auto-Sync
   // ==========================================
 
+  /**
+   * Debounced outbound push dispatcher (batches drag releases and quick edits within 60ms).
+   * @param {number} [delay]
+   */
+  triggerOutboundSyncDebounced(delay) {
+    const ms = (typeof delay === 'number') ? delay : 60;
+    if (this._outboundDebounceTimer) {
+      clearTimeout(this._outboundDebounceTimer);
+    }
+    this._outboundDebounceTimer = setTimeout(() => {
+      this._outboundDebounceTimer = null;
+      this._pushAllDirtyEvents().catch(() => {});
+    }, ms);
+  }
+
+  async _pushAllDirtyEvents() {
+    if (this.isProviderConnected('google')) {
+      await this._pushDirtyEvents('google');
+    }
+    if (this.isProviderConnected('microsoft')) {
+      await this._pushDirtyEvents('microsoft');
+    }
+  }
+
   startAutoSync() {
     if (this.isAutoSyncRunning) return;
     this.isAutoSyncRunning = true;
 
-    // 1. Visibility & Focus Change Listeners (Fetch delta when user returns to app)
+    const runSyncSafe = () => {
+      // 120Hz Gesture-Aware Shield: If user is actively dragging or adjusting dials, defer sync pass!
+      if (typeof window !== 'undefined' && typeof window.isUserInteracting === 'function' && window.isUserInteracting()) {
+        return;
+      }
+      const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
+      if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
+        this.syncAll().catch(() => {});
+      }
+    };
+
+    const startPollingInterval = () => {
+      if (this.autoSyncTimer) {
+        clearInterval(this.autoSyncTimer);
+        this.autoSyncTimer = null;
+      }
+      // Ultra-tight 2.8-second polling interval while app is in active foreground
+      this.autoSyncTimer = setInterval(runSyncSafe, 2800);
+    };
+
+    const stopPollingInterval = () => {
+      if (this.autoSyncTimer) {
+        clearInterval(this.autoSyncTimer);
+        this.autoSyncTimer = null;
+      }
+    };
+
+    // 1. Visibility Change Listener (Sleep in background, instant 0ms sync on wake)
     if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       this._visibilityHandler = () => {
-        if (document.visibilityState === 'visible') {
-          const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
-          if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
-            this.syncAll().catch(() => {});
-          }
+        if (!document.visibilityState || document.visibilityState === 'visible') {
+          runSyncSafe();
+          startPollingInterval();
+        } else {
+          stopPollingInterval();
         }
       };
       document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
+    // 2. Window Focus Listener (Instant 0ms sync when user returns from external calendar window)
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       this._focusHandler = () => {
-        const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
-        if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
-          this.syncAll().catch(() => {});
-        }
+        runSyncSafe();
       };
       window.addEventListener('focus', this._focusHandler);
     }
 
-    // 2. 15-Second Active Polling Timer for near real-time update appearance
-    if (typeof setInterval === 'function') {
-      this.autoSyncTimer = setInterval(() => {
-        const autoSync = (typeof taskStore.getAutoSyncEnabled === 'function') ? taskStore.getAutoSyncEnabled() : true;
-        if (autoSync && (this.isProviderConnected('google') || this.isProviderConnected('microsoft'))) {
-          this.syncAll().catch(() => {});
-        }
-      }, 15000);
+    // 3. Start polling if document is currently visible (or environment lacks visibility API)
+    if (typeof document === 'undefined' || !document.visibilityState || document.visibilityState === 'visible') {
+      startPollingInterval();
     }
   }
 
   stopAutoSync() {
     this.isAutoSyncRunning = false;
+    if (this._outboundDebounceTimer) {
+      clearTimeout(this._outboundDebounceTimer);
+      this._outboundDebounceTimer = null;
+    }
     if (this.autoSyncTimer) {
       clearInterval(this.autoSyncTimer);
       this.autoSyncTimer = null;

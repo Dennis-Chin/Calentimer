@@ -29,6 +29,35 @@ export const GOOGLE_EVENT_COLORS = {
   '11': '#d50000'  // Tomato (Red)
 };
 
+export function hexToRgb(hex) {
+  if (!hex || typeof hex !== 'string') return null;
+  const clean = hex.replace('#', '').trim();
+  if (clean.length === 3) {
+    return {
+      r: parseInt(clean.charAt(0) + clean.charAt(0), 16),
+      g: parseInt(clean.charAt(1) + clean.charAt(1), 16),
+      b: parseInt(clean.charAt(2) + clean.charAt(2), 16)
+    };
+  }
+  if (clean.length === 6) {
+    return {
+      r: parseInt(clean.substring(0, 2), 16),
+      g: parseInt(clean.substring(2, 4), 16),
+      b: parseInt(clean.substring(4, 6), 16)
+    };
+  }
+  return null;
+}
+
+export function areColorsSimilar(hex1, hex2, threshold) {
+  const c1 = hexToRgb(hex1);
+  const c2 = hexToRgb(hex2);
+  if (!c1 || !c2) return false;
+  const t = (typeof threshold === 'number') ? threshold : 75;
+  const dist = Math.hypot(c1.r - c2.r, c1.g - c2.g, c1.b - c2.b);
+  return dist < t;
+}
+
 export class GoogleCalendarAdapter {
   constructor(options) {
     const opts = (options && typeof options === 'object') ? options : {};
@@ -125,6 +154,223 @@ export class GoogleCalendarAdapter {
         taskStore.setGoogleUserEmail(null);
       }
     }
+  }
+
+  /**
+   * Silently refreshes or verifies Google OAuth access token if nearing expiration.
+   * @returns {Promise<string|null>}
+   */
+  async ensureValidToken() {
+    if (this.mockTransport) return this.accessToken;
+
+    // If token exists and is valid for more than 2 minutes, return immediately
+    if (this.accessToken && (!this.tokenExpiresAt || Date.now() < this.tokenExpiresAt - 120000)) {
+      return this.accessToken;
+    }
+
+    const hasGoogle = typeof window !== 'undefined' && window !== null && window.google && window.google.accounts && window.google.accounts.oauth2;
+    if (!hasGoogle) {
+      return this.accessToken;
+    }
+
+    const effectiveClientId = (OAUTH_CONFIG && OAUTH_CONFIG.google && OAUTH_CONFIG.google.clientId)
+      ? OAUTH_CONFIG.google.clientId
+      : this.clientId;
+    if (!effectiveClientId || effectiveClientId === DEFAULT_CLIENT_ID || effectiveClientId.indexOf('YOUR_GOOGLE_CLIENT_ID') !== -1) {
+      return this.accessToken;
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(this.accessToken);
+        }
+      }, 3500);
+
+      try {
+        if (!this.tokenClient) {
+          this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: effectiveClientId,
+            scope: SCOPES,
+            callback: () => {}
+          });
+        }
+
+        this.tokenClient.callback = (tokenResponse) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeoutId);
+            if (tokenResponse && tokenResponse.access_token) {
+              const expiresIn = tokenResponse.expires_in ? parseInt(tokenResponse.expires_in, 10) : 3600;
+              this.setToken(tokenResponse.access_token, expiresIn);
+              resolve(tokenResponse.access_token);
+            } else {
+              resolve(this.accessToken);
+            }
+          }
+        };
+
+        this.tokenClient.error_callback = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeoutId);
+            resolve(this.accessToken);
+          }
+        };
+
+        this.tokenClient.requestAccessToken({ prompt: '' });
+      } catch (_) {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(this.accessToken);
+        }
+      }
+    });
+  }
+
+  /**
+   * Discovers or creates the dedicated secondary "Calentimer" calendar in Google Calendar.
+   * Applies the Neon Light Blue -> Neon Light Green -> Standout Fallback color collision cascade.
+   * @returns {Promise<string>} calendarId
+   */
+  async getOrCreateCalentimerCalendar() {
+    if (this.mockTransport && typeof this.mockTransport.getOrCreateCalentimerCalendar === 'function') {
+      return this.mockTransport.getOrCreateCalentimerCalendar();
+    }
+
+    let cachedId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+      ? taskStore.getGoogleCalentimerCalendarId()
+      : null;
+
+    await this.ensureValidToken();
+    if (!this.isAuthenticated()) {
+      return cachedId || 'primary';
+    }
+
+    let allCals = [];
+    try {
+      const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && Array.isArray(data.items)) {
+          allCals = data.items;
+        }
+      }
+    } catch (_) {}
+
+    // Check if "Calentimer" calendar already exists in user's account
+    let existing = null;
+    for (let i = 0; i < allCals.length; i++) {
+      const c = allCals[i];
+      if (c && c.summary && c.summary.trim().toLowerCase() === 'calentimer') {
+        existing = c;
+        break;
+      }
+    }
+
+    if (existing) {
+      if (typeof taskStore !== 'undefined') {
+        if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
+          taskStore.setGoogleCalentimerCalendarId(existing.id);
+        }
+        if (typeof taskStore.setCalentimerCalendarColor === 'function' && existing.backgroundColor) {
+          taskStore.setCalentimerCalendarColor('google', existing.backgroundColor);
+        }
+      }
+      return existing.id;
+    }
+
+    // Color collision cascade:
+    // 1. Neon light blue (#00d2ff / Peacock #039be5)
+    // 2. Neon light green (#00e676 / Sage #33b679)
+    // 3. Standout vibrant fallback (#8e24aa Grape or #f4511e Tangerine)
+    const existingColors = allCals.map(c => c.backgroundColor).filter(Boolean);
+    const NEON_BLUE = '#00d2ff';
+    const PEACOCK_BLUE = '#039be5';
+    const NEON_GREEN = '#00e676';
+    const SAGE_GREEN = '#33b679';
+
+    let chosenColorId = '7';
+    let chosenHex = '#00d2ff';
+
+    const hasBlueConflict = existingColors.some(c => areColorsSimilar(c, NEON_BLUE) || areColorsSimilar(c, PEACOCK_BLUE));
+    if (!hasBlueConflict) {
+      chosenColorId = '7';
+      chosenHex = '#00d2ff';
+    } else {
+      const hasGreenConflict = existingColors.some(c => areColorsSimilar(c, NEON_GREEN) || areColorsSimilar(c, SAGE_GREEN));
+      if (!hasGreenConflict) {
+        chosenColorId = '2';
+        chosenHex = '#00e676';
+      } else {
+        const hasPurpleConflict = existingColors.some(c => areColorsSimilar(c, '#8e24aa'));
+        if (!hasPurpleConflict) {
+          chosenColorId = '3';
+          chosenHex = '#8e24aa';
+        } else {
+          chosenColorId = '6';
+          chosenHex = '#f4511e';
+        }
+      }
+    }
+
+    try {
+      const timeZone = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : 'UTC';
+      const createResp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          summary: 'Calentimer',
+          description: 'Mirrored tasks and live schedule events from Calentimer',
+          timeZone: timeZone
+        })
+      });
+
+      if (createResp.ok) {
+        const createdCal = await createResp.json();
+        const calId = createdCal.id;
+
+        try {
+          await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList/${encodeURIComponent(calId)}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              colorId: chosenColorId
+            })
+          });
+        } catch (_) {}
+
+        if (typeof taskStore !== 'undefined') {
+          if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
+            taskStore.setGoogleCalentimerCalendarId(calId);
+          }
+          if (typeof taskStore.setCalentimerCalendarColor === 'function') {
+            taskStore.setCalentimerCalendarColor('google', chosenHex);
+          }
+        }
+        return calId;
+      }
+    } catch (e) {
+      console.warn('Could not create Calentimer secondary Google calendar:', e);
+    }
+
+    return cachedId || 'primary';
   }
 
   /**
@@ -252,6 +498,7 @@ export class GoogleCalendarAdapter {
    * @returns {Promise<Array<{id: string, summary: string, backgroundColor?: string, primary?: boolean}>>}
    */
   async fetchCalendarList() {
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       return [{ id: 'primary', summary: 'Primary', primary: true, backgroundColor: '#4285F4' }];
     }
@@ -267,6 +514,23 @@ export class GoogleCalendarAdapter {
         const data = await resp.json();
         if (data && Array.isArray(data.items) && data.items.length > 0) {
           const activeCals = data.items.filter(c => c && c.selected !== false && !c.hidden);
+
+          // Check for "Calentimer" calendar and dynamically acknowledge color changes made externally
+          for (let i = 0; i < data.items.length; i++) {
+            const item = data.items[i];
+            if (item && item.summary && item.summary.trim().toLowerCase() === 'calentimer') {
+              if (typeof taskStore !== 'undefined') {
+                if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
+                  taskStore.setGoogleCalentimerCalendarId(item.id);
+                }
+                if (typeof taskStore.setCalentimerCalendarColor === 'function' && item.backgroundColor) {
+                  taskStore.setCalentimerCalendarColor('google', item.backgroundColor);
+                }
+              }
+              break;
+            }
+          }
+
           if (activeCals.length > 0) {
             return activeCals;
           }
@@ -289,6 +553,7 @@ export class GoogleCalendarAdapter {
       return this.mockTransport.fetchEvents(timeMin, timeMax, syncToken);
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Google Calendar');
     }
@@ -305,6 +570,10 @@ export class GoogleCalendarAdapter {
     let primarySyncToken = null;
     let anyExpired = false;
 
+    const calentimerCalId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+      ? taskStore.getGoogleCalentimerCalendarId()
+      : null;
+
     // Window defaults: past 60 days to next 180 days (covers entire study term / schedule)
     const min = timeMin || new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const max = timeMax || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
@@ -314,6 +583,10 @@ export class GoogleCalendarAdapter {
       const calId = cal.id || 'primary';
       const calColor = cal.backgroundColor || null;
       const isPrimary = calId === 'primary' || Boolean(cal.primary);
+      const isCalentimerMirror = Boolean(
+        (calentimerCalId && calId === calentimerCalId) ||
+        (cal.summary && cal.summary.trim().toLowerCase() === 'calentimer')
+      );
 
       try {
         let pageToken = null;
@@ -365,6 +638,7 @@ export class GoogleCalendarAdapter {
             const ev = this.mapToCalentimerEvent(raw, calColor);
             if (ev) {
               ev.externalCalendarId = calId;
+              ev.isCalentimerMirror = isCalentimerMirror;
               allEvents.push(ev);
             }
           }
@@ -399,7 +673,7 @@ export class GoogleCalendarAdapter {
   }
 
   /**
-   * Pushes a new event create to Google Calendar.
+   * Pushes a new event create to Google Calendar targeting the dedicated "Calentimer" calendar.
    * @param {object} calentimerEvent 
    * @returns {Promise<object>}
    */
@@ -408,12 +682,16 @@ export class GoogleCalendarAdapter {
       return this.mockTransport.createEvent(calentimerEvent);
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Google Calendar');
     }
 
+    const targetCalId = await this.getOrCreateCalentimerCalendar();
+    const calIdParam = encodeURIComponent(targetCalId || 'primary');
+
     const payload = this.mapToGooglePayload(calentimerEvent);
-    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events`, {
+    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${calIdParam}/events`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
@@ -433,7 +711,12 @@ export class GoogleCalendarAdapter {
     }
 
     const created = await resp.json();
-    return this.mapToCalentimerEvent(created);
+    const mapped = this.mapToCalentimerEvent(created);
+    if (mapped) {
+      mapped.externalCalendarId = targetCalId;
+      mapped.isCalentimerMirror = true;
+    }
+    return mapped;
   }
 
   /**
@@ -450,13 +733,19 @@ export class GoogleCalendarAdapter {
       return this.mockTransport.updateEvent(calentimerEvent);
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Google Calendar');
     }
 
+    const targetCalId = (calentimerEvent && calentimerEvent.externalCalendarId)
+      ? calentimerEvent.externalCalendarId
+      : (await this.getOrCreateCalentimerCalendar());
+    const calIdParam = encodeURIComponent(targetCalId || 'primary');
+
     const payload = this.mapToGooglePayload(calentimerEvent);
     const eventId = encodeURIComponent(calentimerEvent.externalId);
-    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events/${eventId}`, {
+    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${calIdParam}/events/${eventId}`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`,
@@ -476,27 +765,37 @@ export class GoogleCalendarAdapter {
     }
 
     const updated = await resp.json();
-    return this.mapToCalentimerEvent(updated);
+    const mapped = this.mapToCalentimerEvent(updated);
+    if (mapped) {
+      mapped.externalCalendarId = targetCalId;
+      mapped.isCalentimerMirror = true;
+    }
+    return mapped;
   }
 
   /**
    * Deletes an event from Google Calendar.
    * @param {string} externalId 
+   * @param {string} [externalCalendarId]
    * @returns {Promise<boolean>}
    */
-  async deleteEvent(externalId) {
+  async deleteEvent(externalId, externalCalendarId) {
     if (!externalId) return false;
 
     if (this.mockTransport && typeof this.mockTransport.deleteEvent === 'function') {
-      return this.mockTransport.deleteEvent(externalId);
+      return this.mockTransport.deleteEvent(externalId, externalCalendarId);
     }
 
+    await this.ensureValidToken();
     if (!this.isAuthenticated()) {
       throw new Error('Not authenticated with Google Calendar');
     }
 
+    const targetCalId = externalCalendarId || (await this.getOrCreateCalentimerCalendar());
+    const calIdParam = encodeURIComponent(targetCalId || 'primary');
+
     const eventId = encodeURIComponent(externalId);
-    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events/${eventId}`, {
+    const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${calIdParam}/events/${eventId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${this.accessToken}`

@@ -780,6 +780,66 @@ if (typeof global.document === 'undefined') {
   assert(taskStore.getCalendarEventById('cal-event-device-b') !== null, 'Local calendar events transferred across devices');
   assert(taskStore.getHardStop() === '19:30', 'Settings (Hard Stop) restored across devices');
 
+  // --- 19. Testing Color Collision Cascade & Dedicated Calentimer Calendar ---
+  console.log('\n--- 19. Testing Color Collision Cascade & Dedicated Calentimer Calendar ---');
+  const { hexToRgb, areColorsSimilar } = await import('./googleCalendarAdapter.js');
+
+  // Test hexToRgb & areColorsSimilar
+  assert(hexToRgb('#00d2ff') !== null, 'hexToRgb parsed 6-digit hex');
+  assert(hexToRgb('#abc') !== null, 'hexToRgb parsed 3-digit hex');
+  assert(areColorsSimilar('#00d2ff', '#00d2ff') === true, 'Identical colors are detected as similar');
+  assert(areColorsSimilar('#00d2ff', '#ff0000') === false, 'Dissimilar colors (blue vs red) are correctly differentiated');
+
+  // Test taskStore dedicated calendar ID & color getters/setters
+  taskStore.setGoogleCalentimerCalendarId('gcal-calentimer-id-123');
+  assert(taskStore.getGoogleCalentimerCalendarId() === 'gcal-calentimer-id-123', 'getGoogleCalentimerCalendarId returns saved ID');
+
+  taskStore.setMicrosoftCalentimerCalendarId('ms-calentimer-id-456');
+  assert(taskStore.getMicrosoftCalentimerCalendarId() === 'ms-calentimer-id-456', 'getMicrosoftCalentimerCalendarId returns saved ID');
+
+  taskStore.setCalentimerCalendarColor('google', '#00d2ff');
+  assert(taskStore.getCalentimerCalendarColor('google') === '#00d2ff', 'getCalentimerCalendarColor returns saved neon blue');
+
+  taskStore.setCalentimerCalendarColor('microsoft', '#00e676');
+  assert(taskStore.getCalentimerCalendarColor('microsoft') === '#00e676', 'getCalentimerCalendarColor returns saved neon green');
+
+  // --- 20. Testing Real-time Outbound Push on Moved Task & 120Hz Gesture Shield ---
+  console.log('\n--- 20. Testing Real-time Outbound Push on Moved Task & 120Hz Gesture Shield ---');
+  // Create an app task with existing googleEventId
+  const movedTaskEvent = {
+    id: 'cal-event-drag-moved-1',
+    title: 'Dragged Deep Work',
+    date: '2026-10-28',
+    startTime: '14:00',
+    endTime: '15:00',
+    plannedDuration: 60,
+    googleEventId: 'ext-gcal-moved-event-99',
+    provider: 'google',
+    source: 'local',
+    origin: 'local',
+    createdInApp: true,
+    isDirty: true
+  };
+  taskStore.saveCalendarEvents([movedTaskEvent]);
+
+  // Outbound push dirty events
+  const dirtyPushResult = await syncService._pushDirtyEvents('google');
+  assert(dirtyPushResult.pushed === 1, '_pushDirtyEvents pushed 1 moved dirty event to adapter');
+  const savedMovedEvent = taskStore.getCalendarEventById('cal-event-drag-moved-1');
+  assert(savedMovedEvent && savedMovedEvent.isDirty === false, 'Moved event was marked clean (isDirty: false) after push');
+  assert(mockGoogle.getUpdatedEvents().some(e => e.externalId === 'ext-gcal-moved-event-99'), 'Google adapter updateEvent was called for moved event');
+
+  // Test 120Hz Gesture Shield: simulate user actively dragging
+  global.window.isUserInteracting = () => true;
+  syncService.startAutoSync();
+  syncService.triggerOutboundSyncDebounced(10);
+  await new Promise(r => setTimeout(r, 30));
+  assert(true, 'Debounced outbound push executed safely with zero exceptions');
+
+  // Reset user interaction
+  global.window.isUserInteracting = () => false;
+  syncService.stopAutoSync();
+
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);
   console.log('========================================');

@@ -97,6 +97,8 @@ let currentDialRotationDeg = 0;
 let pendingMinuteAdjustment = 0;
 let lastAudibleMinuteTick = 0;
 
+window.isUserInteracting = () => Boolean(isDraggingTask || isDraggingOuterDial);
+
 // Navigation Drawer Swipe State (Shared across nav drawer and task drawer handlers)
 let isNavSwiping = false;
 
@@ -2975,6 +2977,9 @@ function setupInteractiveTaskDrag(container) {
         }
         mobileServices.hapticBuzz();
         showToastNotification('✓ Task moved');
+        if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.triggerOutboundSyncDebounced === 'function') {
+          calendarSyncService.triggerOutboundSyncDebounced();
+        }
       }
     };
 
@@ -3092,6 +3097,11 @@ function syncDynamicScheduleTimesToCalendar() {
         calEvent.startTime = schedTask.startTime;
         calEvent.endTime = schedTask.endTime;
         calEvent.plannedDuration = schedTask.plannedDuration;
+        calEvent.isDirty = true;
+        calEvent.lastModified = Date.now();
+        if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.computeSyncHash === 'function') {
+          calEvent.syncHash = calendarSyncService.computeSyncHash(calEvent);
+        }
         updatedAnyCal = true;
       }
     } else {
@@ -3107,6 +3117,9 @@ function syncDynamicScheduleTimesToCalendar() {
         emoji: schedTask.emoji || '📌',
         category: schedTask.category || 'General',
         source: schedTask.source || 'local',
+        origin: 'local',
+        createdInApp: true,
+        isDirty: true,
         lastModified: Date.now()
       });
       updatedAnyCal = true;
@@ -3130,6 +3143,9 @@ function syncDynamicScheduleTimesToCalendar() {
     taskStore.saveCalendarEvents(calEvents);
     if (calendarView && typeof calendarView.render === 'function' && typeof calendarView.isOpen === 'function' && calendarView.isOpen()) {
       calendarView.render();
+    }
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.triggerOutboundSyncDebounced === 'function') {
+      calendarSyncService.triggerOutboundSyncDebounced();
     }
   }
 }
