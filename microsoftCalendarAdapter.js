@@ -1228,42 +1228,24 @@ export class MicrosoftCalendarAdapter {
   /**
    * Maps Calentimer category and/or hex color to the best Outlook color category name.
    * e.g. 'Blue category', 'Orange category', 'Purple category', etc.
+   * Prioritizes preserving existing Outlook color category and matching user-selected hex color before category fallback.
    * @param {string} [category]
    * @param {string} [colorHex]
+   * @param {string} [existingCategoryOrColor]
    * @returns {string} Outlook color category name
    */
-  getMicrosoftColorCategory(category, colorHex) {
-    const cleanCat = category ? String(category).trim().toLowerCase() : '';
-    const CATEGORY_OUTLOOK_MAP = {
-      'work': 'Blue category',
-      'study': 'Purple category',
-      'break': 'Orange category',
-      'coding': 'Blue category',
-      'dev': 'Blue category',
-      'programming': 'Blue category',
-      'meeting': 'Purple category',
-      'fitness': 'Red category',
-      'exercise': 'Red category',
-      'gym': 'Red category',
-      'workout': 'Red category',
-      'health': 'Red category',
-      'medical': 'Red category',
-      'personal': 'Orange category',
-      'errand': 'Orange category',
-      'social': 'Cranberry category',
-      'food': 'Peach category',
-      'dining': 'Peach category',
-      'reading': 'Blue category',
-      'travel': 'Purple category',
-      'finance': 'Teal category',
-      'general': 'Steel category'
-    };
-
-    if (cleanCat && CATEGORY_OUTLOOK_MAP[cleanCat]) {
-      return CATEGORY_OUTLOOK_MAP[cleanCat];
+  getMicrosoftColorCategory(category, colorHex, existingCategoryOrColor) {
+    // 1. If explicit existing Outlook color category provided and valid, preserve it if colorHex is unchanged
+    if (existingCategoryOrColor && typeof existingCategoryOrColor === 'string') {
+      const cleanExisting = existingCategoryOrColor.trim().toLowerCase();
+      if (MICROSOFT_CATEGORY_NAME_MAP[cleanExisting]) {
+        if (!colorHex || areColorsSimilar(colorHex, MICROSOFT_CATEGORY_NAME_MAP[cleanExisting], 25)) {
+          return existingCategoryOrColor;
+        }
+      }
     }
 
-    // Match hex via distance against MICROSOFT_CATEGORY_NAME_MAP
+    // 2. Match explicit hex via Euclidean distance against MICROSOFT_CATEGORY_NAME_MAP
     const hex = colorHex || null;
     if (hex && typeof hex === 'string' && hex.charAt(0) === '#') {
       let h = hex.slice(1);
@@ -1294,6 +1276,44 @@ export class MicrosoftCalendarAdapter {
       return closestName;
     }
 
+    // 3. Check user remembered custom category color in taskStore
+    if (category && typeof taskStore !== 'undefined' && typeof taskStore.getCategoryColor === 'function') {
+      const customHex = taskStore.getCategoryColor(category);
+      if (customHex) {
+        return this.getMicrosoftColorCategory(null, customHex, null);
+      }
+    }
+
+    const cleanCat = category ? String(category).trim().toLowerCase() : '';
+    const CATEGORY_OUTLOOK_MAP = {
+      'work': 'Blue category',
+      'study': 'Purple category',
+      'break': 'Orange category',
+      'coding': 'Blue category',
+      'dev': 'Blue category',
+      'programming': 'Blue category',
+      'meeting': 'Purple category',
+      'fitness': 'Red category',
+      'exercise': 'Red category',
+      'gym': 'Red category',
+      'workout': 'Red category',
+      'health': 'Red category',
+      'medical': 'Red category',
+      'personal': 'Orange category',
+      'errand': 'Orange category',
+      'social': 'Cranberry category',
+      'food': 'Peach category',
+      'dining': 'Peach category',
+      'reading': 'Blue category',
+      'travel': 'Purple category',
+      'finance': 'Teal category',
+      'general': 'Steel category'
+    };
+
+    if (cleanCat && CATEGORY_OUTLOOK_MAP[cleanCat]) {
+      return CATEGORY_OUTLOOK_MAP[cleanCat];
+    }
+
     return 'Blue category';
   }
 
@@ -1318,7 +1338,7 @@ export class MicrosoftCalendarAdapter {
     if (event.category) {
       categories.push(event.category);
     }
-    const colorCategory = this.getMicrosoftColorCategory(event.category, event.color);
+    const colorCategory = this.getMicrosoftColorCategory(event.category, event.color, event.colorId);
     if (colorCategory && categories.indexOf(colorCategory) === -1) {
       categories.push(colorCategory);
     }

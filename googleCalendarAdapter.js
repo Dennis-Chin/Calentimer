@@ -935,43 +935,25 @@ export class GoogleCalendarAdapter {
   }
 
   /**
-   * Maps Calentimer category and/or hex color to the closest Google Calendar colorId ("1" to "11").
+   * Maps Calentimer category, hex color, and/or existing external colorId to the best Google Calendar colorId ("1" to "11").
+   * Prioritizes preserving existing Google colorId and matching user-selected hex color before category fallback.
    * @param {string} [category]
    * @param {string} [colorHex]
+   * @param {string|number} [existingColorId]
    * @returns {string} Google Calendar colorId ("1" to "11")
    */
-  getGoogleColorId(category, colorHex) {
-    const cleanCat = category ? String(category).trim().toLowerCase() : '';
-    const CATEGORY_COLOR_MAP = {
-      'work': '9',       // Blueberry (Dark Blue)
-      'study': '3',      // Grape (Purple)
-      'break': '6',      // Tangerine (Orange)
-      'coding': '9',     // Blueberry
-      'dev': '9',        // Blueberry
-      'programming': '9',// Blueberry
-      'meeting': '3',    // Grape
-      'fitness': '11',   // Tomato (Red)
-      'exercise': '11',  // Tomato
-      'gym': '11',       // Tomato
-      'workout': '11',   // Tomato
-      'health': '11',    // Tomato (Red)
-      'medical': '11',   // Tomato
-      'personal': '6',   // Tangerine (Sunset Orange)
-      'errand': '6',     // Tangerine
-      'social': '4',     // Flamingo (Coral / Pink)
-      'food': '6',       // Tangerine
-      'dining': '6',     // Tangerine
-      'reading': '9',    // Blueberry
-      'travel': '3',     // Grape
-      'finance': '10',   // Basil (Dark Green)
-      'general': '8'     // Graphite (Gray)
-    };
-
-    if (cleanCat && CATEGORY_COLOR_MAP[cleanCat]) {
-      return CATEGORY_COLOR_MAP[cleanCat];
+  getGoogleColorId(category, colorHex, existingColorId) {
+    // 1. If explicit existing Google colorId provided and valid, preserve it if colorHex is unchanged
+    if (existingColorId !== undefined && existingColorId !== null) {
+      const strId = String(existingColorId);
+      if (GOOGLE_EVENT_COLORS[strId]) {
+        if (!colorHex || areColorsSimilar(colorHex, GOOGLE_EVENT_COLORS[strId], 25)) {
+          return strId;
+        }
+      }
     }
 
-    // If explicit hex provided, find closest Google Calendar color via Euclidean RGB distance
+    // 2. If explicit hex provided (e.g. user chose in app or imported event has hex), match closest Google color via Euclidean RGB distance
     const hex = colorHex || null;
     if (hex && typeof hex === 'string' && hex.charAt(0) === '#') {
       let h = hex.slice(1);
@@ -1002,6 +984,44 @@ export class GoogleCalendarAdapter {
       return closestId;
     }
 
+    // 3. If user has a remembered custom category color in taskStore, match closest Google color to it
+    if (category && typeof taskStore !== 'undefined' && typeof taskStore.getCategoryColor === 'function') {
+      const customHex = taskStore.getCategoryColor(category);
+      if (customHex) {
+        return this.getGoogleColorId(null, customHex, null);
+      }
+    }
+
+    const cleanCat = category ? String(category).trim().toLowerCase() : '';
+    const CATEGORY_COLOR_MAP = {
+      'work': '9',       // Blueberry (Dark Blue)
+      'study': '3',      // Grape (Purple)
+      'break': '6',      // Tangerine (Orange)
+      'coding': '9',     // Blueberry
+      'dev': '9',        // Blueberry
+      'programming': '9',// Blueberry
+      'meeting': '3',    // Grape
+      'fitness': '11',   // Tomato (Red)
+      'exercise': '11',  // Tomato
+      'gym': '11',       // Tomato
+      'workout': '11',   // Tomato
+      'health': '11',    // Tomato (Red)
+      'medical': '11',   // Tomato
+      'personal': '6',   // Tangerine (Sunset Orange)
+      'errand': '6',     // Tangerine
+      'social': '4',     // Flamingo (Coral / Pink)
+      'food': '6',       // Tangerine
+      'dining': '6',     // Tangerine
+      'reading': '9',    // Blueberry
+      'travel': '3',     // Grape
+      'finance': '10',   // Basil (Dark Green)
+      'general': '8'     // Graphite (Gray)
+    };
+
+    if (cleanCat && CATEGORY_COLOR_MAP[cleanCat]) {
+      return CATEGORY_COLOR_MAP[cleanCat];
+    }
+
     return '9'; // Default Blueberry
   }
 
@@ -1022,7 +1042,7 @@ export class GoogleCalendarAdapter {
     const startDateTime = `${date}T${startTime}:00`;
     const endDateTime = `${date}T${endTime}:00`;
 
-    const colorId = this.getGoogleColorId(event.category, event.color);
+    const colorId = this.getGoogleColorId(event.category, event.color, event.colorId);
 
     const payload = {
       summary: event.title || 'Calentimer Task',

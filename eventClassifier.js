@@ -13,6 +13,8 @@
  * - Zero optional chaining and zero nullish coalescing operators for older mobile WebView compatibility.
  */
 
+import { taskStore } from './taskStore.js';
+
 // Category Palette with authentic, high-contrast colors (strictly avoiding light green reserved for completed tasks)
 export const CATEGORY_DEFINITIONS = {
   Break: {
@@ -87,6 +89,24 @@ export const CATEGORY_DEFINITIONS = {
   }
 };
 
+// Curated, high-contrast preset palette for user category color customization
+export const PRESET_CATEGORY_COLORS = [
+  '#3b82f6', // Electric Royal Blue
+  '#0284c7', // Sky Blue
+  '#0d9488', // Deep Teal
+  '#047857', // Forest Emerald
+  '#f59e0b', // Warm Amber / Gold
+  '#ea580c', // Sunset Orange
+  '#f97316', // Coral Orange
+  '#ef4444', // Red
+  '#f43f5e', // Bright Rose
+  '#ec4899', // Hot Pink
+  '#d946ef', // Vivid Magenta
+  '#8b5cf6', // Vivid Purple
+  '#6366f1', // Royal Indigo
+  '#64748b'  // Slate Steel
+];
+
 /**
  * Ensures category colours can never be the exact same colour as statuses:
  * - Active: light blue / cyan (#00f0ff, #38bdf8, #7dd3fc, #06b6d4, #0ea5e9)
@@ -131,6 +151,7 @@ export function sanitizeCategoryColor(hex) {
 
 /**
  * Returns the standardized, high-contrast hex color for any category name.
+ * Checks user-custom remembered category colors in taskStore first.
  * Provides unified color resolution across Today's Schedule, the Calendar Tab, and Full Calendar.
  * Strictly guarantees category colors can never collide with active or completed status indicators.
  * @param {string} category 
@@ -139,6 +160,12 @@ export function sanitizeCategoryColor(hex) {
 export function getCategoryColor(category) {
   if (!category) return CATEGORY_DEFINITIONS.General.color;
   const clean = String(category).trim().toLowerCase();
+
+  // 1. Check user custom remembered category color
+  if (typeof taskStore !== 'undefined' && typeof taskStore.getCategoryColor === 'function') {
+    const custom = taskStore.getCategoryColor(category);
+    if (custom) return sanitizeCategoryColor(custom);
+  }
 
   const keys = Object.keys(CATEGORY_DEFINITIONS);
   for (let i = 0; i < keys.length; i++) {

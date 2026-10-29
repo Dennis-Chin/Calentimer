@@ -36,7 +36,8 @@ const STORAGE_KEYS = {
   MS_SELECTED_CALS: 'calentimer_ms_selected_cals_v1',
   GOOGLE_CALENTIMER_CAL_ID: 'calentimer_gcal_calentimer_id_v1',
   MS_CALENTIMER_CAL_ID: 'calentimer_ms_calentimer_id_v1',
-  CALENTIMER_CAL_COLORS: 'calentimer_cal_colors_v1'
+  CALENTIMER_CAL_COLORS: 'calentimer_cal_colors_v1',
+  CATEGORY_CUSTOM_COLORS: 'calentimer_category_custom_colors_v1'
 };
 
 const memoryStorage = {};
@@ -277,6 +278,8 @@ export class TaskStore {
       googleEventId: (task && task.googleEventId) ? task.googleEventId : null,
       microsoftEventId: (task && task.microsoftEventId) ? task.microsoftEventId : null,
       externalId: (task && task.externalId) ? task.externalId : null,
+      color: (task && task.color) ? task.color : (this.getCategoryColor((task && task.category) ? task.category : 'General') || null),
+      colorId: (task && task.colorId) ? task.colorId : null,
       lastModified: now
     };
     tasks.push(newTask);
@@ -696,9 +699,73 @@ export class TaskStore {
     const cats = this.getCategories().filter(c => c.toLowerCase() !== clean);
     try {
       safeSetItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(cats));
+      this.deleteCategoryColor(clean);
       this._notify();
     } catch (e) {}
     return cats;
+  }
+
+  /**
+   * Retrieves map of user-custom category colors: { [cleanCategoryName]: hexColor }.
+   * @returns {Object}
+   */
+  getCategoryCustomColors() {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.CATEGORY_CUSTOM_COLORS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  /**
+   * Gets remembered custom hex color for a given category name, or null if default.
+   * @param {string} category 
+   * @returns {string|null}
+   */
+  getCategoryColor(category) {
+    if (!category || typeof category !== 'string') return null;
+    const clean = category.trim().toLowerCase();
+    const map = this.getCategoryCustomColors();
+    return map[clean] || null;
+  }
+
+  /**
+   * Remembers and persists custom color for a given category name across sessions.
+   * @param {string} category 
+   * @param {string} hexColor 
+   */
+  setCategoryColor(category, hexColor) {
+    if (!category || !hexColor || typeof category !== 'string' || typeof hexColor !== 'string') return;
+    const clean = category.trim().toLowerCase();
+    const cleanHex = hexColor.trim().toLowerCase();
+    const map = this.getCategoryCustomColors();
+    map[clean] = cleanHex;
+    try {
+      safeSetItem(STORAGE_KEYS.CATEGORY_CUSTOM_COLORS, JSON.stringify(map));
+      this._notify();
+    } catch (_) {}
+  }
+
+  /**
+   * Removes custom color for a category, reverting it to default classification color.
+   * @param {string} category 
+   */
+  deleteCategoryColor(category) {
+    if (!category || typeof category !== 'string') return;
+    const clean = category.trim().toLowerCase();
+    const map = this.getCategoryCustomColors();
+    if (map[clean]) {
+      delete map[clean];
+      try {
+        safeSetItem(STORAGE_KEYS.CATEGORY_CUSTOM_COLORS, JSON.stringify(map));
+        this._notify();
+      } catch (_) {}
+    }
   }
 
   /**
@@ -1346,6 +1413,8 @@ export class TaskStore {
             useTimeBank: task.useTimeBank !== false,
             emoji: task.emoji || '📌',
             category: task.category || 'General',
+            color: task.color || this.getCategoryColor(task.category || 'General') || null,
+            colorId: task.colorId || null,
             source: task.source || 'local',
             origin: task.origin || 'local',
             createdInApp: task.createdInApp !== undefined ? Boolean(task.createdInApp) : (task.origin === 'local' || (task.id && (task.id.indexOf('task-') === 0 || task.id.indexOf('cal-event-') === 0))),

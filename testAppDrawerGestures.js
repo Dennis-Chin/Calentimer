@@ -311,6 +311,7 @@ const seedHiddenModals = [
   'addTodoModalBackdrop',
   'addTaskModalBackdrop',
   'taskEditModalBackdrop',
+  'categoryColorPaletteModalBackdrop',
   'installAppModalBackdrop'
 ];
 seedHiddenModals.forEach(id => {

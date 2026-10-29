@@ -15,7 +15,7 @@ import { calendarView } from './calendarView.js';
 import { calendarSyncService } from './calendarSyncService.js';
 import { googleCalendarAdapter } from './googleCalendarAdapter.js';
 import { microsoftCalendarAdapter } from './microsoftCalendarAdapter.js';
-import { classifyEvent, getCategoryColor as classifierGetCategoryColor, getAllClassificationEmojis } from './eventClassifier.js';
+import { classifyEvent, getCategoryColor as classifierGetCategoryColor, getAllClassificationEmojis, PRESET_CATEGORY_COLORS } from './eventClassifier.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -4187,6 +4187,142 @@ function closeEmojiPicker(confirmSelected = true) {
 }
 
 // ==========================================
+// Category Color Palette Popover & Remembered Custom Colors
+// ==========================================
+let currentPaletteCategory = null;
+
+function openCategoryColorPalette(category) {
+  if (!category) return;
+  currentPaletteCategory = category;
+
+  const modal = document.getElementById('categoryColorPaletteModalBackdrop');
+  const title = document.getElementById('categoryColorModalTitle');
+  const dot = document.getElementById('categoryColorModalDot');
+  const grid = document.getElementById('categoryColorSwatchesGrid');
+  if (!modal || !grid) return;
+
+  const currentColor = classifierGetCategoryColor(category);
+
+  if (title) title.textContent = `"${category}" Color`;
+  if (dot) {
+    dot.style.background = currentColor;
+    dot.style.boxShadow = `0 0 8px ${currentColor}`;
+    dot.style.color = currentColor;
+  }
+
+  grid.innerHTML = '';
+
+  PRESET_CATEGORY_COLORS.forEach(hex => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const isCurrent = hex.toLowerCase() === currentColor.toLowerCase();
+    btn.className = `color-swatch-btn ${isCurrent ? 'is-active-color' : ''}`;
+    btn.style.backgroundColor = hex;
+    btn.style.color = hex;
+    btn.title = hex;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectCategoryColor(currentPaletteCategory, hex);
+    });
+
+    grid.appendChild(btn);
+  });
+
+  ensureHistoryBuffer();
+  modal.classList.remove('hidden');
+  mobileServices.hapticTap();
+}
+window.openCategoryColorPalette = openCategoryColorPalette;
+
+function closeCategoryColorPalette() {
+  const modal = document.getElementById('categoryColorPaletteModalBackdrop');
+  if (modal) modal.classList.add('hidden');
+  currentPaletteCategory = null;
+}
+window.closeCategoryColorPalette = closeCategoryColorPalette;
+
+function selectCategoryColor(category, chosenHex) {
+  if (!category || !chosenHex) return;
+
+  // 1. Permanently remember custom color for this category
+  taskStore.setCategoryColor(category, chosenHex);
+
+  // 2. If in calendarView with an open event inspector:
+  if (typeof calendarView !== 'undefined' && calendarView) {
+    calendarView.currentEventCustomColor = chosenHex;
+    if (calendarView.selectedEvent) {
+      let newColorId = null;
+      if (typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+        newColorId = googleCalendarAdapter.getGoogleColorId(category, chosenHex, null);
+      }
+      calendarView.selectedEvent.color = chosenHex;
+      calendarView.selectedEvent.colorId = newColorId;
+      taskStore.updateCalendarEvent(calendarView.selectedEvent.id, {
+        color: chosenHex,
+        colorId: newColorId,
+        isDirty: true
+      });
+
+      // Outbound sync to Google / Microsoft if linked
+      const isPaired = Boolean(
+        calendarView.selectedEvent.googleEventId ||
+        calendarView.selectedEvent.microsoftEventId ||
+        calendarView.selectedEvent.source === 'google' ||
+        calendarView.selectedEvent.source === 'microsoft' ||
+        (calendarView.selectedEvent.externalId && (calendarView.selectedEvent.provider === 'google' || calendarView.selectedEvent.provider === 'microsoft'))
+      );
+      if (isPaired && typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventUpdate === 'function') {
+        calendarSyncService.pushEventUpdate(calendarView.selectedEvent).catch(() => {});
+      }
+    }
+    if (typeof calendarView.render === 'function') {
+      calendarView.render();
+    }
+  }
+
+  // 3. If in Task Edit Modal:
+  if (currentEditTaskId) {
+    const task = taskStore.getTasks().find(t => t.id === currentEditTaskId);
+    if (task) {
+      let newColorId = null;
+      if (typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+        newColorId = googleCalendarAdapter.getGoogleColorId(category, chosenHex, null);
+      }
+      taskStore.updateTask(currentEditTaskId, {
+        color: chosenHex,
+        colorId: newColorId
+      });
+      const updatedTask = taskStore.getTasks().find(t => t.id === currentEditTaskId);
+      const isPaired = Boolean(
+        updatedTask && (
+          updatedTask.googleEventId ||
+          updatedTask.microsoftEventId ||
+          updatedTask.source === 'google' ||
+          updatedTask.source === 'microsoft' ||
+          (updatedTask.externalId && (updatedTask.provider === 'google' || updatedTask.provider === 'microsoft'))
+        )
+      );
+      if (isPaired && typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventUpdate === 'function') {
+        calendarSyncService.pushEventUpdate(updatedTask).catch(() => {});
+      }
+    }
+  }
+
+  // 4. Re-render chips across all three modals
+  if (typeof refreshAddCategoryChips === 'function') refreshAddCategoryChips();
+  if (typeof refreshEditCategoryChips === 'function') refreshEditCategoryChips();
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.refreshCategoryChips === 'function') {
+    calendarView.refreshCategoryChips();
+  }
+
+  closeCategoryColorPalette();
+  mobileServices.hapticCelebration();
+  showToastNotification(`✓ "${category}" color updated`);
+}
+window.selectCategoryColor = selectCategoryColor;
+
+// ==========================================
 // Category Chips & Remembered Categories Management
 // ==========================================
 function setupCategorySelector(containerId, inputId, addBtnId, onSelectCategory) {
@@ -4203,20 +4339,60 @@ function setupCategorySelector(containerId, inputId, addBtnId, onSelectCategory)
     cats.forEach(cat => {
       const chip = document.createElement('span');
       const isSelected = cat.toLowerCase() === currentVal;
+      const catColor = classifierGetCategoryColor(cat);
+      const rgbaBg = hexToRgba(catColor, 0.18);
+      const rgbaGlow = hexToRgba(catColor, 0.55);
+
       chip.className = `category-chip ${isSelected ? 'active' : ''}`;
+      chip.style.setProperty('--chip-glow-color', catColor);
+      chip.style.setProperty('--chip-glow-bg', rgbaBg);
+      chip.style.setProperty('--chip-glow-shadow', rgbaGlow);
+
+      if (isSelected) {
+        chip.style.borderColor = catColor;
+        chip.style.color = catColor;
+        chip.style.background = rgbaBg;
+        chip.style.boxShadow = `0 0 12px ${rgbaGlow}, inset 0 0 3px ${rgbaBg}`;
+      } else {
+        chip.style.removeProperty('border-color');
+        chip.style.removeProperty('color');
+        chip.style.removeProperty('background');
+        chip.style.removeProperty('box-shadow');
+      }
+
       chip.innerHTML = `
+        <span class="chip-color-dot" style="background: ${catColor}; box-shadow: 0 0 5px ${rgbaGlow};" title="Click to choose color for ${escapeHtml(cat)}"></span>
         <span class="chip-text">${escapeHtml(cat)}</span>
         <button type="button" class="chip-delete" title="Delete category">✕</button>
       `;
 
-      // Tap chip to select
+      // Tap on color dot opens category color palette immediately
+      const colorDot = chip.querySelector('.chip-color-dot');
+      if (colorDot) {
+        colorDot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          input.value = cat;
+          if (addBtn) addBtn.classList.add('hidden');
+          renderChips();
+          if (onSelectCategory) onSelectCategory(cat);
+          openCategoryColorPalette(cat);
+        });
+      }
+
+      // Tap chip to select, or if already active tap again to open color palette
       chip.addEventListener('click', (e) => {
         if (e.target.closest('.chip-delete')) return;
-        input.value = cat;
-        if (addBtn) addBtn.classList.add('hidden');
-        renderChips();
-        if (onSelectCategory) onSelectCategory(cat);
-        mobileServices.hapticTap();
+        if (e.target.closest('.chip-color-dot')) return;
+
+        if (isSelected) {
+          openCategoryColorPalette(cat);
+        } else {
+          input.value = cat;
+          if (addBtn) addBtn.classList.add('hidden');
+          renderChips();
+          if (onSelectCategory) onSelectCategory(cat);
+          mobileServices.hapticTap();
+        }
       });
 
       // Tap × to delete category
@@ -4569,7 +4745,7 @@ function saveCurrentTaskEdit() {
         category,
         fixedStartTime,
         emoji,
-        color: (prevTask && prevTask.color) ? prevTask.color : (typeof getCategoryHexColor === 'function' ? getCategoryHexColor(category) : null)
+        color: (prevTask && prevTask.color) ? prevTask.color : classifierGetCategoryColor(category)
       });
       calendarSyncService.createRemoteEvent('google', taskPayload).then(res => {
         if (res && res.externalId) {
@@ -4603,7 +4779,7 @@ function saveCurrentTaskEdit() {
         category,
         fixedStartTime,
         emoji,
-        color: (prevTask && prevTask.color) ? prevTask.color : (typeof getCategoryHexColor === 'function' ? getCategoryHexColor(category) : null)
+        color: (prevTask && prevTask.color) ? prevTask.color : classifierGetCategoryColor(category)
       });
       calendarSyncService.createRemoteEvent('microsoft', taskPayload).then(res => {
         if (res && res.externalId) {
@@ -4617,6 +4793,12 @@ function saveCurrentTaskEdit() {
     }
   }
 
+  const taskColor = (prevTask && prevTask.color) ? prevTask.color : classifierGetCategoryColor(category);
+  let taskColorId = (prevTask && prevTask.colorId) ? prevTask.colorId : null;
+  if (!taskColorId && taskColor && typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+    taskColorId = googleCalendarAdapter.getGoogleColorId(category, taskColor, null);
+  }
+
   taskStore.updateTask(currentEditTaskId, {
     title,
     plannedDuration,
@@ -4624,8 +4806,17 @@ function saveCurrentTaskEdit() {
     fixedStartTime,
     isLocked,
     useTimeBank,
-    emoji
+    emoji,
+    color: taskColor,
+    colorId: taskColorId
   });
+
+  const updatedTask = taskStore.getTasks().find(t => t.id === currentEditTaskId);
+  if ((prevGoogle && nextGoogle) || (prevMS && nextMS)) {
+    if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.pushEventUpdate === 'function') {
+      calendarSyncService.pushEventUpdate(updatedTask).catch(() => {});
+    }
+  }
 
   runtime.initialTasks = taskStore.getTasks();
   const activeTask = runtime ? runtime.getActiveTask() : null;
@@ -6421,6 +6612,12 @@ function setupNavigationAndModals() {
       taskStore.setOutboundSyncPreference('microsoft', syncMS);
     }
 
+    const resolvedColor = classifierGetCategoryColor(category);
+    let resolvedColorId = null;
+    if (typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+      resolvedColorId = googleCalendarAdapter.getGoogleColorId(category, resolvedColor, null);
+    }
+
     const newTask = taskStore.addTask({
       title,
       plannedDuration: duration,
@@ -6429,6 +6626,8 @@ function setupNavigationAndModals() {
       isLocked: Boolean(isLocked),
       useTimeBank,
       emoji: currentAddTaskEmoji || (currentAddTaskType === 'break' ? '☕' : '📝'),
+      color: resolvedColor,
+      colorId: resolvedColorId,
       source: 'local',
       origin: 'local',
       createdInApp: true,
@@ -6566,6 +6765,16 @@ function setupNavigationAndModals() {
   if (emojiPickerModalBackdrop) {
     emojiPickerModalBackdrop.addEventListener('click', (e) => {
       if (e.target === emojiPickerModalBackdrop) closeEmojiPicker();
+    });
+  }
+
+  // Category Color Palette Modal events
+  const btnCloseCategoryColorModal = document.getElementById('btnCloseCategoryColorModal');
+  const categoryColorPaletteModalBackdrop = document.getElementById('categoryColorPaletteModalBackdrop');
+  if (btnCloseCategoryColorModal) btnCloseCategoryColorModal.addEventListener('click', closeCategoryColorPalette);
+  if (categoryColorPaletteModalBackdrop) {
+    categoryColorPaletteModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === categoryColorPaletteModalBackdrop) closeCategoryColorPalette();
     });
   }
 
@@ -7908,6 +8117,7 @@ function setupNavigationAndModals() {
 
     // 2. Innermost Dialogs & Pickers (close the child modal first before closing any parent tab)
     const subModals = [
+      'categoryColorPaletteModalBackdrop',
       'installAppModalBackdrop',
       'confirmDeleteTodoModalBackdrop',
       'durationDialModalBackdrop',

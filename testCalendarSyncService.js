@@ -33,7 +33,7 @@ if (typeof global.document === 'undefined') {
 (async function runCalendarSyncTests() {
   const { CalendarSyncService } = await import('./calendarSyncService.js');
   const { taskStore } = await import('./taskStore.js');
-  const { classifyEvent } = await import('./eventClassifier.js');
+  const { classifyEvent, getCategoryColor } = await import('./eventClassifier.js');
   const { TimerRuntime, TimerStatus } = await import('./timerRuntime.js');
   const { calculateSchedule } = await import('./schedulerEngine.js');
 
@@ -839,6 +839,50 @@ if (typeof global.document === 'undefined') {
   // Reset user interaction
   global.window.isUserInteracting = () => false;
   syncService.stopAutoSync();
+
+  // --- 21. Testing Category Custom Color Picker, Padlock Unlock Color Guard & Outbound Color Sync ---
+  console.log('\n--- 21. Testing Category Custom Color Picker, Padlock Unlock Color Guard & Outbound Color Sync ---');
+  // 1. Custom category color storage
+  taskStore.setCategoryColor('Coding', '#a855f7');
+  assert(taskStore.getCategoryColor('Coding') === '#a855f7', 'taskStore remembers custom color for Coding (#a855f7)');
+  assert(getCategoryColor('Coding') === '#a855f7', 'eventClassifier.getCategoryColor returns remembered custom color');
+
+  // 2. Padlock unlock color guard: External event has Flamingo color (#e67c73, colorId 4)
+  // When event is unlocked, getGoogleColorId must NOT change it to blueberry (9)
+  const flamingoColorId = googleCalendarAdapter.getGoogleColorId('Work', '#e67c73', '4');
+  assert(flamingoColorId === '4', 'Padlock unlock color guard: preserves existing Google colorId 4 for Flamingo event');
+
+  // 3. Outbound color mapping with custom color: Closest Google colorId
+  // #ea580c (Orange) maps to Google colorId 6 (Tangerine)
+  const customOrangeColorId = googleCalendarAdapter.getGoogleColorId('Work', '#ea580c');
+  assert(customOrangeColorId === '6', 'getGoogleColorId maps custom orange #ea580c to Google Tangerine (colorId 6)');
+
+  // #f59e0b (Amber/Yellow) maps to Google colorId 5 (Banana)
+  const customAmberColorId = googleCalendarAdapter.getGoogleColorId('Work', '#f59e0b');
+  assert(customAmberColorId === '5', 'getGoogleColorId maps custom amber #f59e0b to Google Banana (colorId 5)');
+
+  // 4. Microsoft adapter preserves existing category on padlock unlock
+  const msPreservedCat = microsoftCalendarAdapter.getMicrosoftColorCategory('Work', '#107c41', 'Green category');
+  assert(msPreservedCat === 'Green category', 'Padlock unlock color guard: preserves existing Microsoft "Green category"');
+
+  // 5. Inbound imported event adopts external color
+  const inboundExtEvent = {
+    id: 'cal-gcal-designer-color-1',
+    title: 'Design Critique',
+    category: 'Work',
+    date: '2026-10-29',
+    startTime: '10:00',
+    endTime: '11:00',
+    color: '#e67c73',
+    colorId: '4',
+    externalId: 'ext-gcal-designer-1',
+    provider: 'google',
+    source: 'google'
+  };
+  taskStore.saveCalendarEvents([inboundExtEvent]);
+  const retrievedExt = taskStore.getCalendarEventById('cal-gcal-designer-color-1');
+  assert(retrievedExt && retrievedExt.color === '#e67c73', 'App event preserves imported external color (#e67c73)');
+  assert(retrievedExt && retrievedExt.colorId === '4', 'App event preserves imported external colorId ("4")');
 
   console.log('\n========================================');
   console.log(`Summary: ${passed} passed, ${failed} failed.`);

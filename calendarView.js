@@ -2098,9 +2098,10 @@ export class CalendarView {
       }
 
       const card = document.createElement('div');
+      const eventColor = ev.color || this._getCategoryColor(ev.category);
       card.className = `day-event-card ${ev.isLocked ? 'is-locked' : ''} ${isLaterOverlap ? 'is-overlapping-later' : ''} ${isEarlierOverlap ? 'is-overlapping-earlier' : ''} ${isDone ? 'is-event-completed' : ''} ${isCurrent ? 'is-event-current' : ''}`;
       card.style.top = `${topPx}px`;
-      card.style.borderLeftColor = ev.color || this._getCategoryColor(ev.category);
+      card.style.borderLeftColor = eventColor;
       card.setAttribute('data-event-id', ev.id);
       if (isDone) {
         card.style.background = 'rgba(16, 185, 129, 0.22)';
@@ -2109,7 +2110,7 @@ export class CalendarView {
       }
       this._applyEventCardLayout(card, heightPx);
 
-      const catBadgeStyle = ev.color ? `background:${this._hexToRgba(ev.color, 0.2)};color:${ev.color};border:1px solid ${this._hexToRgba(ev.color, 0.45)};` : '';
+      const catBadgeStyle = `background:${this._hexToRgba(eventColor, 0.2)};color:${eventColor};border:1px solid ${this._hexToRgba(eventColor, 0.45)};`;
       // Top line purely for task title, line below for time span and duration
       card.innerHTML = `
         <span class="day-event-emoji">${ev.emoji || '📅'}</span>
@@ -4620,6 +4621,7 @@ export class CalendarView {
       window.ensureHistoryBuffer();
     }
     this.selectedEvent = eventObj || null;
+    this.currentEventCustomColor = (eventObj && eventObj.color) ? eventObj.color : null;
     const el = this.elements;
 
     const isNew = !eventObj;
@@ -4910,6 +4912,21 @@ export class CalendarView {
         }
       }
 
+      let resolvedColor = this.currentEventCustomColor;
+      if (!resolvedColor) {
+        if (this.selectedEvent && this.selectedEvent.color && (!this._manualCategorySelected || this.selectedEvent.category === category)) {
+          resolvedColor = this.selectedEvent.color;
+        } else {
+          resolvedColor = this._getCategoryColor(category);
+        }
+      }
+      let resolvedColorId = (this.selectedEvent && this.selectedEvent.colorId) ? this.selectedEvent.colorId : null;
+      if (this.currentEventCustomColor && (!this.selectedEvent || this.selectedEvent.color !== this.currentEventCustomColor)) {
+        if (typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+          resolvedColorId = googleCalendarAdapter.getGoogleColorId(category, this.currentEventCustomColor, null);
+        }
+      }
+
       const updateData = {
         title,
         date,
@@ -4920,7 +4937,9 @@ export class CalendarView {
         useTimeBank,
         emoji: this.currentEmoji,
         category,
-        color: this._getCategoryColor(category)
+        color: resolvedColor,
+        colorId: resolvedColorId,
+        isDirty: true
       };
 
       if (!isSyncGoogle && this.selectedEvent && (this.selectedEvent.provider === 'google' || this.selectedEvent.googleEventId)) {
@@ -4992,7 +5011,11 @@ export class CalendarView {
       }
     } else {
       // Add new
-      const resolvedColor = this._getCategoryColor(category);
+      const resolvedColor = this.currentEventCustomColor || this._getCategoryColor(category);
+      let resolvedColorId = null;
+      if (typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
+        resolvedColorId = googleCalendarAdapter.getGoogleColorId(category, resolvedColor, null);
+      }
       const newEv = taskStore.addCalendarEvent({
         title,
         date,
@@ -5004,9 +5027,11 @@ export class CalendarView {
         emoji: this.currentEmoji,
         category,
         color: resolvedColor,
+        colorId: resolvedColorId,
         source: 'local',
         origin: 'local',
         createdInApp: true,
+        isDirty: isSyncGoogle || isSyncMS,
         provider: isSyncGoogle ? 'google' : (isSyncMS ? 'microsoft' : 'local')
       });
 
