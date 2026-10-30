@@ -322,6 +322,17 @@ assert(syncServiceContent.includes('isDedicatedCalentimerEvent') && syncServiceC
 assert(storeContent.includes('localStorage.removeItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS)') && storeContent.includes('delete memoryStorage[STORAGE_KEYS.GOOGLE_SELECTED_CALS]'), 'taskStore.js cleans up storage key when setting selected calendar ids to null');
 assert(calContent.includes('googleSelectedSet !== null') && calContent.includes('msSelectedSet !== null'), 'calendarView.js filters visible events by selected calendar sets');
 
+console.log('\n--- 13. Testing Day Drag Intent, Edge Navigation Resistance & Mirror Event Deduplication ---');
+const updatedCalContent = fs.readFileSync(path.resolve(process.cwd(), 'calendarView.js'), 'utf8');
+const updatedSyncServiceContent = fs.readFileSync(path.resolve(process.cwd(), 'calendarSyncService.js'), 'utf8');
+const updatedCssContent = fs.readFileSync(path.resolve(process.cwd(), 'style.css'), 'utf8');
+assert(updatedCalContent.includes('const isLeft = (diffX < -35) && (clientX < modalRect.left + 32);'), 'calendarView.js requires intentional horizontal displacement for left edge day navigation');
+assert(updatedCalContent.includes("card.classList.remove('is-overlapping-earlier', 'is-overlapping-later');"), 'calendarView.js strips overlap column constraints when lifting event into flight');
+assert(updatedCalContent.includes("card.style.right = 'auto';"), 'calendarView.js sets right: auto on in-flight event cards to avoid horizontal squeezing');
+assert(updatedCalContent.includes('localEventSignatures.has(sig)'), 'calendarView.js deduplicates mirrored external calendar events');
+assert(updatedSyncServiceContent.includes('existingLocal.externalId = incoming.externalId;'), 'calendarSyncService.js links existing local events on incoming external sync to prevent duplicates');
+assert(updatedCssContent.includes('.day-event-card.is-dragging-cal-event') && updatedCssContent.includes('right: auto !important;'), 'style.css sets right: auto !important on in-flight day event card');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

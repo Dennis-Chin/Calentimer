@@ -154,6 +154,7 @@ export class CalendarView {
     if (typeof taskStore !== 'undefined' && typeof taskStore.onChange === 'function') {
       taskStore.onChange(() => {
         if (this.isOpen()) {
+          if (this.isDraggingEvent) return;
           this.render();
         } else {
           this.updateProviderToggleUI();
@@ -1435,37 +1436,96 @@ export class CalendarView {
       ? taskStore.getGoogleUserEmail()
       : null;
 
+    const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+      ? taskStore.getGoogleCalentimerCalendarId()
+      : null;
+    const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+      ? taskStore.getMicrosoftCalentimerCalendarId()
+      : null;
+
+    // Index known external IDs and local event signatures for deduplication
+    const knownExternalIds = new Set();
+    const localEventSignatures = new Set();
+    for (let i = 0; i < allEvents.length; i++) {
+      const e = allEvents[i];
+      if (!e) continue;
+      const isLocal = Boolean(
+        (e.id && (e.id.startsWith('cal-event-') || e.id.startsWith('task-'))) ||
+        e.source === 'local' ||
+        e.origin === 'local'
+      );
+      if (isLocal) {
+        if (e.externalId) knownExternalIds.add(e.externalId);
+        if (e.googleEventId) knownExternalIds.add(e.googleEventId);
+        if (e.microsoftEventId) knownExternalIds.add(e.microsoftEventId);
+        if (e.date && e.startTime && e.title) {
+          localEventSignatures.add(`${e.date}|${e.startTime}|${e.title.trim().toLowerCase()}`);
+        }
+      }
+    }
+
+    const seenEventKeys = new Set();
+    const seenIds = new Set();
+
     return allEvents.filter(ev => {
-      if (!ev) return false;
+      if (!ev || !ev.id) return false;
+      if (seenIds.has(ev.id)) return false;
       if (ev.title === '[Calentimer Cloud Sync]' || ev.summary === '[Calentimer Cloud Sync]') return false;
+
       const isLocalItem = Boolean(
         (ev.id && (ev.id.startsWith('cal-event-') || ev.id.startsWith('task-'))) ||
         ev.source === 'local' ||
         ev.origin === 'local'
       );
-      if (isLocalItem) {
-        return true;
-      }
-      const prov = (ev.provider || ev.source) ? (ev.provider || ev.source) : 'local';
-      if (prov === 'google') {
-        if (!isGoogleVis) return false;
-        if (googleSelectedSet !== null) {
-          const extCalId = ev.externalCalendarId || 'primary';
-          const isSelected = googleSelectedSet.has(extCalId) ||
-            (extCalId === 'primary' && (googleSelectedSet.has('primary') || (googleUserEmail && googleSelectedSet.has(googleUserEmail)))) ||
-            (googleUserEmail && extCalId === googleUserEmail && googleSelectedSet.has('primary'));
-          if (!isSelected) return false;
+
+      if (!isLocalItem) {
+        // If an external event has an externalId already claimed by a local item, suppress duplicate mirror
+        if (ev.externalId && knownExternalIds.has(ev.externalId)) return false;
+        if (ev.id && knownExternalIds.has(ev.id)) return false;
+
+        // If this is a dedicated Calentimer secondary calendar mirror and matches a local task, suppress mirror
+        const isMirror = Boolean(
+          ev.isCalentimerMirror ||
+          (googleCalentimerId && ev.externalCalendarId === googleCalentimerId) ||
+          (msCalentimerId && ev.externalCalendarId === msCalentimerId)
+        );
+        if (isMirror && ev.date && ev.startTime && ev.title) {
+          const sig = `${ev.date}|${ev.startTime}|${ev.title.trim().toLowerCase()}`;
+          if (localEventSignatures.has(sig)) return false;
+        }
+
+        const prov = (ev.provider || ev.source) ? (ev.provider || ev.source) : 'local';
+        if (prov === 'google') {
+          if (!isGoogleVis) return false;
+          if (googleSelectedSet !== null) {
+            const extCalId = ev.externalCalendarId || 'primary';
+            const isSelected = googleSelectedSet.has(extCalId) ||
+              (extCalId === 'primary' && (googleSelectedSet.has('primary') || (googleUserEmail && googleSelectedSet.has(googleUserEmail)))) ||
+              (googleUserEmail && extCalId === googleUserEmail && googleSelectedSet.has('primary'));
+            if (!isSelected) return false;
+          }
+        }
+        if (prov === 'microsoft') {
+          if (!isMsVis) return false;
+          if (msSelectedSet !== null) {
+            const extCalId = ev.externalCalendarId || 'primary';
+            const isSelected = msSelectedSet.has(extCalId) ||
+              (extCalId === 'primary' && msSelectedSet.has('primary'));
+            if (!isSelected) return false;
+          }
         }
       }
-      if (prov === 'microsoft') {
-        if (!isMsVis) return false;
-        if (msSelectedSet !== null) {
-          const extCalId = ev.externalCalendarId || 'primary';
-          const isSelected = msSelectedSet.has(extCalId) ||
-            (extCalId === 'primary' && msSelectedSet.has('primary'));
-          if (!isSelected) return false;
+
+      // Deduplicate identical events on same date & times
+      if (ev.date && ev.startTime && ev.endTime && ev.title) {
+        const uniqueKey = `${ev.date}|${ev.startTime}|${ev.endTime}|${ev.title.trim().toLowerCase()}`;
+        if (seenEventKeys.has(uniqueKey)) {
+          return false;
         }
+        seenEventKeys.add(uniqueKey);
       }
+
+      seenIds.add(ev.id);
       return true;
     });
   }
@@ -3039,13 +3099,20 @@ export class CalendarView {
 
     const checkDayEdgePull = (clientX) => {
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
-      if (!modalBody || isDayPanning || isDayPanCooldown) return;
+      if (!modalBody || isDayPanning || isDayPanCooldown || !isDragging) {
+        if (dayNavTimer) {
+          clearTimeout(dayNavTimer);
+          dayNavTimer = null;
+        }
+        return;
+      }
       const modalRect = modalBody.getBoundingClientRect();
-      const cardLeft = clientX - grabOffsetX;
-      const cardWidth = card.offsetWidth || card.clientWidth || 300;
-      const cardMidX = cardLeft + (cardWidth / 2);
-      const isLeft = (cardMidX < modalRect.left + 70) || (clientX < modalRect.left + 40);
-      const isRight = (cardMidX > modalRect.right - 70) || (clientX > modalRect.right - 40);
+      const diffX = clientX - startX;
+
+      // Only trigger edge panning when the user has intentionally dragged horizontally towards that edge
+      // and their finger / touch point is close to the modal boundary
+      const isLeft = (diffX < -35) && (clientX < modalRect.left + 32);
+      const isRight = (diffX > 35) && (clientX > modalRect.right - 32);
 
       if (isLeft || isRight) {
         if (!dayNavTimer) {
@@ -3158,7 +3225,7 @@ export class CalendarView {
 
       checkDayEdgePull(clientX);
 
-      // Trigger day pan only when the card's midpoint or touch point is close to the far left or far right edge with resistance
+      // Trigger day pan only when the user intentionally pulls towards far left or far right edge with resistance
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
       const modalRect = modalBody ? modalBody.getBoundingClientRect() : {
         left: 0,
@@ -3166,19 +3233,16 @@ export class CalendarView {
         width: 360
       };
       if (!isDayPanning && !isDayPanCooldown) {
-        const cardLeft = clientX - grabOffsetX;
-        const cardWidth = card.offsetWidth || card.clientWidth || 300;
-        const cardMidX = cardLeft + (cardWidth / 2);
         const diffX = clientX - startX;
 
-        // Transition to previous day when midpoint or touch point is at far left edge with resistance
-        const isFarLeft = (cardMidX < modalRect.left + 70) || (clientX < modalRect.left + 40);
-        if (diffX < -45 && isFarLeft) {
+        // Transition to previous day when touch point is pulled to far left edge with resistance
+        const isFarLeft = (diffX < -45) && (clientX < modalRect.left + 32);
+        if (isFarLeft) {
           panToAdjacentDay(-1);
         } else {
-          // Transition to next day when midpoint or touch point is at far right edge with resistance
-          const isFarRight = (cardMidX > modalRect.right - 70) || (clientX > modalRect.right - 40);
-          if (diffX > 45 && isFarRight) {
+          // Transition to next day when touch point is pulled to far right edge with resistance
+          const isFarRight = (diffX > 45) && (clientX > modalRect.right - 32);
+          if (isFarRight) {
             panToAdjacentDay(1);
           }
         }
@@ -3263,6 +3327,7 @@ export class CalendarView {
       card.style.removeProperty('position');
       card.style.removeProperty('left');
       card.style.removeProperty('top');
+      card.style.removeProperty('right');
       card.style.removeProperty('width');
       card.style.removeProperty('z-index');
       card.style.removeProperty('pointer-events');
@@ -3304,6 +3369,14 @@ export class CalendarView {
         triggerDayLockedWarning();
         return;
       }
+      this._clearActiveResizeHandles();
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
+      isDayPanning = false;
+      isDayPanCooldown = false;
+
       isDragging = true;
       this.isDraggingEvent = true;
       this._activeDragCancelHandler = cancelDrag;
@@ -3314,10 +3387,16 @@ export class CalendarView {
       if (!grabOffsetX) grabOffsetX = curX - cRect.left;
       if (!grabOffsetY) grabOffsetY = curY - cRect.top;
 
+      // In flight, remove overlap indentation classes so card displays cleanly at full width
+      card.classList.remove('is-overlapping-earlier', 'is-overlapping-later');
       card.style.position = 'fixed';
       card.style.left = `${curX - grabOffsetX}px`;
       card.style.top = `${curY - grabOffsetY}px`;
-      card.style.width = `${cRect.width}px`;
+      card.style.right = 'auto';
+
+      const timelineScroll = this.elements.dayTimelineScroll;
+      const fullTimelineWidth = timelineScroll ? Math.max(cRect.width, timelineScroll.clientWidth - 50) : cRect.width;
+      card.style.width = `${fullTimelineWidth}px`;
       card.style.zIndex = '99999';
       card.style.pointerEvents = 'none';
       card.style.transition = 'none';
@@ -3367,6 +3446,7 @@ export class CalendarView {
       card.style.removeProperty('position');
       card.style.removeProperty('left');
       card.style.removeProperty('top');
+      card.style.removeProperty('right');
       card.style.removeProperty('width');
       card.style.removeProperty('z-index');
       card.style.removeProperty('pointer-events');
@@ -3493,6 +3573,15 @@ export class CalendarView {
       }
       if (!isDragging) {
         if (card.classList.contains('has-resize-handles')) {
+          if (holdTimer && e.touches && e.touches.length === 1) {
+            const diffX = e.touches[0].clientX - startX;
+            const diffY = e.touches[0].clientY - startY;
+            if (Math.hypot(diffX, diffY) > 8) {
+              clearTimeout(holdTimer);
+              holdTimer = null;
+              this._activeDragCancelHandler = null;
+            }
+          }
           return;
         }
         if (holdTimer && e.touches && e.touches.length === 1) {
@@ -3799,6 +3888,7 @@ export class CalendarView {
       card.style.removeProperty('position');
       card.style.removeProperty('left');
       card.style.removeProperty('top');
+      card.style.removeProperty('right');
       card.style.removeProperty('width');
       card.style.removeProperty('z-index');
       card.style.removeProperty('transition');
@@ -3840,6 +3930,7 @@ export class CalendarView {
         triggerWeekLockedWarning();
         return;
       }
+      this._clearActiveResizeHandles();
       isDragging = true;
       this.isDraggingEvent = true;
       this._activeDragCancelHandler = cancelDrag;
@@ -3850,9 +3941,11 @@ export class CalendarView {
       if (!grabOffsetX) grabOffsetX = curX - cRect.left;
       if (!grabOffsetY) grabOffsetY = curY - cRect.top;
 
+      card.classList.remove('is-overlapping-earlier', 'is-overlapping-later');
       card.style.position = 'fixed';
       card.style.left = `${curX - grabOffsetX}px`;
       card.style.top = `${curY - grabOffsetY}px`;
+      card.style.right = 'auto';
       card.style.width = `${cRect.width}px`;
       card.style.zIndex = '99999';
       card.style.pointerEvents = 'none';
@@ -3977,6 +4070,7 @@ export class CalendarView {
       card.style.removeProperty('position');
       card.style.removeProperty('left');
       card.style.removeProperty('top');
+      card.style.removeProperty('right');
       card.style.removeProperty('width');
       card.style.removeProperty('z-index');
       card.style.removeProperty('transition');
@@ -4096,6 +4190,15 @@ export class CalendarView {
       }
       if (!isDragging) {
         if (card.classList.contains('has-resize-handles')) {
+          if (holdTimer && e.touches && e.touches.length === 1) {
+            const diffX = e.touches[0].clientX - startX;
+            const diffY = e.touches[0].clientY - startY;
+            if (Math.hypot(diffX, diffY) > 8) {
+              clearTimeout(holdTimer);
+              holdTimer = null;
+              this._activeDragCancelHandler = null;
+            }
+          }
           return;
         }
         if (holdTimer && e.touches && e.touches.length === 1) {

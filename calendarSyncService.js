@@ -372,8 +372,18 @@ export class CalendarSyncService {
     const allEvents = taskStore.getCalendarEvents();
     const eventMap = new Map();
     allEvents.forEach(e => {
+      if (!e) return;
       if (e.externalId) {
         eventMap.set(e.externalId, e);
+      }
+      if (e.googleEventId) {
+        eventMap.set(e.googleEventId, e);
+      }
+      if (e.microsoftEventId) {
+        eventMap.set(e.microsoftEventId, e);
+      }
+      if (e.id) {
+        eventMap.set(e.id, e);
       }
     });
 
@@ -497,6 +507,38 @@ export class CalendarSyncService {
         }
       } else {
         if (!incoming.date) continue;
+
+        // Dedup Guard: Check if an existing local event on this date matches title, start, and end time
+        let existingLocal = null;
+        if (incoming.title && incoming.startTime) {
+          const incTitle = incoming.title.trim().toLowerCase();
+          for (let k = 0; k < allEvents.length; k++) {
+            const cand = allEvents[k];
+            if (cand && cand.date === incoming.date && cand.startTime === incoming.startTime) {
+              const candTitle = (cand.title || '').trim().toLowerCase();
+              if (candTitle === incTitle) {
+                existingLocal = cand;
+                break;
+              }
+            }
+          }
+        }
+
+        if (existingLocal) {
+          // Reconcile and pair local event with incoming external ID to prevent duplicate clone
+          existingLocal.externalId = incoming.externalId;
+          if (provider === 'google') existingLocal.googleEventId = incoming.externalId;
+          if (provider === 'microsoft') existingLocal.microsoftEventId = incoming.externalId;
+          existingLocal.etag = incoming.etag;
+          existingLocal.syncHash = incomingHash;
+          existingLocal.lastSyncedAt = Date.now();
+          existingLocal.lastModified = Date.now();
+          existingLocal.isDirty = false;
+          updated++;
+          eventMap.set(incoming.externalId, existingLocal);
+          continue;
+        }
+
         // 3. New event imported from cloud (default to locked for fixed wall-clock schedule)
         const newEvent = Object.assign({}, incoming, {
           id: incoming.id || ('cal-sync-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),

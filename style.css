@@ -5149,6 +5149,10 @@ body {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 2px var(--accent-cyan) !important;
 }
 
+.day-event-card.is-dragging-cal-event {
+  right: auto !important;
+}
+
 .day-event-card:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.22);
