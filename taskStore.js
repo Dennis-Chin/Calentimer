@@ -1247,6 +1247,8 @@ export class TaskStore {
         googleEventId: task.googleEventId || null,
         microsoftEventId: task.microsoftEventId || null,
         externalId: task.externalId || null,
+        externalCalendarId: task.externalCalendarId || null,
+        isCalentimerMirror: Boolean(task.isCalentimerMirror),
         lastModified: task.lastModified || Date.now()
       };
 
@@ -1293,6 +1295,8 @@ export class TaskStore {
         googleEventId: calEvent.googleEventId || null,
         microsoftEventId: calEvent.microsoftEventId || null,
         externalId: calEvent.externalId || null,
+        externalCalendarId: calEvent.externalCalendarId || null,
+        isCalentimerMirror: Boolean(calEvent.isCalentimerMirror),
         lastModified: calEvent.lastModified || Date.now()
       };
 
@@ -1345,6 +1349,30 @@ export class TaskStore {
       const calMap = new Map();
       todayCalEvents.forEach(e => calMap.set(e.id, e));
 
+      const googleSelected = this.getGoogleSelectedCalendarIds();
+      const msSelected = this.getMicrosoftSelectedCalendarIds();
+      const googleSelectedSet = Array.isArray(googleSelected) ? new Set(googleSelected) : null;
+      const msSelectedSet = Array.isArray(msSelected) ? new Set(msSelected) : null;
+      const googleEmail = this.getGoogleUserEmail();
+
+      const isCalendarDeselected = (item) => {
+        if (!item) return false;
+        const p = item.provider || item.source;
+        if (p === 'google' && googleSelectedSet !== null) {
+          const extId = item.externalCalendarId || 'primary';
+          const ok = googleSelectedSet.has(extId) ||
+            (extId === 'primary' && (googleSelectedSet.has('primary') || (googleEmail && googleSelectedSet.has(googleEmail)))) ||
+            (googleEmail && extId === googleEmail && googleSelectedSet.has('primary'));
+          return !ok;
+        }
+        if (p === 'microsoft' && msSelectedSet !== null) {
+          const extId = item.externalCalendarId || 'primary';
+          const ok = msSelectedSet.has(extId) || (extId === 'primary' && msSelectedSet.has('primary'));
+          return !ok;
+        }
+        return false;
+      };
+
       let tasksChanged = rawTasks.length !== currentTasks.length;
       let calChanged = false;
 
@@ -1354,6 +1382,7 @@ export class TaskStore {
       // 1. Sync Calendar Events -> Tasks (Events created or edited on Calendar for Today)
       todayCalEvents.forEach(calEvent => {
         if (deletedIds.has(calEvent.id)) return;
+        if (isCalendarDeselected(calEvent)) return;
         const existingTask = taskMap.get(calEvent.id);
         const isEventLocked = Boolean(calEvent.isLocked);
         const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
@@ -1378,6 +1407,8 @@ export class TaskStore {
             googleEventId: calEvent.googleEventId || null,
             microsoftEventId: calEvent.microsoftEventId || null,
             externalId: calEvent.externalId || null,
+            externalCalendarId: calEvent.externalCalendarId || null,
+            isCalentimerMirror: Boolean(calEvent.isCalentimerMirror),
             lastModified: calEvent.lastModified || Date.now()
           };
           mergedTasks.push(newTask);
@@ -1399,6 +1430,8 @@ export class TaskStore {
             existingTask.startTime = calEvent.startTime;
             existingTask.endTime = calEvent.endTime;
             existingTask.lastModified = calMod;
+            if (calEvent.externalCalendarId) existingTask.externalCalendarId = calEvent.externalCalendarId;
+            if (typeof calEvent.isCalentimerMirror === 'boolean') existingTask.isCalentimerMirror = calEvent.isCalentimerMirror;
             tasksChanged = true;
           }
         }
@@ -1420,7 +1453,7 @@ export class TaskStore {
           task.source === 'google' || task.source === 'microsoft' ||
           task.provider === 'google' || task.provider === 'microsoft' ||
           (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0 || task.id.indexOf('cal-sync-') === 0))));
-        if (isExternal && !calMap.has(task.id)) {
+        if (isExternal && (!calMap.has(task.id) || isCalendarDeselected(task))) {
           tasksChanged = true;
           return;
         }
@@ -1846,7 +1879,12 @@ export class TaskStore {
       if (Array.isArray(calendarIds)) {
         safeSetItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS, JSON.stringify(calendarIds));
       } else {
-        safeSetItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS, '[]');
+        try {
+          if (typeof localStorage !== 'undefined' && localStorage !== null) {
+            localStorage.removeItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS);
+          }
+        } catch (_) {}
+        delete memoryStorage[STORAGE_KEYS.GOOGLE_SELECTED_CALS];
       }
       this._notify();
     } catch (_) {}
@@ -1876,7 +1914,12 @@ export class TaskStore {
       if (Array.isArray(calendarIds)) {
         safeSetItem(STORAGE_KEYS.MS_SELECTED_CALS, JSON.stringify(calendarIds));
       } else {
-        safeSetItem(STORAGE_KEYS.MS_SELECTED_CALS, '[]');
+        try {
+          if (typeof localStorage !== 'undefined' && localStorage !== null) {
+            localStorage.removeItem(STORAGE_KEYS.MS_SELECTED_CALS);
+          }
+        } catch (_) {}
+        delete memoryStorage[STORAGE_KEYS.MS_SELECTED_CALS];
       }
       this._notify();
     } catch (_) {}

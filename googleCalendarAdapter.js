@@ -632,11 +632,11 @@ export class GoogleCalendarAdapter {
 
         do {
           const apiCalId = isPrimary ? 'primary' : calId;
-          let url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(apiCalId)}/events?singleEvents=true&maxResults=250`;
+          let url = `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(apiCalId)}/events?maxResults=250`;
           if (isPrimary && syncToken) {
             url += `&syncToken=${encodeURIComponent(syncToken)}`;
           } else {
-            url += `&timeMin=${encodeURIComponent(min)}&timeMax=${encodeURIComponent(max)}`;
+            url += `&singleEvents=true&timeMin=${encodeURIComponent(min)}&timeMax=${encodeURIComponent(max)}`;
           }
           if (pageToken) {
             url += `&pageToken=${encodeURIComponent(pageToken)}`;

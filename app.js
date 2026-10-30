@@ -1883,6 +1883,40 @@ function setupControls() {
     if (taskObj && taskObj.externalId && typeof taskStore.addDeletedId === 'function') {
       taskStore.addDeletedId(taskObj.externalId);
     }
+
+    const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+      ? taskStore.getGoogleCalentimerCalendarId()
+      : null;
+    const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+      ? taskStore.getMicrosoftCalentimerCalendarId()
+      : null;
+    const isCalentimerMirror = Boolean(
+      taskObj && (
+        taskObj.isCalentimerMirror ||
+        (googleCalentimerId && taskObj.externalCalendarId === googleCalentimerId) ||
+        (msCalentimerId && taskObj.externalCalendarId === msCalentimerId)
+      )
+    );
+    const isCreatedInApp = Boolean(
+      taskObj && (
+        (taskObj.origin === 'local' || taskObj.createdInApp === true) ||
+        (taskObj.id && (taskObj.id.indexOf('task-') === 0 || taskObj.id.indexOf('cal-event-') === 0))
+      )
+    );
+    const isExplicitlyExternal = Boolean(
+      taskObj && (
+        taskObj.origin === 'external' ||
+        taskObj.createdInApp === false ||
+        (taskObj.id && (taskObj.id.indexOf('cal-gcal-') === 0 || taskObj.id.indexOf('cal-ms-') === 0 || taskObj.id.indexOf('cal-sync-') === 0))
+      )
+    );
+
+    if ((isCreatedInApp && !isExplicitlyExternal) || isCalentimerMirror) {
+      if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
+        calendarSyncService.pushEventDelete(taskObj);
+      }
+    }
+
     taskStore.deleteTask(taskId);
     if (runtime) {
       runtime.deleteTask(taskId);
@@ -3162,7 +3196,10 @@ function syncDynamicScheduleTimesToCalendar() {
         calEvent.startTime = schedTask.startTime;
         calEvent.endTime = schedTask.endTime;
         calEvent.plannedDuration = schedTask.plannedDuration;
-        calEvent.isDirty = true;
+        const isCreating = (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.isCreatingEvent === 'function' && calendarSyncService.isCreatingEvent(schedTask.id));
+        if (!isCreating) {
+          calEvent.isDirty = true;
+        }
         calEvent.lastModified = Date.now();
         if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.computeSyncHash === 'function') {
           calEvent.syncHash = calendarSyncService.computeSyncHash(calEvent);
@@ -3170,6 +3207,8 @@ function syncDynamicScheduleTimesToCalendar() {
         updatedAnyCal = true;
       }
     } else {
+      const isCreating = (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.isCreatingEvent === 'function' && calendarSyncService.isCreatingEvent(schedTask.id));
+      const hasExtId = Boolean(schedTask.externalId || schedTask.googleEventId || schedTask.microsoftEventId);
       calEvents.push({
         id: schedTask.id,
         title: schedTask.title,
@@ -3181,10 +3220,18 @@ function syncDynamicScheduleTimesToCalendar() {
         useTimeBank: schedTask.useTimeBank !== false,
         emoji: schedTask.emoji || '📌',
         category: schedTask.category || 'General',
+        color: schedTask.color || (typeof classifierGetCategoryColor === 'function' ? classifierGetCategoryColor(schedTask.category) : '#3b82f6'),
+        colorId: schedTask.colorId || null,
         source: schedTask.source || 'local',
-        origin: 'local',
-        createdInApp: true,
-        isDirty: true,
+        origin: schedTask.origin || 'local',
+        createdInApp: schedTask.createdInApp !== undefined ? Boolean(schedTask.createdInApp) : true,
+        isDirty: (!isCreating && !hasExtId) ? Boolean(schedTask.isDirty) : false,
+        googleEventId: schedTask.googleEventId || null,
+        microsoftEventId: schedTask.microsoftEventId || null,
+        externalId: schedTask.externalId || schedTask.googleEventId || schedTask.microsoftEventId || null,
+        externalCalendarId: schedTask.externalCalendarId || null,
+        isCalentimerMirror: Boolean(schedTask.isCalentimerMirror),
+        provider: schedTask.provider || 'local',
         lastModified: Date.now()
       });
       updatedAnyCal = true;
@@ -6708,6 +6755,7 @@ function setupNavigationAndModals() {
       source: 'local',
       origin: 'local',
       createdInApp: true,
+      isDirty: false,
       provider: syncGoogle ? 'google' : (syncMS ? 'microsoft' : 'local')
     });
 
@@ -6718,10 +6766,13 @@ function setupNavigationAndModals() {
             taskStore.updateTask(newTask.id, {
               googleEventId: res.externalId,
               externalId: res.externalId,
-              provider: 'google'
+              provider: 'google',
+              isDirty: false
             });
           }
-        }).catch(() => {});
+        }).catch(() => {
+          taskStore.updateTask(newTask.id, { isDirty: true });
+        });
       }
     }
     if (syncMS) {
@@ -6731,10 +6782,13 @@ function setupNavigationAndModals() {
             taskStore.updateTask(newTask.id, {
               microsoftEventId: res.externalId,
               externalId: res.externalId,
-              provider: 'microsoft'
+              provider: 'microsoft',
+              isDirty: false
             });
           }
-        }).catch(() => {});
+        }).catch(() => {
+          taskStore.updateTask(newTask.id, { isDirty: true });
+        });
       }
     }
 
@@ -7283,8 +7337,11 @@ function setupNavigationAndModals() {
             if (countBadge) {
               countBadge.textContent = newSelectedIds.length === calendars.length ? 'All' : `${newSelectedIds.length}/${calendars.length}`;
             }
+            if (calendarView && typeof calendarView.render === 'function') calendarView.render();
+            refreshAppScheduleFromStore();
             if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.syncAll === 'function') {
               calendarSyncService.syncAll().then(() => {
+                refreshAppScheduleFromStore();
                 if (calendarView && typeof calendarView.render === 'function') calendarView.render();
               }).catch(() => {});
             }

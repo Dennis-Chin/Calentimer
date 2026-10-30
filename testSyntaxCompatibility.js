@@ -315,6 +315,13 @@ assert(runtimeContent.includes('this.taskDurationMs = plannedDur * 60 * 1000;') 
 assert(storeContent.includes('fixedEndTime: (task && task.fixedEndTime) ? task.fixedEndTime : null,'), 'taskStore.js supports fixedEndTime in addTask');
 assert(schedEngineContent.includes('fixedEndTime: task.fixedEndTime || null,'), 'schedulerEngine.js propagates fixedEndTime in calculateSchedule');
 
+console.log('\n--- 12. Testing Double-Creation Guards, Dedicated Mirror Exception & Sync Token Query ---');
+assert(gAdapterContent.includes('if (isPrimary && syncToken) {') && gAdapterContent.includes('url += `&syncToken=${encodeURIComponent(syncToken)}`') && gAdapterContent.includes('url += `&singleEvents=true&timeMin='), 'googleCalendarAdapter.js omits singleEvents=true when syncToken is present');
+assert(syncServiceContent.includes('this._creatingEventIds.has(ev.id)') && syncServiceContent.includes('isCreatingEvent(id)'), 'calendarSyncService.js guards against double-pushes with _creatingEventIds and isCreatingEvent');
+assert(syncServiceContent.includes('isDedicatedCalentimerEvent') && syncServiceContent.includes('if (!isDedicatedCalentimerEvent && (isExplicitlyExternal || !isCreatedInApp))'), 'calendarSyncService.js enforces Calentimer Mirror deletion exception while safeguarding external items');
+assert(storeContent.includes('localStorage.removeItem(STORAGE_KEYS.GOOGLE_SELECTED_CALS)') && storeContent.includes('delete memoryStorage[STORAGE_KEYS.GOOGLE_SELECTED_CALS]'), 'taskStore.js cleans up storage key when setting selected calendar ids to null');
+assert(calContent.includes('googleSelectedSet !== null') && calContent.includes('msSelectedSet !== null'), 'calendarView.js filters visible events by selected calendar sets');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

@@ -819,6 +819,7 @@ export class MicrosoftCalendarAdapter {
         const ev = this.mapToCalentimerEvent(raw, defaultCalColor);
         if (ev) {
           ev.externalCalendarId = primaryCal.id || 'primary';
+          ev.isCalentimerMirror = false;
           allEvents.push(ev);
         }
       }
@@ -837,11 +838,20 @@ export class MicrosoftCalendarAdapter {
       };
     }
 
-    // 2. Fetch Secondary Calendars (if user has multiple calendars and this is a full sync)
-    if (!deltaLink && calendars.length > 1) {
+    // 2. Fetch Secondary Calendars (if user has multiple calendars)
+    if (calendars.length > 1) {
+      const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+        ? taskStore.getMicrosoftCalentimerCalendarId()
+        : null;
+
       for (let cIdx = 0; cIdx < calendars.length; cIdx++) {
         const secCal = calendars[cIdx];
         if (secCal.primary || secCal.isDefaultCalendar || secCal.id === 'primary') continue;
+
+        const isCalentimerMirror = Boolean(
+          (msCalentimerId && secCal.id === msCalentimerId) ||
+          (secCal.name && secCal.name.trim().toLowerCase() === 'calentimer')
+        );
 
         try {
           let secUrl = `${GRAPH_API_BASE}/me/calendars/${encodeURIComponent(secCal.id)}/calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$top=100`;
@@ -871,6 +881,7 @@ export class MicrosoftCalendarAdapter {
               const ev = this.mapToCalentimerEvent(raw, secCal.hexColor);
               if (ev) {
                 ev.externalCalendarId = secCal.id;
+                ev.isCalentimerMirror = isCalentimerMirror;
                 allEvents.push(ev);
               }
             }

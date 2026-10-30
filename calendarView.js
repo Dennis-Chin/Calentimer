@@ -505,6 +505,17 @@ export class CalendarView {
       el.btnDeleteEvent.addEventListener('click', () => {
         if (this.selectedEvent && this.selectedEvent.id) {
           const evToDelete = this.selectedEvent;
+          const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+            ? taskStore.getGoogleCalentimerCalendarId()
+            : null;
+          const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+            ? taskStore.getMicrosoftCalentimerCalendarId()
+            : null;
+          const isCalentimerMirror = Boolean(
+            evToDelete.isCalentimerMirror ||
+            (googleCalentimerId && evToDelete.externalCalendarId === googleCalentimerId) ||
+            (msCalentimerId && evToDelete.externalCalendarId === msCalentimerId)
+          );
           const isCreatedInApp = Boolean(
             (evToDelete.origin === 'local' || evToDelete.createdInApp === true) ||
             (evToDelete.id && (evToDelete.id.indexOf('cal-event-') === 0 || evToDelete.id.indexOf('task-') === 0))
@@ -520,13 +531,13 @@ export class CalendarView {
             taskStore.addDeletedId(evToDelete.externalId);
           }
 
-          if (isCreatedInApp && !isExplicitlyExternal) {
+          if ((isCreatedInApp && !isExplicitlyExternal) || isCalentimerMirror) {
             if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.pushEventDelete === 'function') {
               calendarSyncService.pushEventDelete(evToDelete);
             }
             this._showToast('🗑️ Event deleted');
           } else {
-            // External imported event: strictly protected from remote deletion!
+            // External imported event from non-Calentimer calendar: strictly protected from remote deletion!
             this._showToast('🗑️ Event removed from Calentimer (external calendar unchanged)');
           }
 
@@ -1411,6 +1422,19 @@ export class CalendarView {
       ? taskStore.getMicrosoftCalendarVisible()
       : true;
 
+    const googleSelected = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleSelectedCalendarIds === 'function')
+      ? taskStore.getGoogleSelectedCalendarIds()
+      : null;
+    const msSelected = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftSelectedCalendarIds === 'function')
+      ? taskStore.getMicrosoftSelectedCalendarIds()
+      : null;
+
+    const googleSelectedSet = Array.isArray(googleSelected) ? new Set(googleSelected) : null;
+    const msSelectedSet = Array.isArray(msSelected) ? new Set(msSelected) : null;
+    const googleUserEmail = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleUserEmail === 'function')
+      ? taskStore.getGoogleUserEmail()
+      : null;
+
     return allEvents.filter(ev => {
       if (!ev) return false;
       if (ev.title === '[Calentimer Cloud Sync]' || ev.summary === '[Calentimer Cloud Sync]') return false;
@@ -1423,8 +1447,25 @@ export class CalendarView {
         return true;
       }
       const prov = (ev.provider || ev.source) ? (ev.provider || ev.source) : 'local';
-      if (prov === 'google' && !isGoogleVis) return false;
-      if (prov === 'microsoft' && !isMsVis) return false;
+      if (prov === 'google') {
+        if (!isGoogleVis) return false;
+        if (googleSelectedSet !== null) {
+          const extCalId = ev.externalCalendarId || 'primary';
+          const isSelected = googleSelectedSet.has(extCalId) ||
+            (extCalId === 'primary' && (googleSelectedSet.has('primary') || (googleUserEmail && googleSelectedSet.has(googleUserEmail)))) ||
+            (googleUserEmail && extCalId === googleUserEmail && googleSelectedSet.has('primary'));
+          if (!isSelected) return false;
+        }
+      }
+      if (prov === 'microsoft') {
+        if (!isMsVis) return false;
+        if (msSelectedSet !== null) {
+          const extCalId = ev.externalCalendarId || 'primary';
+          const isSelected = msSelectedSet.has(extCalId) ||
+            (extCalId === 'primary' && msSelectedSet.has('primary'));
+          if (!isSelected) return false;
+        }
+      }
       return true;
     });
   }
@@ -5067,7 +5108,7 @@ export class CalendarView {
         source: 'local',
         origin: 'local',
         createdInApp: true,
-        isDirty: isSyncGoogle || isSyncMS,
+        isDirty: false,
         provider: isSyncGoogle ? 'google' : (isSyncMS ? 'microsoft' : 'local')
       });
 
@@ -5093,7 +5134,9 @@ export class CalendarView {
               });
               this.render();
             }
-          }).catch(() => {});
+          }).catch(() => {
+            taskStore.updateCalendarEvent(newEv.id, { isDirty: true });
+          });
         }
       }
       if (isSyncMS) {
@@ -5112,7 +5155,9 @@ export class CalendarView {
               });
               this.render();
             }
-          }).catch(() => {});
+          }).catch(() => {
+            taskStore.updateCalendarEvent(newEv.id, { isDirty: true });
+          });
         }
       }
 

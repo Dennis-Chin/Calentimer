@@ -993,6 +993,70 @@ if (typeof global.document === 'undefined') {
       manualSyncThrew = Boolean(manualErr && manualErr.message && manualErr.message.indexOf('Google session expired') !== -1);
     }
     assert(manualSyncThrew, 'Manual sync throws informative user error when session expired');
+
+    // 7. Testing In-Flight Double Creation Guard & Calentimer Mirror Remote Delete
+    console.log('\n--- 13. Testing In-Flight Double-Creation Guard & Calentimer Mirror Remote Delete ---');
+    const mockGAdapter2 = createMockAdapter('google', 'test@gmail.com');
+    await mockGAdapter2.requestAccessToken();
+    const mockMAdapter2 = createMockAdapter('microsoft', 'test@outlook.com');
+    await mockMAdapter2.requestAccessToken();
+
+    const service2 = new CalendarSyncService({
+      googleAdapter: mockGAdapter2,
+      microsoftAdapter: mockMAdapter2
+    });
+
+    // Verify _creatingEventIds guard
+    const testEvId = 'event-guard-test-' + Date.now();
+    assert(service2.isCreatingEvent(testEvId) === false, 'isCreatingEvent returns false initially');
+    service2._creatingEventIds.add(testEvId);
+    assert(service2.isCreatingEvent(testEvId) === true, 'isCreatingEvent returns true while added to Set');
+
+    taskStore.saveCalendarEvents([
+      { id: testEvId, title: 'In-Flight Event', date: '2026-10-30', startTime: '09:00', endTime: '10:00', isDirty: true, provider: 'google' }
+    ]);
+    const pushRes = await service2._pushDirtyEvents('google');
+    assert(pushRes.pushed === 0, '_pushDirtyEvents strictly skips events currently in _creatingEventIds to prevent duplicate creation');
+    service2._creatingEventIds.delete(testEvId);
+    assert(service2.isCreatingEvent(testEvId) === false, 'isCreatingEvent returns false after cleanup');
+
+    // Verify Dedicated Calentimer Mirror deletion exception
+    const googleMirrorCalId = 'c_dedicated_calentimer_test';
+    taskStore.setGoogleCalentimerCalendarId(googleMirrorCalId);
+
+    // Case A: Imported from Calentimer mirror calendar (has id starting with cal-gcal- and isCalentimerMirror: true)
+    const mirrorEv = {
+      id: 'cal-gcal-mirror-item-1',
+      externalId: 'ext_mirror_123',
+      externalCalendarId: googleMirrorCalId,
+      isCalentimerMirror: true,
+      origin: 'external',
+      createdInApp: false,
+      provider: 'google'
+    };
+    const mirrorDelRes = await service2.pushEventDelete(mirrorEv);
+    assert(mirrorDelRes === true, 'pushEventDelete permits remote deletion of dedicated Calentimer mirror events');
+    assert(mockGAdapter2.getDeletedExternalIds().indexOf('ext_mirror_123') !== -1, 'adapter.deleteEvent called with mirror event externalId');
+
+    // Case B: Genuine personal calendar external meeting
+    const externalMeeting = {
+      id: 'cal-gcal-personal-meeting-1',
+      externalId: 'ext_personal_456',
+      externalCalendarId: 'primary',
+      isCalentimerMirror: false,
+      origin: 'external',
+      createdInApp: false,
+      provider: 'google'
+    };
+    const meetingDelRes = await service2.pushEventDelete(externalMeeting);
+    assert(meetingDelRes === false, 'pushEventDelete strictly blocks remote deletion of genuine personal external meetings via Safety Shield');
+    assert(mockGAdapter2.getDeletedExternalIds().indexOf('ext_personal_456') === -1, 'adapter.deleteEvent was NOT called for personal meeting');
+
+    // Verify setGoogleSelectedCalendarIds null cleanup
+    taskStore.setGoogleSelectedCalendarIds(['cal_1', 'cal_2']);
+    assert(Array.isArray(taskStore.getGoogleSelectedCalendarIds()), 'getGoogleSelectedCalendarIds returns array when set');
+    taskStore.setGoogleSelectedCalendarIds(null);
+    assert(taskStore.getGoogleSelectedCalendarIds() === null, 'setGoogleSelectedCalendarIds(null) resets to null without saving empty array');
   }
 
   console.log('\n========================================');

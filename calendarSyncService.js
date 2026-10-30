@@ -25,6 +25,11 @@ export class CalendarSyncService {
     this._visibilityHandler = null;
     this.isAutoSyncRunning = false;
     this.cloudSyncEventId = null;
+    this._creatingEventIds = new Set();
+  }
+
+  isCreatingEvent(id) {
+    return Boolean(id && this._creatingEventIds.has(id));
   }
 
   /**
@@ -478,6 +483,8 @@ export class CalendarSyncService {
         if (incoming.emoji) existing.emoji = incoming.emoji;
         if (incoming.color) existing.color = incoming.color;
         if (incoming.colorId) existing.colorId = incoming.colorId;
+        if (incoming.externalCalendarId) existing.externalCalendarId = incoming.externalCalendarId;
+        if (typeof incoming.isCalentimerMirror === 'boolean') existing.isCalentimerMirror = incoming.isCalentimerMirror;
         existing.etag = incoming.etag;
         existing.syncHash = incomingHash;
         existing.lastSyncedAt = Date.now();
@@ -489,6 +496,7 @@ export class CalendarSyncService {
           hasTodayChanges = true;
         }
       } else {
+        if (!incoming.date) continue;
         // 3. New event imported from cloud (default to locked for fixed wall-clock schedule)
         const newEvent = Object.assign({}, incoming, {
           id: incoming.id || ('cal-sync-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5)),
@@ -514,6 +522,14 @@ export class CalendarSyncService {
 
     if (added > 0 || updated > 0 || deleted > 0) {
       taskStore.saveCalendarEvents(updatedEvents);
+      this._notifySyncStatus(false, {
+        action: 'events_reconciled',
+        provider: provider,
+        added: added,
+        updated: updated,
+        deleted: deleted,
+        hasTodayChanges: hasTodayChanges
+      });
     }
     if (typeof taskStore.syncScheduleAndCalendar === 'function') {
       taskStore.syncScheduleAndCalendar(todayStr);
@@ -529,6 +545,7 @@ export class CalendarSyncService {
     const allEvents = taskStore.getCalendarEvents();
     const dirtyEvents = allEvents.filter(ev => {
       if (!ev || !ev.isDirty) return false;
+      if (this._creatingEventIds.has(ev.id)) return false; // In-flight creation guard
       const p = (ev.provider || ev.source || 'local');
       if (provider === 'google') {
         return Boolean(p === 'google' || ev.googleEventId || (p === 'local' && ev.externalId));
@@ -558,17 +575,33 @@ export class CalendarSyncService {
             pushed++;
           }
         } else {
-          const res = await adapter.createEvent(ev);
-          if (res && (res.externalId || res.id)) {
-            const newExtId = res.externalId || res.id;
-            if (provider === 'google') ev.googleEventId = newExtId;
-            if (provider === 'microsoft') ev.microsoftEventId = newExtId;
-            ev.externalId = newExtId;
-            ev.etag = res.etag;
-            ev.syncHash = this.computeSyncHash(ev);
-            ev.isDirty = false;
-            ev.lastSyncedAt = Date.now();
-            pushed++;
+          this._creatingEventIds.add(ev.id);
+          try {
+            const res = await adapter.createEvent(ev);
+            if (res && (res.externalId || res.id)) {
+              const newExtId = res.externalId || res.id;
+              if (provider === 'google') ev.googleEventId = newExtId;
+              if (provider === 'microsoft') ev.microsoftEventId = newExtId;
+              ev.externalId = newExtId;
+              ev.etag = res.etag;
+              ev.syncHash = this.computeSyncHash(ev);
+              ev.isDirty = false;
+              ev.lastSyncedAt = Date.now();
+              pushed++;
+
+              if (typeof taskStore.getTasks === 'function' && typeof taskStore.updateTask === 'function') {
+                const tasks = taskStore.getTasks();
+                const match = tasks.find(t => t.id === ev.id);
+                if (match) {
+                  const patch = { externalId: newExtId, isDirty: false };
+                  if (provider === 'google') patch.googleEventId = newExtId;
+                  if (provider === 'microsoft') patch.microsoftEventId = newExtId;
+                  taskStore.updateTask(ev.id, patch);
+                }
+              }
+            }
+          } finally {
+            this._creatingEventIds.delete(ev.id);
           }
         }
       } catch (err) {
@@ -679,6 +712,10 @@ export class CalendarSyncService {
     const adapter = this.adapters[provider];
     if (!adapter || !this.isProviderConnected(provider)) return null;
 
+    const eventId = taskOrEvent.id || ('event-' + Date.now());
+    if (this._creatingEventIds.has(eventId)) return null;
+    this._creatingEventIds.add(eventId);
+
     const todayStr = (typeof taskStore.getTodayDateString === 'function')
       ? taskStore.getTodayDateString()
       : new Date().toISOString().split('T')[0];
@@ -700,7 +737,7 @@ export class CalendarSyncService {
     const resolvedColor = taskOrEvent.color || (typeof getCategoryColor === 'function' ? getCategoryColor(category) : '#3b82f6');
 
     const calEvent = {
-      id: taskOrEvent.id || ('event-' + Date.now()),
+      id: eventId,
       title: taskOrEvent.title || 'Event',
       date: taskOrEvent.date || todayStr,
       startTime: startTime,
@@ -709,17 +746,42 @@ export class CalendarSyncService {
       category: category,
       emoji: taskOrEvent.emoji || '📌',
       color: resolvedColor,
+      colorId: taskOrEvent.colorId || null,
       provider: provider,
       source: provider
     };
 
     try {
       const res = await adapter.createEvent(calEvent);
-      if (res && res.externalId) {
+      if (res && (res.externalId || res.id)) {
+        const extId = res.externalId || res.id;
+        const hash = this.computeSyncHash(Object.assign({}, calEvent, { externalId: extId }));
+        const patch = {
+          externalId: extId,
+          etag: res.etag || null,
+          syncHash: hash,
+          isDirty: false,
+          lastSyncedAt: Date.now()
+        };
+        if (provider === 'google') patch.googleEventId = extId;
+        if (provider === 'microsoft') patch.microsoftEventId = extId;
+
+        if (typeof taskStore.updateCalendarEvent === 'function') {
+          taskStore.updateCalendarEvent(eventId, patch);
+        }
+        if (typeof taskStore.getTasks === 'function' && typeof taskStore.updateTask === 'function') {
+          const tasks = taskStore.getTasks();
+          const match = tasks.find(t => t.id === eventId);
+          if (match) {
+            taskStore.updateTask(eventId, patch);
+          }
+        }
         return res;
       }
     } catch (err) {
       console.warn(`CalendarSyncService: Failed to create remote event on ${provider}:`, err);
+    } finally {
+      this._creatingEventIds.delete(eventId);
     }
     return null;
   }
@@ -727,14 +789,41 @@ export class CalendarSyncService {
   /**
    * Pushes an event delete to the appropriate connected provider.
    * STRICT SAFETY SHIELD: Remote deletions are ONLY permitted for events originally
-   * created within Calentimer (origin === 'local' or createdInApp === true).
-   * External calendar meetings (origin === 'external') are strictly blocked from remote deletion.
+   * created within Calentimer (origin === 'local' or createdInApp === true),
+   * OR events residing inside Calentimer's dedicated secondary calendar.
+   * External calendar meetings (origin === 'external' on non-Calentimer calendars) are strictly blocked from remote deletion.
    * @param {object|string} eventOrTask 
    * @param {string} [provider]
    * @returns {Promise<boolean>}
    */
   async pushEventDelete(eventOrTask, provider) {
     if (!eventOrTask) return false;
+
+    // Dedicated Calentimer Mirror Calendar Exception
+    const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+      ? taskStore.getGoogleCalentimerCalendarId()
+      : null;
+    const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+      ? taskStore.getMicrosoftCalentimerCalendarId()
+      : null;
+
+    let isDedicatedCalentimerEvent = false;
+    let targetExtCalId = null;
+
+    if (typeof eventOrTask === 'object' && eventOrTask !== null) {
+      if (eventOrTask.externalCalendarId) {
+        targetExtCalId = eventOrTask.externalCalendarId;
+      }
+      if (eventOrTask.isCalentimerMirror === true) {
+        isDedicatedCalentimerEvent = true;
+      }
+      if (googleCalentimerId && targetExtCalId === googleCalentimerId) {
+        isDedicatedCalentimerEvent = true;
+      }
+      if (msCalentimerId && targetExtCalId === msCalentimerId) {
+        isDedicatedCalentimerEvent = true;
+      }
+    }
 
     // Strict Provenance Verification (Safety Shield)
     let isCreatedInApp = false;
@@ -755,7 +844,7 @@ export class CalendarSyncService {
       }
     }
 
-    if (isExplicitlyExternal || !isCreatedInApp) {
+    if (!isDedicatedCalentimerEvent && (isExplicitlyExternal || !isCreatedInApp)) {
       console.warn('[SAFETY SHIELD] Blocked remote deletion of external calendar event:', typeof eventOrTask === 'object' ? eventOrTask.id : eventOrTask);
       return false; // Safely refuse: user's real Google / Microsoft calendar is never touched
     }
@@ -777,7 +866,7 @@ export class CalendarSyncService {
     if (!adapter || !this.isProviderConnected(prov)) return false;
 
     try {
-      await adapter.deleteEvent(externalId);
+      await adapter.deleteEvent(externalId, targetExtCalId);
       return true;
     } catch (err) {
       console.warn(`CalendarSyncService: Outbound delete error (${prov}):`, err);
