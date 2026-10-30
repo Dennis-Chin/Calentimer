@@ -2578,9 +2578,11 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
     if (!e.touches || e.touches.length !== 1) return;
 
-    const activeScroll = modal.querySelector('.modal-body') || modal;
+    const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
+    const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
+    const activeScroll = e.target.closest('.modal-body') || visibleScroll;
     const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-    const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header'));
+    const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header'));
 
     if (isAtTop || isHeaderTouch) {
       touchStartY = e.touches[0].clientY;
@@ -2616,9 +2618,11 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
 
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
-      const activeScroll = modal.querySelector('.modal-body') || modal;
+      const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
+      const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
+      const activeScroll = e.target.closest('.modal-body') || visibleScroll;
       const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-      const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header'));
+      const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header'));
 
       if (isAtTop || isHeaderTouch) {
         isPullingDown = true;
@@ -5015,11 +5019,13 @@ function openSettings() {
   }
   const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
+  const settingsMainPanel = document.getElementById('settingsMainPanel');
   const settingsModalCard = document.getElementById('settingsModal');
   const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
   const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
   if (timerSettingsSubPanel) timerSettingsSubPanel.classList.add('hidden');
   if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
+  if (settingsMainPanel) settingsMainPanel.classList.remove('hidden');
   if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
   if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
   applyTheme(taskStore.getTheme());
@@ -5035,11 +5041,13 @@ function closeSettings() {
   }
   const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
+  const settingsMainPanel = document.getElementById('settingsMainPanel');
   const settingsModalCard = document.getElementById('settingsModal');
   const settingsMainGroup = settingsModalCard ? settingsModalCard.querySelector('.modal-body > .settings-group') : null;
   const settingsMainHeader = settingsModalCard ? settingsModalCard.querySelector('.modal-header') : null;
   if (timerSettingsSubPanel) timerSettingsSubPanel.classList.add('hidden');
   if (calendarSettingsSubPanel) calendarSettingsSubPanel.classList.add('hidden');
+  if (settingsMainPanel) settingsMainPanel.classList.remove('hidden');
   if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
   if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
 }
@@ -7219,6 +7227,8 @@ function setupNavigationAndModals() {
   if (settingRowTimer && timerSettingsSubPanel) {
     settingRowTimer.addEventListener('click', () => {
       ensureHistoryBuffer();
+      const p = document.getElementById('settingsMainPanel');
+      if (p) p.classList.add('hidden');
       if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
       timerSettingsSubPanel.classList.remove('hidden');
@@ -7229,6 +7239,8 @@ function setupNavigationAndModals() {
   if (btnBackTimerSettings && timerSettingsSubPanel) {
     btnBackTimerSettings.addEventListener('click', () => {
       timerSettingsSubPanel.classList.add('hidden');
+      const p = document.getElementById('settingsMainPanel');
+      if (p) p.classList.remove('hidden');
       if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
       mobileServices.hapticTap();
@@ -7266,11 +7278,13 @@ function setupNavigationAndModals() {
 
     const settingsBackdrop = document.getElementById('settingsModalBackdrop');
     const settingsCard = document.getElementById('settingsModal');
+    const settingsMain = document.getElementById('settingsMainPanel');
     const settingsGroup = settingsCard ? settingsCard.querySelector('.modal-body > .settings-group') : null;
     const settingsHeader = settingsCard ? settingsCard.querySelector('.modal-header') : null;
     const timerSub = document.getElementById('timerSettingsSubPanel');
     const calSub = document.getElementById('calendarSettingsSubPanel');
 
+    if (settingsMain) settingsMain.classList.add('hidden');
     if (timerSub) timerSub.classList.add('hidden');
     if (settingsGroup) settingsGroup.classList.add('hidden');
     if (settingsHeader) settingsHeader.classList.add('hidden');
@@ -7441,6 +7455,8 @@ function setupNavigationAndModals() {
     settingRowCalendar.addEventListener('click', () => {
       ensureHistoryBuffer();
       syncCalendarSettingsUI();
+      const p = document.getElementById('settingsMainPanel');
+      if (p) p.classList.add('hidden');
       if (settingsMainGroup) settingsMainGroup.classList.add('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.add('hidden');
       calendarSettingsSubPanel.classList.remove('hidden');
@@ -7451,6 +7467,8 @@ function setupNavigationAndModals() {
   if (btnBackCalendarSettings && calendarSettingsSubPanel) {
     btnBackCalendarSettings.addEventListener('click', () => {
       calendarSettingsSubPanel.classList.add('hidden');
+      const p = document.getElementById('settingsMainPanel');
+      if (p) p.classList.remove('hidden');
       if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
       if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
       mobileServices.hapticTap();
@@ -7711,7 +7729,11 @@ function setupNavigationAndModals() {
   setupScheduleHorizontalSwipeToggle(document.getElementById('taskDrawer'));
   setupScheduleHorizontalSwipeToggle(document.getElementById('calendarModal'));
 
-  // Universal Pull-to-Dismiss on Add Task, Edit Task, To-Do, and Calendar Event Modals
+  // Universal Pull-to-Dismiss on Add Task, Edit Task, To-Do, Settings, and Calendar Event Modals
+  const elSettingsModal = document.getElementById('settingsModal');
+  if (elSettingsModal) {
+    setupModalPullToDismiss(elSettingsModal, closeSettings);
+  }
   const elAddTaskModal = document.getElementById('addTaskModal');
   if (elAddTaskModal) {
     setupModalPullToDismiss(elAddTaskModal, closeAddTaskModal);
