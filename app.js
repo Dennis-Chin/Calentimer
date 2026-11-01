@@ -707,9 +707,14 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
   const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
 
-  // When turning or scrubbing the rotary dial (remainingSec provided), dynamically preview the finish time
-  if (remainingSec !== undefined) {
-    const previewMin = Math.max(1, Math.round(remainingSec / 60));
+  // When turning or scrubbing the rotary dial, dynamically preview the finish time
+  const isDialPreviewActive = Boolean(isDraggingOuterDial || pendingMinuteAdjustment !== 0 || isScrubbingGreenLine);
+  if (isDialPreviewActive) {
+    const fallbackPreviewSec = (isDraggingOuterDial || pendingMinuteAdjustment !== 0)
+      ? Math.max(60, ((isIdle ? baseDialSeconds : (runtime ? runtime.getRemainingSeconds() : 1800)) || 1800) + pendingMinuteAdjustment * 60)
+      : (runtime ? runtime.getRemainingSeconds() : 1800);
+    const activePreviewSec = (remainingSec !== undefined) ? remainingSec : fallbackPreviewSec;
+    const previewMin = Math.max(1, Math.round(activePreviewSec / 60));
     const now = new Date();
     const nowMin = (now.getHours() * 60) + now.getMinutes();
     const startMin = (isRunning || isPaused)
@@ -748,8 +753,12 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
 
   if (isTimespans) {
     // Chronological Mode
+    const origTask = (runtime && runtime.initialTasks && activeTask)
+      ? runtime.initialTasks.find(t => t.id === activeTask.id)
+      : null;
+    const isDialAdjusted = Boolean((activeTask && activeTask.dialAdjusted) || (origTask && origTask.dialAdjusted));
     const isLockedTask = Boolean(activeTask.isLocked);
-    const hasDefinedEndTime = Boolean(activeTask.fixedEndTime);
+    const hasDefinedEndTime = Boolean(activeTask.fixedEndTime) && !isDialAdjusted;
 
     if (isLockedTask && activeTask.startTime && activeTask.endTime) {
       const sMin = parseTimeToMinutes(activeTask.startTime);
@@ -803,7 +812,9 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     // Padlock NOT enabled and end time hasn't been defined:
     // The defined duration is preserved without shrinking.
     // The end time span is free to change dynamically as time moves!
-    const taskDur = activeTask.allocatedDuration || activeTask.plannedDuration || 30;
+    const taskDur = (isIdle && runtime && runtime.taskDurationMs > 0)
+      ? Math.max(1, Math.round(runtime.getRemainingSeconds() / 60))
+      : (activeTask.allocatedDuration || activeTask.plannedDuration || 30);
     const now = new Date();
     const nowMin = (now.getHours() * 60) + now.getMinutes();
 
@@ -816,7 +827,8 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
       activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
       if (totalDurEl) totalDurEl.textContent = `(${taskDur}m)`;
       if (remainingSec === undefined) {
-        renderClockTime(taskDur * 60);
+        const clockSec = (runtime && runtime.taskDurationMs > 0) ? runtime.getRemainingSeconds() : (taskDur * 60);
+        renderClockTime(clockSec);
       }
     } else {
       const taskStartMin = runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin;
@@ -828,8 +840,15 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
       if (runtime && runtime.isOverrunning) {
         // Overrun support: shifts dynamically to current time + overrun
         endMin = (nowMin + remMin) % 1440;
+      } else if (isPaused) {
+        endMin = (nowMin + remMin) % 1440;
       } else {
-        endMin = (taskStartMin + taskDur) % 1440;
+        const anchorMin = runtime.lastResumeTimestamp ? parseTimeToMinutes(new Date(runtime.lastResumeTimestamp)) : taskStartMin;
+        const remFromAnchorMs = runtime.taskDurationMs > 0
+          ? Math.max(0, runtime.taskDurationMs - (runtime.accumulatedElapsedMs || 0))
+          : (remMin * 60000);
+        const remFromAnchorMin = Math.max(1, Math.round(remFromAnchorMs / 60000));
+        endMin = (anchorMin + remFromAnchorMin) % 1440;
       }
       const endStr = formatMinutesToTime(endMin);
 
@@ -1048,6 +1067,15 @@ function setupRotaryWheel() {
   // -------------------------------------------------------------
   function onScrubStart(e) {
     const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
+      if (e) {
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+      }
+      mobileServices.hapticWarning();
+      showToastNotification('Please create a task first before adjusting the timer.');
+      return;
+    }
     if (activeTask && activeTask.isLocked) {
       if (e) {
         e.stopPropagation();
@@ -1163,6 +1191,15 @@ function setupRotaryWheel() {
     if (!rotaryConfirmPill.classList.contains('hidden')) return;
 
     const activeTask = runtime ? runtime.getActiveTask() : null;
+    if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
+      if (e) {
+        e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+      }
+      mobileServices.hapticWarning();
+      showToastNotification('Please create a task first before adjusting the timer.');
+      return;
+    }
     if (activeTask && activeTask.isLocked) {
       if (e) {
         e.stopPropagation();
@@ -1180,9 +1217,8 @@ function setupRotaryWheel() {
     pendingMinuteAdjustment = 0;
     lastAudibleMinuteTick = 0;
 
-    baseDialSeconds = runtime.status === TimerStatus.IDLE
-      ? (((runtime && runtime.getActiveTask()) ? runtime.getActiveTask().allocatedDuration : 0) || 30) * 60
-      : runtime.getRemainingSeconds();
+    baseDialSeconds = runtime.getRemainingSeconds()
+      || (((runtime && runtime.getActiveTask()) ? (runtime.getActiveTask().allocatedDuration || runtime.getActiveTask().plannedDuration) : 0) || 30) * 60;
 
     rotaryPreviewBadge.classList.remove('hidden');
     rotaryPreviewBadge.textContent = '+0m';
@@ -1226,7 +1262,7 @@ function setupRotaryWheel() {
       const currentRemaining = runtime.status === TimerStatus.IDLE
         ? baseDialSeconds
         : runtime.getRemainingSeconds();
-      const previewSeconds = Math.max(1, currentRemaining + pendingMinuteAdjustment * 60);
+      const previewSeconds = Math.max(60, currentRemaining + pendingMinuteAdjustment * 60);
       renderClockTime(previewSeconds);
       updateActiveTaskTimeSpanDynamic(previewSeconds);
 
@@ -1248,23 +1284,31 @@ function setupRotaryWheel() {
     if (pendingMinuteAdjustment !== 0) {
       mobileServices.hapticTap();
 
+      const appliedDeltaMinutes = pendingMinuteAdjustment;
       // Compute exact preview target seconds based on live remaining seconds
       const currentRemaining = runtime.status === TimerStatus.IDLE
         ? baseDialSeconds
         : runtime.getRemainingSeconds();
-      const targetSeconds = Math.max(60, currentRemaining + pendingMinuteAdjustment * 60);
+      const targetSeconds = Math.max(60, currentRemaining + appliedDeltaMinutes * 60);
+
+      // Clear pendingMinuteAdjustment before store update so re-entrant UI updates see the committed state
+      pendingMinuteAdjustment = 0;
 
       // Lock task to this exact target seconds so it preserves seconds and doesn't round to a whole minute!
-      runtime.setActiveTaskTargetSeconds(targetSeconds, pendingMinuteAdjustment);
+      runtime.setActiveTaskTargetSeconds(targetSeconds, appliedDeltaMinutes);
 
       const activeTask = runtime.getActiveTask();
       if (activeTask) {
         const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
         const preserveLock = initTask ? Boolean(initTask.isLocked) : Boolean(activeTask.isLocked);
         activeTask.isLocked = preserveLock;
+        activeTask.fixedEndTime = null;
+        activeTask.dialAdjusted = true;
         taskStore.updateTask(activeTask.id, {
           plannedDuration: activeTask.plannedDuration,
-          isLocked: preserveLock
+          isLocked: preserveLock,
+          fixedEndTime: null,
+          fixedStartTime: preserveLock ? activeTask.fixedStartTime : null
         });
       }
 
@@ -1287,7 +1331,6 @@ function setupRotaryWheel() {
       if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen()) {
         calendarView.render();
       }
-      pendingMinuteAdjustment = 0;
 
       if (runtime.status === TimerStatus.RUNNING) {
         startContinuousWheelAnimation();
@@ -1532,11 +1575,28 @@ function setupControls() {
   }
 
   btnPlayPause.addEventListener('click', () => {
-    mobileServices.hapticTap();
-    analytics.trackInteraction('btn_click', 'btnPlayPause', { action: runtime.status === TimerStatus.RUNNING ? 'pause' : 'start' });
     if (runtime.status === TimerStatus.RUNNING) {
+      mobileServices.hapticTap();
+      analytics.trackInteraction('btn_click', 'btnPlayPause', { action: 'pause' });
       runtime.pause();
     } else {
+      const activeTask = runtime ? runtime.getActiveTask() : null;
+      const hasTasks = Boolean(
+        activeTask &&
+        runtime.initialTasks &&
+        runtime.initialTasks.length > 0 &&
+        runtime.status !== TimerStatus.COMPLETED
+      );
+      if (!hasTasks) {
+        mobileServices.hapticWarning();
+        showToastNotification('Please create a task first before starting the timer.');
+        if (typeof openAddTaskModal === 'function') {
+          openAddTaskModal('work');
+        }
+        return;
+      }
+      mobileServices.hapticTap();
+      analytics.trackInteraction('btn_click', 'btnPlayPause', { action: 'start' });
       runtime.start();
     }
   });
@@ -6789,13 +6849,13 @@ function setupNavigationAndModals() {
     const startInput = document.getElementById('addModalStartTime');
     const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
     const endInput = document.getElementById('addModalEndTime');
-    const fixedEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
+    const rawEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
 
     let duration = parseInt((durInput ? durInput.value : ""), 10);
     if (isNaN(duration) || duration <= 0) {
-      if (fixedStartTime && fixedEndTime) {
+      if (fixedStartTime && rawEndTime) {
         const sMin = parseTimeToMinutes(fixedStartTime);
-        let eMin = parseTimeToMinutes(fixedEndTime);
+        let eMin = parseTimeToMinutes(rawEndTime);
         if (eMin <= sMin) eMin += 1440;
         duration = Math.max(1, eMin - sMin);
       } else {
@@ -6811,6 +6871,14 @@ function setupNavigationAndModals() {
 
     const lockInput = document.getElementById('addModalIsLocked');
     const isLocked = Boolean(lockInput && lockInput.checked);
+    const shouldLockToFixedEndTime = Boolean(
+      rawEndTime && (
+        isLocked ||
+        !addModalFieldState.durationUserDefined ||
+        addModalFieldState.lastEdited === 'end'
+      )
+    );
+    const fixedEndTime = shouldLockToFixedEndTime ? rawEndTime : null;
 
     if (category) taskStore.addCategory(category);
 
@@ -7815,6 +7883,7 @@ function setupNavigationAndModals() {
 
   // Live Digital Clock ticker: dynamic time span before timer starts or when paused
   setInterval(() => {
+    if (isDraggingOuterDial || isScrubbingGreenLine || pendingMinuteAdjustment !== 0) return;
     if (!runtime || !runtime.getActiveTask() || runtime.status === TimerStatus.IDLE || runtime.status === TimerStatus.PAUSED) {
       updateActiveTaskTimeSpanDynamic();
     }

@@ -227,6 +227,41 @@ assert(unlockedTaskRt.getActiveTask().allocatedDuration === 30, 'Active task all
 const expectedEndMin = (currentTotalMin + 30) % 1440;
 const expectedEndStr = `${String(Math.floor(expectedEndMin / 60)).padStart(2, '0')}:${String(expectedEndMin % 60).padStart(2, '0')}`;
 assert(unlockedTaskRt.getActiveTask().endTime === expectedEndStr, `End time span shifted freely to ${expectedEndStr}`);
+lockedTaskRt.pause();
+unlockedTaskRt.pause();
+
+console.log('\n--- 11. Testing No-Tasks Start Prevention & Outer Dial Adjustment Persistence ---');
+const emptyRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: []
+});
+const emptyStartRes = emptyRt.start();
+assert(emptyStartRes && emptyStartRes.success === false && emptyStartRes.reason === 'NO_TASKS', 'Starting with no tasks returns NO_TASKS failure');
+assert(emptyRt.status === TimerStatus.IDLE, 'Status remains IDLE when starting with no tasks');
+
+const dialRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: [
+    {
+      id: 'dial-task-1',
+      title: 'Dial Adjusted Task',
+      plannedDuration: 25,
+      fixedStartTime: startStr,
+      fixedEndTime: endStr,
+      isLocked: false
+    }
+  ]
+});
+// Turn outer dial to 40 minutes (2400s) before starting
+dialRt.setActiveTaskTargetSeconds(40 * 60, 15);
+assert(dialRt.getRemainingSeconds() === 2400, 'IDLE dial adjustment updates getRemainingSeconds to 2400s without snapping back to fixedEndTime');
+assert(dialRt.getActiveTask().fixedEndTime === null, 'IDLE dial adjustment clears fixedEndTime on active task');
+dialRt.start();
+assert(dialRt.taskDurationMs === 40 * 60 * 1000, 'Starting after IDLE dial adjustment preserves the 40m adjusted duration');
+const expectedDialEndMin = (currentTotalMin + 40) % 1440;
+const expectedDialEndStr = `${String(Math.floor(expectedDialEndMin / 60)).padStart(2, '0')}:${String(expectedDialEndMin % 60).padStart(2, '0')}`;
+assert(dialRt.getActiveTask().endTime === expectedDialEndStr, `Running endTime matches adjusted duration (${expectedDialEndStr})`);
+dialRt.pause();
 
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
