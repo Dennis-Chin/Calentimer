@@ -424,6 +424,18 @@ export class CalendarSyncService {
       // 1. Deletion / Cancellation in cloud
       if (incoming.isCancelled || incoming.status === 'cancelled' || incoming.deleted) {
         if (existing) {
+          const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
+            ? taskStore.getGoogleCalentimerCalendarId()
+            : null;
+          const msCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
+            ? taskStore.getMicrosoftCalentimerCalendarId()
+            : null;
+          const isCalentimerMirrorEvent = Boolean(
+            incoming.isCalentimerMirror === true ||
+            existing.isCalentimerMirror === true ||
+            (googleCalentimerId && (incoming.externalCalendarId === googleCalentimerId || existing.externalCalendarId === googleCalentimerId)) ||
+            (msCalentimerId && (incoming.externalCalendarId === msCalentimerId || existing.externalCalendarId === msCalentimerId))
+          );
           const isExplicitExternal = Boolean(
             existing.origin === 'external' ||
             existing.createdInApp === false ||
@@ -436,8 +448,8 @@ export class CalendarSyncService {
             existing.origin === 'local' ||
             existing.createdInApp === true
           );
-          if (isLocalItem) {
-            // Local Calentimer item: detach external sync pairing, do NOT delete local item
+          if (isLocalItem && !isCalentimerMirrorEvent) {
+            // Local Calentimer item (not in remote Calentimer mirror calendar): detach external sync pairing, do NOT delete local item
             if (provider === 'google') existing.googleEventId = null;
             if (provider === 'microsoft') existing.microsoftEventId = null;
             existing.externalId = null;
@@ -446,9 +458,11 @@ export class CalendarSyncService {
             existing.lastModified = Date.now();
             updated++;
           } else {
-            // Pure external event imported from cloud: proceed with deletion
+            // Event from Calentimer calendar (created in app or external) or pure external event cancelled in cloud: proceed with deletion
             if (typeof taskStore.addDeletedId === 'function') {
               taskStore.addDeletedId(existing.id);
+              if (existing.externalId) taskStore.addDeletedId(existing.externalId);
+              if (incoming.externalId) taskStore.addDeletedId(incoming.externalId);
             }
             const idx = updatedEvents.findIndex(e => e.id === existing.id);
             if (idx !== -1) {
@@ -456,10 +470,14 @@ export class CalendarSyncService {
               deleted++;
               if (existing.date === todayStr) {
                 hasTodayChanges = true;
-                if (typeof taskStore.getTasks === 'function' && typeof taskStore.saveTasks === 'function') {
-                  const remainingTasks = taskStore.getTasks().filter(t => t.id !== existing.id);
-                  taskStore.saveTasks(remainingTasks);
-                }
+              }
+              if (typeof taskStore.getTasks === 'function' && typeof taskStore.saveTasks === 'function') {
+                const remainingTasks = taskStore.getTasks().filter(t => {
+                  if (t.id === existing.id) return false;
+                  if (incoming.externalId && (t.externalId === incoming.externalId || t.googleEventId === incoming.externalId || t.microsoftEventId === incoming.externalId)) return false;
+                  return true;
+                });
+                taskStore.saveTasks(remainingTasks);
               }
             }
           }
@@ -467,9 +485,9 @@ export class CalendarSyncService {
         continue;
       }
 
-      const isLockedVal = incoming.isLocked !== undefined
-        ? Boolean(incoming.isLocked)
-        : (existing ? Boolean(existing.isLocked) : true);
+      const isLockedVal = existing
+        ? Boolean(existing.isLocked)
+        : (incoming.isLocked !== undefined ? Boolean(incoming.isLocked) : true);
       const incomingHash = this.computeSyncHash(Object.assign({}, incoming, { isLocked: isLockedVal }));
 
       // 2. Existing local item matching incoming externalId
@@ -546,8 +564,10 @@ export class CalendarSyncService {
           existingLocal.externalId = incoming.externalId;
           if (provider === 'google') existingLocal.googleEventId = incoming.externalId;
           if (provider === 'microsoft') existingLocal.microsoftEventId = incoming.externalId;
+          if (incoming.externalCalendarId) existingLocal.externalCalendarId = incoming.externalCalendarId;
+          if (typeof incoming.isCalentimerMirror === 'boolean') existingLocal.isCalentimerMirror = incoming.isCalentimerMirror;
           existingLocal.etag = incoming.etag;
-          existingLocal.syncHash = incomingHash;
+          existingLocal.syncHash = this.computeSyncHash(Object.assign({}, incoming, { isLocked: Boolean(existingLocal.isLocked) }));
           existingLocal.lastSyncedAt = Date.now();
           existingLocal.lastModified = Date.now();
           existingLocal.isDirty = false;
@@ -559,6 +579,8 @@ export class CalendarSyncService {
             const taskPayload = { externalId: incoming.externalId };
             if (provider === 'google') taskPayload.googleEventId = incoming.externalId;
             if (provider === 'microsoft') taskPayload.microsoftEventId = incoming.externalId;
+            if (incoming.externalCalendarId) taskPayload.externalCalendarId = incoming.externalCalendarId;
+            if (typeof incoming.isCalentimerMirror === 'boolean') taskPayload.isCalentimerMirror = incoming.isCalentimerMirror;
             taskStore.updateTask(existingLocal.id, taskPayload);
           }
           continue;
@@ -650,6 +672,8 @@ export class CalendarSyncService {
               if (provider === 'google') ev.googleEventId = newExtId;
               if (provider === 'microsoft') ev.microsoftEventId = newExtId;
               ev.externalId = newExtId;
+              if (res.externalCalendarId) ev.externalCalendarId = res.externalCalendarId;
+              ev.isCalentimerMirror = true;
               ev.etag = res.etag;
               ev.syncHash = this.computeSyncHash(ev);
               ev.isDirty = false;
@@ -660,9 +684,10 @@ export class CalendarSyncService {
                 const tasks = taskStore.getTasks();
                 const match = tasks.find(t => t.id === ev.id);
                 if (match) {
-                  const patch = { externalId: newExtId, isDirty: false };
+                  const patch = { externalId: newExtId, isDirty: false, isCalentimerMirror: true };
                   if (provider === 'google') patch.googleEventId = newExtId;
                   if (provider === 'microsoft') patch.microsoftEventId = newExtId;
+                  if (res.externalCalendarId) patch.externalCalendarId = res.externalCalendarId;
                   taskStore.updateTask(ev.id, patch);
                 }
               }
@@ -708,13 +733,16 @@ export class CalendarSyncService {
       const created = await adapter.createEvent(event);
       if (created) {
         const hash = this.computeSyncHash(event);
-        taskStore.updateCalendarEvent(event.id, {
+        const createPatch = {
           externalId: created.externalId,
           etag: created.etag,
           syncHash: hash,
           isDirty: false,
+          isCalentimerMirror: true,
           lastSyncedAt: Date.now()
-        });
+        };
+        if (created.externalCalendarId) createPatch.externalCalendarId = created.externalCalendarId;
+        taskStore.updateCalendarEvent(event.id, createPatch);
         return created;
       }
     } catch (err) {
@@ -822,14 +850,16 @@ export class CalendarSyncService {
       const res = await adapter.createEvent(calEvent);
       if (res && (res.externalId || res.id)) {
         const extId = res.externalId || res.id;
-        const hash = this.computeSyncHash(Object.assign({}, calEvent, { externalId: extId }));
+        const hash = this.computeSyncHash(Object.assign({}, calEvent, { externalId: extId, isLocked: Boolean(taskOrEvent.isLocked) }));
         const patch = {
           externalId: extId,
           etag: res.etag || null,
           syncHash: hash,
           isDirty: false,
+          isCalentimerMirror: true,
           lastSyncedAt: Date.now()
         };
+        if (res.externalCalendarId) patch.externalCalendarId = res.externalCalendarId;
         if (provider === 'google') patch.googleEventId = extId;
         if (provider === 'microsoft') patch.microsoftEventId = extId;
 

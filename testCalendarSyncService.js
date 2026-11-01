@@ -678,6 +678,59 @@ if (typeof global.document === 'undefined') {
   const deletedEvent = taskStore.getCalendarEventById('cal-gcal-remote-only-456');
   assert(deletedEvent === null, 'Pure external event was properly deleted when cancelled in cloud');
 
+  // Test that an event in the external Calentimer mirror calendar (even if created in app) DOES get deleted in app when deleted in external Calentimer calendar
+  taskStore.addCalendarEvent({
+    id: 'cal-event-mirror-del-789',
+    title: 'Calentimer Mirror Task',
+    category: 'Study',
+    date: '2026-10-28',
+    startTime: '17:00',
+    endTime: '17:45',
+    externalId: 'ext-mirror-del-88',
+    googleEventId: 'ext-mirror-del-88',
+    isCalentimerMirror: true,
+    provider: 'google',
+    source: 'local',
+    origin: 'local',
+    createdInApp: true
+  });
+  assert(Boolean(taskStore.getCalendarEventById('cal-event-mirror-del-789')), 'Mirror calendar event created in app');
+  syncEngine._reconcileInboundEvents('google', [
+    { externalId: 'ext-mirror-del-88', status: 'cancelled', isCalentimerMirror: true }
+  ]);
+  const deletedMirrorEvent = taskStore.getCalendarEventById('cal-event-mirror-del-789');
+  assert(deletedMirrorEvent === null, 'Calentimer mirror event was properly deleted in app when deleted in external Calentimer calendar');
+
+  // Test Echo Guard on unlocked local event (incoming adapter sets isLocked: true, existing has isLocked: false)
+  const unlockedEv = taskStore.addCalendarEvent({
+    id: 'cal-event-unlocked-echo-1',
+    title: 'Unlocked Overlap Task',
+    category: 'Work',
+    date: '2026-10-28',
+    startTime: '18:00',
+    endTime: '18:30',
+    plannedDuration: 30,
+    isLocked: false,
+    externalId: 'ext-unlocked-echo-1',
+    googleEventId: 'ext-unlocked-echo-1',
+    provider: 'google',
+    source: 'local'
+  });
+  const unlockedHash = syncEngine.computeSyncHash(unlockedEv);
+  taskStore.updateCalendarEvent('cal-event-unlocked-echo-1', { syncHash: unlockedHash });
+  const echoRes = syncEngine._reconcileInboundEvents('google', [{
+    externalId: 'ext-unlocked-echo-1',
+    title: 'Unlocked Overlap Task',
+    category: 'Work',
+    date: '2026-10-28',
+    startTime: '18:00',
+    endTime: '18:30',
+    plannedDuration: 30,
+    isLocked: true,
+    etag: '"etag-unlocked-1"'
+  }]);
+  assert(echoRes.echoes === 1 && echoRes.updated === 0, 'Unlocked event matches syncHash in Echo Guard without false-positive updates');
+
   console.log('\n--- 17. Testing External Calendar Deletion Safety Shield ---');
   taskStore.setGoogleCalendarConnected(true);
   taskStore.setMicrosoftCalendarConnected(true);

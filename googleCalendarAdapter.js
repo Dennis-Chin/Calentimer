@@ -637,6 +637,9 @@ export class GoogleCalendarAdapter {
             url += `&syncToken=${encodeURIComponent(syncToken)}`;
           } else {
             url += `&singleEvents=true&timeMin=${encodeURIComponent(min)}&timeMax=${encodeURIComponent(max)}`;
+            if (isCalentimerMirror) {
+              url += '&showDeleted=true';
+            }
           }
           if (pageToken) {
             url += `&pageToken=${encodeURIComponent(pageToken)}`;
@@ -687,6 +690,39 @@ export class GoogleCalendarAdapter {
             primarySyncToken = data.nextSyncToken;
           }
         } while (pageToken);
+
+        // If this is the dedicated Calentimer mirror calendar, detect events deleted remotely that were omitted from full window listing
+        if (isCalentimerMirror && !calSyncTokenExpired && typeof taskStore !== 'undefined' && typeof taskStore.getCalendarEvents === 'function') {
+          const minDateStr = String(min).split('T')[0];
+          const maxDateStr = String(max).split('T')[0];
+          const localEvents = taskStore.getCalendarEvents();
+          const nowMs = Date.now();
+          for (let k = 0; k < localEvents.length; k++) {
+            const loc = localEvents[k];
+            if (!loc || loc.isDirty) continue;
+            const extId = loc.googleEventId || (loc.provider === 'google' ? loc.externalId : null);
+            if (!extId || seenExternalIds.has(extId)) continue;
+            if (loc.date && (loc.date < minDateStr || loc.date > maxDateStr)) continue;
+            if (loc.lastSyncedAt && (nowMs - loc.lastSyncedAt < 5000)) continue;
+            const belongsToMirror = Boolean(
+              loc.isCalentimerMirror === true ||
+              (calId && loc.externalCalendarId === calId) ||
+              (calentimerCalId && loc.externalCalendarId === calentimerCalId) ||
+              loc.origin === 'local' ||
+              loc.createdInApp === true
+            );
+            if (belongsToMirror) {
+              seenExternalIds.add(extId);
+              allEvents.push({
+                externalId: extId,
+                status: 'cancelled',
+                isCancelled: true,
+                isCalentimerMirror: true,
+                externalCalendarId: calId
+              });
+            }
+          }
+        }
 
         if (calSyncTokenExpired && isPrimary) {
           // If primary sync token was 410 Gone, return expired flag so caller can refetch without token

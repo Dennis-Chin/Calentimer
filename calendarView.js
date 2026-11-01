@@ -1005,7 +1005,11 @@ export class CalendarView {
         const en = this._parseTimeToMinutes(e.endTime);
         return !(s >= endHour * 60 || en <= startHour * 60);
       }).sort((a, b) => {
-        return this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+        const diff = this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+        if (diff !== 0) return diff;
+        const endDiff = this._parseTimeToMinutes(a.endTime) - this._parseTimeToMinutes(b.endTime);
+        if (endDiff !== 0) return endDiff;
+        return String(a.id || '').localeCompare(String(b.id || ''));
       });
 
       for (let j = 0; j < visibleEvents.length; j++) {
@@ -1174,7 +1178,13 @@ export class CalendarView {
           }
         }
 
-        const eventsForDate = allEvents.filter(e => e.date === dStr);
+        const eventsForDate = allEvents.filter(e => e.date === dStr).sort((a, b) => {
+        const diff = this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+        if (diff !== 0) return diff;
+        const endDiff = this._parseTimeToMinutes(a.endTime) - this._parseTimeToMinutes(b.endTime);
+        if (endDiff !== 0) return endDiff;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+      });
         for (let j = 0; j < eventsForDate.length; j++) {
           const ev = eventsForDate[j];
           const startMin = this._parseTimeToMinutes(ev.startTime);
@@ -1770,10 +1780,18 @@ export class CalendarView {
     }
     this._stopTimeTicker();
 
-    // Default to timer tab in the menu bar when closed
+    // Default to timer tab in the menu bar when closed and clear active/focus state on calendar items
     const navItemTimer = document.getElementById('navItemTimer');
     const navItemFullCalendar = document.getElementById('navItemFullCalendar');
-    if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+    const navItemCalendar = document.getElementById('navItemCalendar');
+    if (navItemFullCalendar) {
+      navItemFullCalendar.classList.remove('active');
+      if (typeof navItemFullCalendar.blur === 'function') navItemFullCalendar.blur();
+    }
+    if (navItemCalendar) {
+      navItemCalendar.classList.remove('active');
+      if (typeof navItemCalendar.blur === 'function') navItemCalendar.blur();
+    }
     if (navItemTimer) navItemTimer.classList.add('active');
   }
 
@@ -2151,7 +2169,11 @@ export class CalendarView {
       const en = this._parseTimeToMinutes(e.endTime);
       return !(s >= endHour * 60 || en <= startHour * 60);
     }).sort((a, b) => {
-      return this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+      const diff = this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+      if (diff !== 0) return diff;
+      const endDiff = this._parseTimeToMinutes(a.endTime) - this._parseTimeToMinutes(b.endTime);
+      if (endDiff !== 0) return endDiff;
+      return String(a.id || '').localeCompare(String(b.id || ''));
     });
 
     // Calculate overlapping column layout (0 = left/earlier, 1 = right/indented)
@@ -2414,7 +2436,13 @@ export class CalendarView {
         }
       }
 
-      const eventsForDate = allEvents.filter(e => e.date === dStr);
+      const eventsForDate = allEvents.filter(e => e.date === dStr).sort((a, b) => {
+        const diff = this._parseTimeToMinutes(a.startTime) - this._parseTimeToMinutes(b.startTime);
+        if (diff !== 0) return diff;
+        const endDiff = this._parseTimeToMinutes(a.endTime) - this._parseTimeToMinutes(b.endTime);
+        if (endDiff !== 0) return endDiff;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+      });
 
       // Precompute overlapping column layout for week day
       const weekEventCols = [];
@@ -4746,8 +4774,8 @@ export class CalendarView {
       if (titleModal && isNew) titleModal.textContent = 'Add Break';
       this.setEventEmoji('☕');
       if (el.eventTitleInput) {
-        if (!el.eventTitleInput.value || el.eventTitleInput.value === 'Untitled Task') {
-          el.eventTitleInput.value = 'Break';
+        if (el.eventTitleInput.value === 'Break' || el.eventTitleInput.value === 'Untitled Task') {
+          el.eventTitleInput.value = '';
         }
         el.eventTitleInput.placeholder = 'e.g. Coffee break, walk, stretch';
       }
@@ -4755,7 +4783,10 @@ export class CalendarView {
         el.calEventTitleLabel.textContent = 'Break Name';
       }
       if (isNew) {
-        if (el.eventDurationInput) el.eventDurationInput.value = '10';
+        if (el.eventDurationInput) {
+          el.eventDurationInput.value = '';
+          el.eventDurationInput.placeholder = 'e.g. 30';
+        }
       }
       this.currentCategory = 'Break';
       if (el.eventCategoryInput) el.eventCategoryInput.value = 'Break';
@@ -4779,7 +4810,10 @@ export class CalendarView {
         el.calEventTitleLabel.textContent = 'Event Name';
       }
       if (isNew) {
-        if (el.eventDurationInput) el.eventDurationInput.value = '60';
+        if (el.eventDurationInput) {
+          el.eventDurationInput.value = '';
+          el.eventDurationInput.placeholder = 'e.g. 30';
+        }
       }
       this.currentCategory = 'Work';
       if (el.eventCategoryInput) el.eventCategoryInput.value = 'Work';
@@ -4992,41 +5026,57 @@ export class CalendarView {
 
   _bindClockPicker(btn, nativeInput, textInput, onTimeSelected) {
     if (btn && nativeInput) {
+      const syncNativeFromText = () => {
+        if (textInput && textInput.value && textInput.value.length === 5) {
+          nativeInput.value = textInput.value;
+        }
+      };
+
+      nativeInput.addEventListener('pointerdown', syncNativeFromText, { passive: true });
+      nativeInput.addEventListener('touchstart', syncNativeFromText, { passive: true });
+      nativeInput.addEventListener('focus', syncNativeFromText, { passive: true });
+
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         mobileServices.hapticTap();
-        if (textInput && textInput.value && textInput.value.length === 5) {
-          nativeInput.value = textInput.value;
-        }
+        syncNativeFromText();
+        nativeInput.focus();
         if (typeof nativeInput.showPicker === 'function') {
           try {
             nativeInput.showPicker();
           } catch (_) {
-            nativeInput.focus();
             nativeInput.click();
           }
         } else {
-          nativeInput.focus();
           nativeInput.click();
         }
       });
 
-      nativeInput.addEventListener('change', () => {
+      const handleNativeChange = () => {
         if (nativeInput.value && textInput) {
-          textInput.value = nativeInput.value;
-          textInput.dispatchEvent(new Event('input', { bubbles: true }));
-          textInput.dispatchEvent(new Event('change', { bubbles: true }));
-          if (onTimeSelected) onTimeSelected();
+          const cleanVal = String(nativeInput.value).slice(0, 5);
+          if (cleanVal.length === 5) {
+            textInput.value = cleanVal;
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            textInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (onTimeSelected) onTimeSelected();
+          }
         }
-      });
+      };
+
+      nativeInput.addEventListener('change', handleNativeChange);
+      nativeInput.addEventListener('input', handleNativeChange);
+      nativeInput.addEventListener('blur', handleNativeChange);
     }
   }
 
   _saveEventFromForm() {
     const el = this.elements;
-    const title = el.eventTitleInput ? el.eventTitleInput.value.trim() : '';
-    if (!title) return;
+    let title = el.eventTitleInput ? el.eventTitleInput.value.trim() : '';
+    if (!title) {
+      title = this.currentEventType === 'break' ? 'Break' : 'Event';
+    }
 
     const date = el.eventDateInput ? el.eventDateInput.value : this._formatDateISO(new Date());
     const startTime = el.eventStartTimeInput ? el.eventStartTimeInput.value.trim() : '';

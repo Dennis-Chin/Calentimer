@@ -615,7 +615,7 @@
                     <polyline points="12 6 12 12 16 14"></polyline>
                   </svg>
                 </button>
-                <input type="time" class="time-picker-native-hidden" id="calStartTimeNative" tabindex="-1">
+                <input type="time" class="time-picker-native-hidden" id="calStartTimeNative">
               </div>
             </div>
 
@@ -633,7 +633,7 @@
                     <polyline points="12 6 12 12 16 14"></polyline>
                   </svg>
                 </button>
-                <input type="time" class="time-picker-native-hidden" id="calEndTimeNative" tabindex="-1">
+                <input type="time" class="time-picker-native-hidden" id="calEndTimeNative">
               </div>
             </div>
 
@@ -1000,7 +1000,7 @@
           <div class="edit-task-form-group" style="flex: 1;">
             <label class="edit-task-label">Duration (min)</label>
             <div class="duration-input-wrapper">
-              <input type="number" inputmode="numeric" id="calEventDuration" class="edit-task-input duration-interactive-input" value="60" min="1" max="720" placeholder="60">
+              <input type="number" inputmode="numeric" id="calEventDuration" class="edit-task-input duration-interactive-input" value="60" min="1" max="720" placeholder="e.g. 30">
               <button type="button" class="duration-clock-addon-btn" id="btnCalEventOpenDial" title="Open interactive dial picker">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
@@ -1028,7 +1028,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="calEventStartTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="calEventStartTimeNative">
             </div>
           </div>
           <div class="edit-task-form-group">
@@ -1041,7 +1041,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="calEventEndTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="calEventEndTimeNative">
             </div>
           </div>
         </div>
@@ -1328,7 +1328,7 @@
           <div class="edit-task-form-group" style="flex: 1;">
             <label class="edit-task-label">Duration (min)</label>
             <div class="duration-input-wrapper">
-              <input type="number" inputmode="numeric" id="addModalDuration" class="edit-task-input duration-interactive-input" value="30" min="1" max="720" placeholder="30">
+              <input type="number" inputmode="numeric" id="addModalDuration" class="edit-task-input duration-interactive-input" value="" min="1" max="720" placeholder="e.g. 30">
               <button type="button" class="duration-clock-addon-btn" id="btnAddModalOpenDial" title="Open interactive dial picker">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"></circle>
@@ -1341,7 +1341,7 @@
 
         <div class="quick-duration-chips" id="addModalDurationChips">
           <button type="button" class="duration-chip" data-min="15">15m</button>
-          <button type="button" class="duration-chip active" data-min="30">30m</button>
+          <button type="button" class="duration-chip" data-min="30">30m</button>
           <button type="button" class="duration-chip" data-min="45">45m</button>
           <button type="button" class="duration-chip" data-min="60">60m</button>
           <button type="button" class="duration-chip" data-min="90">90m</button>
@@ -1360,7 +1360,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="addModalStartTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="addModalStartTimeNative">
             </div>
           </div>
           <div class="edit-task-form-group">
@@ -1373,7 +1373,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="addModalEndTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="addModalEndTimeNative">
             </div>
           </div>
         </div>
@@ -1522,7 +1522,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="editTaskStartTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="editTaskStartTimeNative">
             </div>
           </div>
           <div class="edit-task-form-group">
@@ -1535,7 +1535,7 @@
                   <polyline points="12 6 12 12 16 14"></polyline>
                 </svg>
               </button>
-              <input type="time" class="time-picker-native-hidden" id="editTaskEndTimeNative" tabindex="-1">
+              <input type="time" class="time-picker-native-hidden" id="editTaskEndTimeNative">
             </div>
           </div>
         </div>

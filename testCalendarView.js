@@ -848,7 +848,7 @@ calendar.elements.calTypeSegmentBreak.dispatchSimulatedEvent('click');
 assert(calendar.currentEventType === 'break', 'Current event type switched to break');
 assert(calendar.elements.calTypeSegmentBreak.classList.contains('active'), 'Break segment button has active class');
 assert(!calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work segment button does not have active class');
-assert(calendar.elements.eventDurationInput.value === '10', 'Break duration defaults to 10m');
+assert(calendar.elements.eventDurationInput.value === '', 'Break duration does not auto-fill to 10m (uses e.g. 30 placeholder)');
 assert(calendar.currentEmoji === '☕', 'Break emoji is ☕');
 assert(calendar.elements.calEventTitleLabel.textContent === 'Break Name', 'Title label switches to Break Name');
 assert(calendar.elements.btnSaveCalEvent.classList.contains('is-break-btn'), 'Save button has is-break-btn class');
@@ -859,7 +859,7 @@ assert(calendar.elements.eventTimeBankToggle.checked === false, 'Time bank toggl
 calendar.elements.calTypeSegmentWork.dispatchSimulatedEvent('click');
 assert(calendar.currentEventType === 'work', 'Current event type switched back to work');
 assert(calendar.elements.calTypeSegmentWork.classList.contains('active'), 'Work segment button has active class');
-assert(calendar.elements.eventDurationInput.value === '60', 'Work duration restored to 60m');
+assert(calendar.elements.eventDurationInput.value === '', 'Work duration remains empty with e.g. 30 placeholder');
 assert(calendar.currentEmoji === '💼', 'Work emoji is 💼');
 assert(!calendar.elements.btnSaveCalEvent.classList.contains('is-break-btn'), 'Save button removes is-break-btn class');
 assert(calendar.elements.eventTimeBankToggle.checked === false, 'Time bank toggle remains unchecked for new work event');

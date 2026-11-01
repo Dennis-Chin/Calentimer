@@ -3151,10 +3151,15 @@ body {
 
 .time-picker-native-hidden {
   position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.01;
+  width: 28px;
+  height: 28px;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 4;
   border: 0;
   padding: 0;
   margin: 0;

@@ -95,6 +95,7 @@ let isScrubbingGreenLine = false;
 let isDraggingOuterDial = false;
 let currentDialRotationDeg = 0;
 let pendingMinuteAdjustment = 0;
+let baseDialSeconds = 0;
 let lastAudibleMinuteTick = 0;
 
 window.isUserInteracting = () => Boolean(isDraggingTask || isDraggingOuterDial);
@@ -1058,7 +1059,7 @@ function setupRotaryWheel() {
   // Outer dial state
   let dialStartAngleRad = 0;
   let accumulatedDialAngleDeltaDeg = 0;
-  let baseDialSeconds = 0;
+  baseDialSeconds = 0;
 
   // -------------------------------------------------------------
   // Mode 1: Scrub Green Line Handle (Countdown reduction scrubber)
@@ -1961,7 +1962,19 @@ function setupControls() {
 
   // Centralized Unified Task Deletion
   function executeDeleteTask(taskId, taskTitle = 'Task') {
-    const taskObj = taskStore.getTasks().find(t => t.id === taskId);
+    const rawTaskObj = taskStore.getTasks().find(t => t.id === taskId);
+    const calEvObj = (typeof taskStore.getCalendarEventById === 'function')
+      ? taskStore.getCalendarEventById(taskId)
+      : null;
+    const taskObj = (rawTaskObj && calEvObj)
+      ? Object.assign({}, calEvObj, rawTaskObj, {
+          isCalentimerMirror: Boolean(rawTaskObj.isCalentimerMirror || calEvObj.isCalentimerMirror),
+          externalCalendarId: rawTaskObj.externalCalendarId || calEvObj.externalCalendarId || null,
+          externalId: rawTaskObj.externalId || calEvObj.externalId || null,
+          googleEventId: rawTaskObj.googleEventId || calEvObj.googleEventId || null,
+          microsoftEventId: rawTaskObj.microsoftEventId || calEvObj.microsoftEventId || null
+        })
+      : (rawTaskObj || calEvObj || null);
     if (taskObj && taskObj.externalId && typeof taskStore.addDeletedId === 'function') {
       taskStore.addDeletedId(taskObj.externalId);
     }
@@ -2019,8 +2032,13 @@ function setupControls() {
       calendarView.render();
     }
     mobileServices.hapticBuzz();
-    const isExternal = Boolean(taskObj && (taskObj.origin === 'external' || taskObj.source === 'google' || taskObj.source === 'microsoft'));
-    if (isExternal) {
+    const isExternalProtected = Boolean(
+      taskObj &&
+      (taskObj.origin === 'external' || taskObj.source === 'google' || taskObj.source === 'microsoft') &&
+      !isCalentimerMirror &&
+      !(isCreatedInApp && !isExplicitlyExternal)
+    );
+    if (isExternalProtected) {
       showToastNotification(`✓ Removed "${taskTitle}" (external calendar unchanged)`);
     } else {
       showToastNotification(`✓ Deleted "${taskTitle}"`);
@@ -2199,7 +2217,7 @@ function setupControls() {
 
   function onDrawerTouchStart(e) {
     if (isNavSwiping) return;
-    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact')) {
+    if (isDraggingTask) {
       isDrawerTouching = false;
       isDrawerPullingDown = false;
       isDrawerPullingUp = false;
@@ -2225,7 +2243,7 @@ function setupControls() {
       isDrawerTouching = false;
       return;
     }
-    if (isDraggingTask || e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact')) {
+    if (isDraggingTask) {
       isDrawerTouching = false;
       if (isDrawerPullingDown || isDrawerPullingUp) {
         taskDrawer.style.removeProperty('transform');
@@ -2523,20 +2541,13 @@ function setupCalendarModalPullToDismiss() {
   const onTouchStart = (e) => {
     // If user is actively dragging to reorder tasks or swiping horizontally to delete, do not start pull-down
     if (isDraggingTask || isSwipingCardToDelete) return;
-    // Exclude emoji badges, action buttons, delete action button, interactive inputs, and drag handles
-    if (e.target.closest('.calendar-emoji-btn, .btn-icon-action, .btn-swipe-delete, input, textarea, select, [data-action="drag-handle"], .drag-handle, .drag-handle-compact, [data-action="locked-drag-attempt"], .drag-handle-locked, .drag-handle-locked-compact, .calendar-block-left')) return;
+    if (e.target.closest('.btn-swipe-delete')) return;
     if (!e.touches || e.touches.length !== 1) return;
 
-    const activeScroll = modal.querySelector('.modal-body');
-    const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-    const isHeaderTouch = Boolean(e.target.closest('.calendar-modal-header, .cal-drag-handle-bar, #calendarScheduleModeSegment, .schedule-mode-segment-control'));
-
-    if (isAtTop || isHeaderTouch) {
-      touchStartY = e.touches[0].clientY;
-      touchStartX = e.touches[0].clientX;
-      isPullingDown = false;
-      didPullDown = false;
-    }
+    touchStartY = e.touches[0].clientY;
+    touchStartX = e.touches[0].clientX;
+    isPullingDown = false;
+    didPullDown = false;
   };
 
   const onTouchMove = (e) => {
@@ -2659,24 +2670,16 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
   const onTouchStart = (e) => {
     if (isDraggingTask || isSwipingCardToDelete) return;
-    // Exclude touches on interactive form controls and drag handles
-    if (e.target.closest('input, textarea, select, .duration-clock-addon-btn, .time-clock-addon-btn, .btn-add-category, .chip-delete, .category-chip-delete, [data-action="pick-calendar-emoji"], [data-action="drag-handle"], .btn-swipe-delete, .edit-task-emoji-badge, .btn-icon-action, button')) {
+    // Only exclude horizontal range sliders (e.g. volume slider); allow swipe-down starting on inputs, checkboxes, buttons, emoji badges, and close buttons
+    if (e.target.closest('input[type="range"]')) {
       return;
     }
     if (!e.touches || e.touches.length !== 1) return;
 
-    const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
-    const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
-    const activeScroll = e.target.closest('.modal-body') || visibleScroll;
-    const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-    const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header'));
-
-    if (isAtTop || isHeaderTouch) {
-      touchStartY = e.touches[0].clientY;
-      touchStartX = e.touches[0].clientX;
-      isPullingDown = false;
-      didPullDown = false;
-    }
+    touchStartY = e.touches[0].clientY;
+    touchStartX = e.touches[0].clientX;
+    isPullingDown = false;
+    didPullDown = false;
   };
 
   const onTouchMove = (e) => {
@@ -2691,6 +2694,19 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
+
+    const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
+    const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
+    const activeScroll = e.target.closest('.modal-body') || visibleScroll;
+    const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
+    const isHeaderOrFooterTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header, .edit-modal-footer, .btn-close-modal, .edit-task-emoji-badge'));
+
+    if (!isHeaderOrFooterTouch && !isAtTop && !isPullingDown) {
+      touchStartY = currentY;
+      touchStartX = currentX;
+      return;
+    }
+
     const deltaY = currentY - touchStartY;
     const deltaX = currentX - touchStartX;
 
@@ -2705,13 +2721,10 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
 
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
-      const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
-      const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
-      const activeScroll = e.target.closest('.modal-body') || visibleScroll;
-      const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-      const isHeaderTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header'));
-
-      if (isAtTop || isHeaderTouch) {
+      if (isAtTop || isHeaderOrFooterTouch) {
+        if (!isPullingDown && document.activeElement && modal.contains(document.activeElement) && typeof document.activeElement.blur === 'function') {
+          document.activeElement.blur();
+        }
         isPullingDown = true;
         didPullDown = true;
         if (e.cancelable) e.preventDefault();
@@ -2806,15 +2819,6 @@ function setupScheduleHorizontalSwipeToggle(container) {
       // In calendarModal (menu bar tab), tasks have swipe-to-delete, so swiping on a task card
       // is reserved for swipe-to-delete and must not trigger chronological/sequential toggle.
       if (e.target.closest('.task-card, .calendar-item-wrapper, .calendar-block, .todo-block, .todo-item-wrapper')) {
-        touchOnTask = true;
-        isHSwiping = false;
-        return;
-      }
-    } else {
-      // In taskDrawer (slide up tab), there is no swipe-to-delete (tasks have an explicit X button),
-      // so swiping on a task card allows toggling between chronological and sequential!
-      // Only suppress if user initiated a task reorder drag handle interaction.
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle, .drag-handle-compact')) {
         touchOnTask = true;
         isHSwiping = false;
         return;
@@ -3401,15 +3405,16 @@ function handleSwapOverlapPriority(taskId, dir) {
   // Find partner overlapping task
   let partnerTask = null;
   let partnerIdx = -1;
-  const curStart = parseTimeToMinutes(currentTask.startTime || '00:00');
+  const curStart = parseTimeToMinutes(currentTask.startTime || currentTask.fixedStartTime || '00:00');
   let curEnd = parseTimeToMinutes(currentTask.endTime || '23:59');
   if (curEnd <= curStart) curEnd += 1440;
 
   for (let i = 0; i < currentTasks.length; i++) {
     if (i === idx) continue;
     const t = currentTasks[i];
-    if (!t.startTime || !t.endTime) continue;
-    const oStart = parseTimeToMinutes(t.startTime);
+    const tStartStr = t.startTime || t.fixedStartTime;
+    if (!tStartStr || !t.endTime) continue;
+    const oStart = parseTimeToMinutes(tStartStr);
     let oEnd = parseTimeToMinutes(t.endTime);
     if (oEnd <= oStart) oEnd += 1440;
 
@@ -3429,13 +3434,21 @@ function handleSwapOverlapPriority(taskId, dir) {
   }
 
   runtime.initialTasks = taskStore.getTasks();
+  if (runtime.status === TimerStatus.IDLE) {
+    runtime.activeTaskIndex = -1;
+  }
   runtime.recalculate();
   syncDynamicScheduleTimesToCalendar();
   updateScheduleUI(runtime.currentSchedule);
+  updateActiveTaskDisplay();
+  if (runtime.status === TimerStatus.IDLE) {
+    renderClockTime(runtime.getRemainingSeconds());
+  }
   renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
   renderCalendarModal();
   mobileServices.hapticTap();
-  showToastNotification('✓ Overlap priority swapped');
+  const promotedTask = idx > partnerIdx ? currentTask : partnerTask;
+  showToastNotification(`✓ "${promotedTask.title}" set as active priority`);
 }
 window.handleSwapOverlapPriority = handleSwapOverlapPriority;
 
@@ -3815,8 +3828,8 @@ function renderTaskList(rawTasks) {
       if (aStart < bEnd && bStart < aEnd) {
         conflictingTaskIds.add(tA.id);
         conflictingTaskIds.add(tB.id);
-        const laterIdx = bStart >= aStart ? j : i;
-        if (!overlapIndices.has(laterIdx - 1)) {
+        const laterIdx = j;
+        if (!overlapIndices.has(laterIdx - 1) && !overlapIndices.has(i)) {
           overlapIndices.add(laterIdx);
         }
       }
@@ -3942,8 +3955,8 @@ function renderTaskList(rawTasks) {
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
 
     const overlapBadgeHtml = isOverlap ? `
-      <div class="task-overlap-tag-group">
-        <span class="task-overlap-badge">⚠️ Overlap</span>
+      <div class="task-overlap-tag-group" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="${isOverlap ? 'up' : 'down'}" style="cursor: pointer;" title="Tap to switch overlap priority">
+        <span class="task-overlap-badge" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="${isOverlap ? 'up' : 'down'}">⚠️ Overlap</span>
         <div class="overlap-priority-arrows">
           <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="up" title="Promote task (give timer priority)">▲</button>
           <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="down" title="Demote task (indent)">▼</button>
@@ -4716,17 +4729,23 @@ function setAddTaskType(type) {
     if (heading) heading.textContent = 'Add Break';
     currentAddTaskEmoji = '☕';
     if (emojiBadge) emojiBadge.textContent = '☕';
-    if (titleInput && (!titleInput.value || titleInput.value === 'Untitled Task')) {
-      titleInput.value = 'Break';
+    if (titleInput && (titleInput.value === 'Break' || titleInput.value === 'Untitled Task')) {
+      titleInput.value = '';
     }
     if (titleInput) titleInput.placeholder = 'e.g. Coffee break, walk, stretch';
-    if (durationInput) durationInput.value = '10';
+    if (durationInput) {
+      durationInput.value = '';
+      durationInput.placeholder = 'e.g. 30';
+    }
+    if (typeof addModalFieldState !== 'undefined') {
+      addModalFieldState.durationUserDefined = false;
+    }
     if (categoryInput) categoryInput.value = 'Break';
     const bankInput = document.getElementById('addModalTimeBank');
     if (bankInput) bankInput.checked = false; // Breaks default to no piggy bank
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('data-min') === '10');
+      c.classList.remove('active');
     });
   } else {
     if (workBtn) workBtn.classList.add('active');
@@ -4744,7 +4763,10 @@ function setAddTaskType(type) {
       titleInput.value = '';
     }
     if (titleInput) titleInput.placeholder = 'e.g. Core Reading & Practice';
-    if (durationInput) durationInput.value = '';
+    if (durationInput) {
+      durationInput.value = '';
+      durationInput.placeholder = 'e.g. 30';
+    }
     if (typeof addModalFieldState !== 'undefined') {
       addModalFieldState.durationUserDefined = false;
     }
@@ -4774,7 +4796,10 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
   isAddModalManualEmoji = false;
   isAddModalManualCategory = false;
   if (typeof addModalFieldState !== 'undefined') {
-    addModalFieldState.durationUserDefined = defaultType === 'break';
+    addModalFieldState.durationUserDefined = false;
+    addModalFieldState.startUserDefined = false;
+    addModalFieldState.endUserDefined = false;
+    addModalFieldState.endTimeLocked = false;
     addModalFieldState.lastEdited = null;
   }
   const modal = document.getElementById('addTaskModalBackdrop');
@@ -4802,11 +4827,18 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
       : false;
   }
 
-  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '';
+  if (inputDur) {
+    inputDur.value = '';
+    inputDur.placeholder = 'e.g. 30';
+  }
   if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
   if (inputFixed) inputFixed.value = '';
   if (inputStart) inputStart.value = '';
+  const inputStartNative = document.getElementById('addModalStartTimeNative');
+  if (inputStartNative) inputStartNative.value = '';
   if (inputEnd) inputEnd.value = '';
+  const inputEndNative = document.getElementById('addModalEndTimeNative');
+  if (inputEndNative) inputEndNative.value = '';
   if (toggleBank) toggleBank.checked = false;
   if (toggleLock) toggleLock.checked = false;
 
@@ -4815,7 +4847,7 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
   if (prefillData && prefillData.title) {
     if (inputTitle) inputTitle.value = prefillData.title;
   } else {
-    if (inputTitle) inputTitle.value = defaultType === 'break' ? 'Break' : '';
+    if (inputTitle) inputTitle.value = '';
   }
 
   if (prefillData && prefillData.emoji) {
@@ -5175,7 +5207,15 @@ function closeCalendar() {
     calendarModalBackdrop.classList.add('hidden');
   }
   if (navItemTimer) navItemTimer.classList.add('active');
-  if (navItemCalendar) navItemCalendar.classList.remove('active');
+  if (navItemCalendar) {
+    navItemCalendar.classList.remove('active');
+    if (typeof navItemCalendar.blur === 'function') navItemCalendar.blur();
+  }
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) {
+    navItemFullCalendar.classList.remove('active');
+    if (typeof navItemFullCalendar.blur === 'function') navItemFullCalendar.blur();
+  }
   if (runtime && runtime.status === TimerStatus.IDLE) {
     runtime.initialTasks = taskStore.getTasks();
     runtime.recalculate();
@@ -5302,8 +5342,8 @@ function renderCalendarModal() {
         calConflictingIds.add(tA.id);
         calConflictingIds.add(tB.id);
 
-        const laterIdx = bStart >= aStart ? j : i;
-        if (!calIndentedIndices.has(laterIdx - 1)) {
+        const laterIdx = j;
+        if (!calIndentedIndices.has(laterIdx - 1) && !calIndentedIndices.has(i)) {
           calIndentedIndices.add(laterIdx);
         }
       }
@@ -5365,8 +5405,8 @@ function renderCalendarModal() {
     const pillStyle = `background:${hexToRgba(catHex, 0.2)};border:1px solid ${hexToRgba(catHex, 0.45)};color:${catHex};`;
 
     const calOverlapHtml = isCalOverlap ? `
-      <div class="task-overlap-tag-group" style="margin-left: 6px;">
-        <span class="task-overlap-badge">⚠️ Overlap</span>
+      <div class="task-overlap-tag-group" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="${isCalOverlap ? 'up' : 'down'}" style="margin-left: 6px; cursor: pointer;" title="Tap to switch overlap priority">
+        <span class="task-overlap-badge" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="${isCalOverlap ? 'up' : 'down'}">⚠️ Overlap</span>
         <div class="overlap-priority-arrows">
           <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="up" title="Promote task (give timer priority)">▲</button>
           <button type="button" class="btn-overlap-arrow" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="down" title="Demote task (indent)">▼</button>
@@ -6623,43 +6663,57 @@ function setupNavigationAndModals() {
     const textInput = document.getElementById(textInputId);
 
     if (btn && nativeInput) {
+      const syncNativeFromText = () => {
+        if (textInput && textInput.value && textInput.value.length === 5) {
+          nativeInput.value = textInput.value;
+        }
+      };
+
+      nativeInput.addEventListener('pointerdown', syncNativeFromText, { passive: true });
+      nativeInput.addEventListener('touchstart', syncNativeFromText, { passive: true });
+      nativeInput.addEventListener('focus', syncNativeFromText, { passive: true });
+
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         mobileServices.hapticTap();
-        if (textInput && textInput.value && textInput.value.length === 5) {
-          nativeInput.value = textInput.value;
-        }
+        syncNativeFromText();
+        nativeInput.focus();
         if (typeof nativeInput.showPicker === 'function') {
           try {
             nativeInput.showPicker();
           } catch (err) {
-            nativeInput.focus();
             nativeInput.click();
           }
         } else {
-          nativeInput.focus();
           nativeInput.click();
         }
       });
 
       const handleNativeTimeChange = () => {
         if (nativeInput.value && textInput) {
-          textInput.value = nativeInput.value;
-          textInput.dispatchEvent(new Event('input', { bubbles: true }));
-          textInput.dispatchEvent(new Event('change', { bubbles: true }));
-          if (onTimeSelected) onTimeSelected();
+          const cleanVal = String(nativeInput.value).slice(0, 5);
+          if (cleanVal.length === 5) {
+            textInput.value = cleanVal;
+            textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            textInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (onTimeSelected) onTimeSelected();
+          }
         }
       };
 
       nativeInput.addEventListener('change', handleNativeTimeChange);
       nativeInput.addEventListener('input', handleNativeTimeChange);
+      nativeInput.addEventListener('blur', handleNativeTimeChange);
     }
   }
 
   // Start & End Time calculation listeners for Add Task Modal
   let addModalFieldState = {
     durationUserDefined: false,
+    startUserDefined: false,
+    endUserDefined: false,
+    endTimeLocked: false,
     lastEdited: null
   };
 
@@ -6681,17 +6735,34 @@ function setupNavigationAndModals() {
   }
 
   function updateAddModalEndTimeFromDuration() {
-    if (!(addModalStartTime && addModalStartTime.value) || !(addModalDurationInput && addModalDurationInput.value)) return;
-    const startMin = parseTimeToMinutes(addModalStartTime.value);
+    if (!(addModalDurationInput && addModalDurationInput.value)) return;
     const dur = parseInt(addModalDurationInput.value, 10) || 0;
+    if (dur <= 0) return;
+
+    // If user entered End Time before Start Time (either End Time first, or Duration then End Time),
+    // keep End Time locked in place and set Start Time = End Time - Duration
+    if (addModalFieldState.endTimeLocked && addModalEndTime && addModalEndTime.value && addModalEndTime.value.length === 5) {
+      const endMin = parseTimeToMinutes(addModalEndTime.value);
+      let sMin = endMin - dur;
+      if (sMin < 0) sMin += 1440;
+      if (addModalStartTime) addModalStartTime.value = formatMinutesToTime(sMin);
+      return;
+    }
+
+    if (!(addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5)) return;
+    const startMin = parseTimeToMinutes(addModalStartTime.value);
     const endMin = (startMin + dur) % 1440;
     if (addModalEndTime) addModalEndTime.value = formatMinutesToTime(endMin);
   }
 
   function handleAddModalStartTimeChange() {
+    addModalFieldState.startUserDefined = Boolean(addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5);
+    if (addModalFieldState.startUserDefined) {
+      addModalFieldState.endTimeLocked = false;
+    }
     addModalFieldState.lastEdited = 'start';
     if (addModalStartTime && addModalStartTime.value.length === 5) {
-      if (addModalFieldState.durationUserDefined && addModalDurationInput && addModalDurationInput.value) {
+      if (addModalFieldState.durationUserDefined && !addModalFieldState.endUserDefined && addModalDurationInput && addModalDurationInput.value) {
         updateAddModalEndTimeFromDuration();
       } else if (addModalEndTime && addModalEndTime.value && addModalEndTime.value.length === 5) {
         updateAddModalDurationFromTimeSpan();
@@ -6700,30 +6771,24 @@ function setupNavigationAndModals() {
   }
 
   function handleAddModalEndTimeChange() {
+    addModalFieldState.endUserDefined = Boolean(addModalEndTime && addModalEndTime.value && addModalEndTime.value.length === 5);
     addModalFieldState.lastEdited = 'end';
     if (addModalEndTime && addModalEndTime.value.length === 5) {
-      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
-        updateAddModalDurationFromTimeSpan();
-      } else if (!addModalStartTime || !addModalStartTime.value) {
-        if (!addModalFieldState.durationUserDefined) {
-          const allTasks = (typeof taskStore !== 'undefined' && typeof taskStore.getTasks === 'function')
-            ? taskStore.getTasks()
-            : [];
-          if (allTasks.length === 0) {
-            const now = new Date();
-            const nowMin = (now.getHours() * 60) + now.getMinutes();
-            if (addModalStartTime) {
-              addModalStartTime.value = formatMinutesToTime(nowMin);
-              updateAddModalDurationFromTimeSpan();
-            }
-          }
-        } else if (addModalDurationInput && addModalDurationInput.value) {
+      if (!addModalFieldState.startUserDefined) {
+        // User entered End Time before Start Time (either before Duration, or after Duration):
+        // Lock End Time in place and set Start Time = End Time - Duration once Duration is defined
+        addModalFieldState.endTimeLocked = true;
+        if (addModalDurationInput && addModalDurationInput.value) {
           const endMin = parseTimeToMinutes(addModalEndTime.value);
           const dur = parseInt(addModalDurationInput.value, 10) || 0;
-          let sMin = endMin - dur;
-          if (sMin < 0) sMin += 1440;
-          if (addModalStartTime) addModalStartTime.value = formatMinutesToTime(sMin);
+          if (dur > 0) {
+            let sMin = endMin - dur;
+            if (sMin < 0) sMin += 1440;
+            if (addModalStartTime) addModalStartTime.value = formatMinutesToTime(sMin);
+          }
         }
+      } else if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
+        updateAddModalDurationFromTimeSpan();
       }
     }
   }
@@ -6742,22 +6807,18 @@ function setupNavigationAndModals() {
   }
   if (addModalDurationInput) {
     addModalDurationInput.addEventListener('input', () => {
-      addModalFieldState.durationUserDefined = true;
+      addModalFieldState.durationUserDefined = Boolean(addModalDurationInput.value);
       addModalFieldState.lastEdited = 'duration';
-      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
-        updateAddModalEndTimeFromDuration();
-      }
+      updateAddModalEndTimeFromDuration();
       const val = addModalDurationInput.value;
       document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
         c.classList.toggle('active', c.getAttribute('data-min') === val);
       });
     });
     addModalDurationInput.addEventListener('change', () => {
-      addModalFieldState.durationUserDefined = true;
+      addModalFieldState.durationUserDefined = Boolean(addModalDurationInput.value);
       addModalFieldState.lastEdited = 'duration';
-      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
-        updateAddModalEndTimeFromDuration();
-      }
+      updateAddModalEndTimeFromDuration();
     });
   }
 
@@ -6847,11 +6908,25 @@ function setupNavigationAndModals() {
     const durInput = document.getElementById('addModalDuration');
     const fixedInput = document.getElementById('addModalFixedTime');
     const startInput = document.getElementById('addModalStartTime');
-    const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
+    let fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
     const endInput = document.getElementById('addModalEndTime');
     const rawEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
 
     let duration = parseInt((durInput ? durInput.value : ""), 10);
+    if (!fixedStartTime && rawEndTime && !isNaN(duration) && duration > 0) {
+      const eMin = parseTimeToMinutes(rawEndTime);
+      let sMin = eMin - duration;
+      if (sMin < 0) sMin += 1440;
+      fixedStartTime = formatMinutesToTime(sMin);
+    } else if (!fixedStartTime && rawEndTime && (isNaN(duration) || duration <= 0)) {
+      const existingTasks = taskStore.getTasks();
+      if (existingTasks.length === 0) {
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        fixedStartTime = formatMinutesToTime(nowMin);
+      }
+    }
+
     if (isNaN(duration) || duration <= 0) {
       if (fixedStartTime && rawEndTime) {
         const sMin = parseTimeToMinutes(fixedStartTime);
@@ -6859,7 +6934,7 @@ function setupNavigationAndModals() {
         if (eMin <= sMin) eMin += 1440;
         duration = Math.max(1, eMin - sMin);
       } else {
-        duration = currentAddTaskType === 'break' ? 10 : 25;
+        duration = 30;
       }
     }
 
@@ -6874,6 +6949,7 @@ function setupNavigationAndModals() {
     const shouldLockToFixedEndTime = Boolean(
       rawEndTime && (
         isLocked ||
+        addModalFieldState.endTimeLocked ||
         !addModalFieldState.durationUserDefined ||
         addModalFieldState.lastEdited === 'end'
       )
@@ -7367,6 +7443,88 @@ function setupNavigationAndModals() {
       showToastNotification(enabled ? 'Haptic feedback enabled' : 'Haptic feedback disabled');
     });
   }
+
+  // Allow horizontal toggle switches (.toggle-switch) across Settings and Modals to be swiped
+  // right when off to turn on, and swiped left when on to turn off, without interfering with vertical swipe-down
+  (function setupSwipeableToggleSwitches() {
+    let activeToggleLabel = null;
+    let activeCheckbox = null;
+    let startX = 0;
+    let startY = 0;
+    let didSwipeToggle = false;
+    let verticalAborted = false;
+
+    document.addEventListener('touchstart', (e) => {
+      if (!e.touches || e.touches.length !== 1) return;
+      const label = e.target && e.target.closest ? e.target.closest('.toggle-switch') : null;
+      if (!label) {
+        activeToggleLabel = null;
+        activeCheckbox = null;
+        return;
+      }
+      const cb = label.querySelector('input[type="checkbox"]');
+      if (!cb || cb.disabled) {
+        activeToggleLabel = null;
+        activeCheckbox = null;
+        return;
+      }
+      activeToggleLabel = label;
+      activeCheckbox = cb;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      didSwipeToggle = false;
+      verticalAborted = false;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!activeToggleLabel || !activeCheckbox || verticalAborted) return;
+      if (!e.touches || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+
+      // If vertical movement dominates, let vertical swipe-down / scroll handle it
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
+        verticalAborted = true;
+        return;
+      }
+
+      if (Math.abs(dx) >= 12 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        if (e.cancelable) e.preventDefault();
+        didSwipeToggle = true;
+        if (dx >= 12 && !activeCheckbox.checked) {
+          activeCheckbox.checked = true;
+          activeCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (dx <= -12 && activeCheckbox.checked) {
+          activeCheckbox.checked = false;
+          activeCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    }, { passive: false });
+
+    const onEnd = () => {
+      if (didSwipeToggle && activeToggleLabel) {
+        const targetLabel = activeToggleLabel;
+        const suppressSyntheticClick = (clickEv) => {
+          if (targetLabel.contains(clickEv.target)) {
+            clickEv.preventDefault();
+            clickEv.stopPropagation();
+          }
+          window.removeEventListener('click', suppressSyntheticClick, true);
+        };
+        window.addEventListener('click', suppressSyntheticClick, true);
+        setTimeout(() => {
+          window.removeEventListener('click', suppressSyntheticClick, true);
+        }, 350);
+      }
+      activeToggleLabel = null;
+      activeCheckbox = null;
+      didSwipeToggle = false;
+      verticalAborted = false;
+    };
+
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+  })();
 
   const alertVolumeSlider = document.getElementById('alertVolumeSlider');
   const alertVolumeLabel = document.getElementById('alertVolumeLabel');

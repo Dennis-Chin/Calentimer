@@ -263,13 +263,15 @@ export class TimerRuntime {
       const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
         ? taskStore.getTimespansEnabled()
         : true;
-      if (this.activeTaskIndex >= 0 && this.activeTaskIndex < this.currentSchedule.tasks.length) {
-        // User explicitly focused or viewed this task on the timer screen: start this exact task!
+      const indentedIds = this.getIndentedOverlapTaskIds(this.currentSchedule.tasks);
+      if (this.activeTaskIndex >= 0 && this.activeTaskIndex < this.currentSchedule.tasks.length && !indentedIds.has(this.currentSchedule.tasks[this.activeTaskIndex] && this.currentSchedule.tasks[this.activeTaskIndex].id)) {
+        // User explicitly focused or viewed this non-indented task on the timer screen: start this exact task!
       } else if (isTimespans) {
         let targetIdx = this.getActiveTaskIndexByTime(this.currentSchedule.tasks);
         if (targetIdx < 0) {
           if (this.currentSchedule.tasks.length > 0) {
-            targetIdx = 0;
+            targetIdx = this.currentSchedule.tasks.findIndex(t => t && !indentedIds.has(t.id));
+            if (targetIdx < 0) targetIdx = 0;
           } else {
             this._setStatus(TimerStatus.COMPLETED);
             this._emit('allTasksCompleted', {});
@@ -278,7 +280,8 @@ export class TimerRuntime {
         }
         this.activeTaskIndex = targetIdx;
       } else {
-        this.activeTaskIndex = 0;
+        const firstNonIndented = this.currentSchedule.tasks.findIndex(t => t && !indentedIds.has(t.id));
+        this.activeTaskIndex = firstNonIndented >= 0 ? firstNonIndented : 0;
       }
       this._startTask(this.activeTaskIndex);
     } else if (this.status === TimerStatus.PAUSED) {
@@ -460,8 +463,14 @@ export class TimerRuntime {
     if (tasks.length === 0) return;
 
     if (this.status === TimerStatus.IDLE) {
+      const indentedIds = this.getIndentedOverlapTaskIds(tasks);
       const currentIndex = this.activeTaskIndex >= 0 ? this.activeTaskIndex : 0;
-      const nextIndex = (currentIndex + 1) % tasks.length;
+      let nextIndex = (currentIndex + 1) % tasks.length;
+      for (let step = 0; step < tasks.length; step++) {
+        const cand = tasks[nextIndex];
+        if (cand && !indentedIds.has(cand.id)) break;
+        nextIndex = (nextIndex + 1) % tasks.length;
+      }
       this.activeTaskIndex = nextIndex;
 
       const nextTask = tasks[this.activeTaskIndex];
@@ -843,6 +852,12 @@ export class TimerRuntime {
     this.overrunPausedElapsedMs = 0;
 
     const tasks = (this.currentSchedule && this.currentSchedule.tasks) || [];
+    const indentedIds = this.getIndentedOverlapTaskIds(tasks);
+    while (this.activeTaskIndex < tasks.length) {
+      const cand = tasks[this.activeTaskIndex];
+      if (!cand || !indentedIds.has(cand.id)) break;
+      this.activeTaskIndex++;
+    }
     if (this.activeTaskIndex >= tasks.length) {
       this._stopTicker();
       this._setStatus(TimerStatus.COMPLETED);
@@ -1059,14 +1074,46 @@ export class TimerRuntime {
   // Public Accessors & Helpers
   // ==========================================
 
+  /**
+   * Returns a Set of task IDs that are indented (ignored) due to overlapping with a higher-priority task above them.
+   */
+  getIndentedOverlapTaskIds(scheduleTasks) {
+    const indentedIds = new Set();
+    const list = scheduleTasks || (this.currentSchedule && this.currentSchedule.tasks) || [];
+    const overlapIndices = new Set();
+    for (let i = 0; i < list.length; i++) {
+      const tA = list[i];
+      if (!tA || !tA.startTime || !tA.endTime) continue;
+      const aStart = parseTimeToMinutes(tA.startTime);
+      let aEnd = parseTimeToMinutes(tA.endTime);
+      if (aEnd <= aStart) aEnd += 1440;
+      for (let j = i + 1; j < list.length; j++) {
+        const tB = list[j];
+        if (!tB || !tB.startTime || !tB.endTime) continue;
+        const bStart = parseTimeToMinutes(tB.startTime);
+        let bEnd = parseTimeToMinutes(tB.endTime);
+        if (bEnd <= bStart) bEnd += 1440;
+        if (aStart < bEnd && bStart < aEnd) {
+          if (!overlapIndices.has(i)) {
+            overlapIndices.add(j);
+            if (tB.id) indentedIds.add(tB.id);
+          }
+        }
+      }
+    }
+    return indentedIds;
+  }
+
   getActiveTaskIndexByTime(scheduleTasks, referenceMinutes) {
     if (!scheduleTasks || scheduleTasks.length === 0) return -1;
     const currentMinutes = typeof referenceMinutes === 'number'
       ? referenceMinutes
       : ((new Date().getHours() * 60) + new Date().getMinutes());
+    const indentedIds = this.getIndentedOverlapTaskIds(scheduleTasks);
 
     for (let i = 0; i < scheduleTasks.length; i++) {
       const t = scheduleTasks[i];
+      if (!t || indentedIds.has(t.id)) continue;
       if (t.startTime && t.endTime) {
         const s = parseTimeToMinutes(t.startTime);
         let e = parseTimeToMinutes(t.endTime);
@@ -1079,6 +1126,7 @@ export class TimerRuntime {
 
     for (let i = 0; i < scheduleTasks.length; i++) {
       const t = scheduleTasks[i];
+      if (!t || indentedIds.has(t.id)) continue;
       if (t.endTime) {
         const s = t.startTime ? parseTimeToMinutes(t.startTime) : 0;
         let e = parseTimeToMinutes(t.endTime);
@@ -1106,14 +1154,16 @@ export class TimerRuntime {
     const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
       ? taskStore.getTimespansEnabled()
       : true;
+    const allTasks = this.currentSchedule.tasks;
+    const indentedIds = this.getIndentedOverlapTaskIds(allTasks);
 
     if (isTimespans) {
       const nowMin = (new Date().getHours() * 60) + new Date().getMinutes();
-      const allTasks = this.currentSchedule.tasks;
 
-      const candidate = (this.activeTaskIndex >= 0 && this.activeTaskIndex < allTasks.length)
+      const rawCandidate = (this.activeTaskIndex >= 0 && this.activeTaskIndex < allTasks.length)
         ? allTasks[this.activeTaskIndex]
         : null;
+      const candidate = (rawCandidate && !indentedIds.has(rawCandidate.id)) ? rawCandidate : null;
 
       let isCandidatePast = false;
       if (candidate && candidate.endTime) {
@@ -1125,12 +1175,12 @@ export class TimerRuntime {
         }
       }
 
-      // If current candidate exists and is not past, use it
+      // If current candidate exists, is not indented, and is not past, use it
       if (candidate && !isCandidatePast) {
         return candidate;
       }
 
-      // If no valid candidate or candidate is past, find active or upcoming task
+      // If no valid candidate or candidate is past/indented, find active or upcoming non-indented task
       const nextIdx = this.getActiveTaskIndexByTime(allTasks, nowMin);
       if (nextIdx >= 0 && nextIdx < allTasks.length) {
         if (this.status === TimerStatus.IDLE) {
@@ -1138,7 +1188,8 @@ export class TimerRuntime {
         }
         return allTasks[nextIdx];
       }
-      const fallbackTask = candidate || allTasks[0] || null;
+      const firstValidTask = allTasks.find(t => t && !indentedIds.has(t.id)) || allTasks[0] || null;
+      const fallbackTask = candidate || firstValidTask;
       if (fallbackTask && this.status === TimerStatus.IDLE) {
         const fIdx = allTasks.indexOf(fallbackTask);
         if (fIdx >= 0) {
@@ -1149,8 +1200,12 @@ export class TimerRuntime {
     }
 
     let index = this.activeTaskIndex;
-    if (index < 0) {
-      index = 0;
+    if (index < 0 || (allTasks[index] && indentedIds.has(allTasks[index].id))) {
+      const firstValidIdx = allTasks.findIndex(t => t && !indentedIds.has(t.id));
+      index = firstValidIdx >= 0 ? firstValidIdx : 0;
+      if (this.status === TimerStatus.IDLE) {
+        this.activeTaskIndex = index;
+      }
     }
     return this.currentSchedule.tasks[index] || null;
   }

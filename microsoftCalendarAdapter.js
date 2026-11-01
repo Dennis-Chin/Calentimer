@@ -887,6 +887,39 @@ export class MicrosoftCalendarAdapter {
             }
             secUrl = (secData && secData['@odata.nextLink']) ? secData['@odata.nextLink'] : null;
           }
+
+          // If this is the dedicated Calentimer mirror calendar, detect events deleted remotely from the calendarView window
+          if (isCalentimerMirror && typeof taskStore !== 'undefined' && typeof taskStore.getCalendarEvents === 'function') {
+            const minDateStr = String(start).split('T')[0];
+            const maxDateStr = String(end).split('T')[0];
+            const localEvents = taskStore.getCalendarEvents();
+            const nowMs = Date.now();
+            for (let k = 0; k < localEvents.length; k++) {
+              const loc = localEvents[k];
+              if (!loc || loc.isDirty) continue;
+              const extId = loc.microsoftEventId || (loc.provider === 'microsoft' ? loc.externalId : null);
+              if (!extId || seenExternalIds.has(extId)) continue;
+              if (loc.date && (loc.date < minDateStr || loc.date > maxDateStr)) continue;
+              if (loc.lastSyncedAt && (nowMs - loc.lastSyncedAt < 5000)) continue;
+              const belongsToMirror = Boolean(
+                loc.isCalentimerMirror === true ||
+                (secCal.id && loc.externalCalendarId === secCal.id) ||
+                (msCalentimerId && loc.externalCalendarId === msCalentimerId) ||
+                loc.origin === 'local' ||
+                loc.createdInApp === true
+              );
+              if (belongsToMirror) {
+                seenExternalIds.add(extId);
+                allEvents.push({
+                  externalId: extId,
+                  status: 'cancelled',
+                  isCancelled: true,
+                  isCalentimerMirror: true,
+                  externalCalendarId: secCal.id
+                });
+              }
+            }
+          }
         } catch (secErr) {
           console.warn(`CalendarSync: Failed to fetch secondary calendar "${secCal.name}":`, secErr);
         }

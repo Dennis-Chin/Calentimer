@@ -456,6 +456,9 @@ export class TaskStore {
     const temp = tasks[idxA];
     tasks[idxA] = tasks[idxB];
     tasks[idxB] = temp;
+    tasks.forEach((t, i) => {
+      if (t) t.overlapOrder = i + 1;
+    });
     this.saveTasks(tasks);
     return tasks;
   }
@@ -1090,6 +1093,8 @@ export class TaskStore {
       date: (eventData && eventData.date) ? eventData.date : this.getTodayDateString(),
       startTime: (eventData && eventData.startTime) ? eventData.startTime : null,
       endTime: (eventData && eventData.endTime) ? eventData.endTime : null,
+      fixedStartTime: (eventData && (eventData.fixedStartTime || eventData.startTime)) ? (eventData.fixedStartTime || eventData.startTime) : null,
+      fixedEndTime: (eventData && (eventData.fixedEndTime || eventData.endTime)) ? (eventData.fixedEndTime || eventData.endTime) : null,
       plannedDuration: (eventData && typeof eventData.plannedDuration === 'number') ? eventData.plannedDuration : 60,
       isLocked: (eventData && typeof eventData.isLocked === 'boolean') ? eventData.isLocked : false,
       useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : false,
@@ -1105,6 +1110,7 @@ export class TaskStore {
       microsoftEventId: (eventData && eventData.microsoftEventId) ? eventData.microsoftEventId : null,
       externalId: (eventData && eventData.externalId) ? eventData.externalId : null,
       externalCalendarId: (eventData && eventData.externalCalendarId) ? eventData.externalCalendarId : null,
+      isCalentimerMirror: (eventData && eventData.isCalentimerMirror !== undefined) ? Boolean(eventData.isCalentimerMirror) : false,
       etag: (eventData && eventData.etag) ? eventData.etag : null,
       syncHash: (eventData && eventData.syncHash) ? eventData.syncHash : null,
       lastSyncedAt: (eventData && typeof eventData.lastSyncedAt === 'number') ? eventData.lastSyncedAt : null,
@@ -1272,7 +1278,7 @@ export class TaskStore {
       const tasks = this.getTasks();
       const existingIdx = tasks.findIndex(t => t.id === calEvent.id);
       const isEventLocked = Boolean(calEvent.isLocked);
-      const fixedStart = isEventLocked ? (calEvent.fixedStartTime || calEvent.startTime || null) : (calEvent.fixedStartTime || null);
+      const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
       const fixedEnd = isEventLocked ? (calEvent.fixedEndTime || calEvent.endTime || null) : (calEvent.fixedEndTime || null);
       const taskPayload = {
         id: calEvent.id,
@@ -1317,7 +1323,17 @@ export class TaskStore {
         const timeB = b.startTime || b.fixedStartTime || (eventTimeMap.has(b.id) ? eventTimeMap.get(b.id) : null);
         const aStart = timeA ? (parseInt(timeA.split(':')[0], 10) * 60 + parseInt(timeA.split(':')[1], 10)) : 1440;
         const bStart = timeB ? (parseInt(timeB.split(':')[0], 10) * 60 + parseInt(timeB.split(':')[1], 10)) : 1440;
-        return aStart - bStart;
+        const aDur = a.allocatedDuration || a.plannedDuration || 30;
+        const bDur = b.allocatedDuration || b.plannedDuration || 30;
+        const aEnd = a.endTime ? (parseInt(a.endTime.split(':')[0], 10) * 60 + parseInt(a.endTime.split(':')[1], 10)) : (aStart + aDur);
+        const bEnd = b.endTime ? (parseInt(b.endTime.split(':')[0], 10) * 60 + parseInt(b.endTime.split(':')[1], 10)) : (bStart + bDur);
+        const adjAEnd = aEnd <= aStart ? aEnd + 1440 : aEnd;
+        const adjBEnd = bEnd <= bStart ? bEnd + 1440 : bEnd;
+        if (aStart < adjBEnd && bStart < adjAEnd && typeof a.overlapOrder === 'number' && typeof b.overlapOrder === 'number' && a.overlapOrder !== b.overlapOrder) {
+          return a.overlapOrder - b.overlapOrder;
+        }
+        if (aStart !== bStart) return aStart - bStart;
+        return String(a.id || '').localeCompare(String(b.id || ''));
       });
 
       this.saveTasks(tasks);
@@ -1335,12 +1351,20 @@ export class TaskStore {
     try {
       const todayStr = targetDateStr || this.getTodayDateString();
       const deletedIds = this.getDeletedIds(todayStr);
+      const isItemDeleted = (item) => {
+        if (!item) return false;
+        if (item.id && deletedIds.has(item.id)) return true;
+        if (item.externalId && deletedIds.has(item.externalId)) return true;
+        if (item.googleEventId && deletedIds.has(item.googleEventId)) return true;
+        if (item.microsoftEventId && deletedIds.has(item.microsoftEventId)) return true;
+        return false;
+      };
 
       const rawTasks = this.getTasks();
-      const currentTasks = rawTasks.filter(t => !deletedIds.has(t.id));
+      const currentTasks = rawTasks.filter(t => !isItemDeleted(t));
       const allCalEvents = this.getCalendarEvents();
 
-      const todayCalEvents = allCalEvents.filter(e => e.date === todayStr && !deletedIds.has(e.id));
+      const todayCalEvents = allCalEvents.filter(e => e.date === todayStr && !isItemDeleted(e));
       const otherCalEvents = allCalEvents.filter(e => e.date !== todayStr);
 
       const taskMap = new Map();
@@ -1461,7 +1485,7 @@ export class TaskStore {
       // 2. Remove any tasks whose calendar event was moved away from today or deleted
       const tasksToKeep = [];
       mergedTasks.forEach(task => {
-        if (deletedIds.has(task.id)) {
+        if (isItemDeleted(task)) {
           tasksChanged = true;
           return;
         }
@@ -1481,7 +1505,7 @@ export class TaskStore {
 
       // 3. Sync Tasks -> Calendar Events (Tasks created, reordered, or edited in Schedule)
       tasksToKeep.forEach(task => {
-        if (deletedIds.has(task.id)) return;
+        if (isItemDeleted(task)) return;
         let existingEvent = calMap.get(task.id);
         if (!existingEvent) {
           existingEvent = mergedTodayEvents.find(e => {
@@ -1530,6 +1554,8 @@ export class TaskStore {
             googleEventId: task.googleEventId || null,
             microsoftEventId: task.microsoftEventId || null,
             externalId: task.externalId || null,
+            externalCalendarId: task.externalCalendarId || null,
+            isCalentimerMirror: Boolean(task.isCalentimerMirror),
             lastModified: task.lastModified || Date.now()
           };
           mergedTodayEvents.push(newEvent);
@@ -1576,11 +1602,21 @@ export class TaskStore {
         const timeB = b.startTime || b.fixedStartTime || (calMap.has(b.id) ? calMap.get(b.id).startTime : null);
         const aStart = timeA ? (parseInt(timeA.split(':')[0], 10) * 60 + parseInt(timeA.split(':')[1], 10)) : 1440;
         const bStart = timeB ? (parseInt(timeB.split(':')[0], 10) * 60 + parseInt(timeB.split(':')[1], 10)) : 1440;
-        return aStart - bStart;
+        const aDur = a.allocatedDuration || a.plannedDuration || 30;
+        const bDur = b.allocatedDuration || b.plannedDuration || 30;
+        const aEnd = a.endTime ? (parseInt(a.endTime.split(':')[0], 10) * 60 + parseInt(a.endTime.split(':')[1], 10)) : (aStart + aDur);
+        const bEnd = b.endTime ? (parseInt(b.endTime.split(':')[0], 10) * 60 + parseInt(b.endTime.split(':')[1], 10)) : (bStart + bDur);
+        const adjAEnd = aEnd <= aStart ? aEnd + 1440 : aEnd;
+        const adjBEnd = bEnd <= bStart ? bEnd + 1440 : bEnd;
+        if (aStart < adjBEnd && bStart < adjAEnd && typeof a.overlapOrder === 'number' && typeof b.overlapOrder === 'number' && a.overlapOrder !== b.overlapOrder) {
+          return a.overlapOrder - b.overlapOrder;
+        }
+        if (aStart !== bStart) return aStart - bStart;
+        return String(a.id || '').localeCompare(String(b.id || ''));
       });
       safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
       tasksChanged = true;
-      const todayEventsWithDeletes = allCalEvents.some(e => e.date === todayStr && deletedIds.has(e.id));
+      const todayEventsWithDeletes = allCalEvents.some(e => e.date === todayStr && isItemDeleted(e));
       if (calChanged || todayEventsWithDeletes) {
         const finalEvents = otherCalEvents.concat(mergedTodayEvents);
         safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, JSON.stringify(finalEvents));
