@@ -703,6 +703,32 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     ? taskStore.getTimespansEnabled()
     : true;
 
+  const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+  const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
+  const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
+
+  // When turning or scrubbing the rotary dial (remainingSec provided), dynamically preview the finish time
+  if (remainingSec !== undefined) {
+    const previewMin = Math.max(1, Math.round(remainingSec / 60));
+    const now = new Date();
+    const nowMin = (now.getHours() * 60) + now.getMinutes();
+    const startMin = (isRunning || isPaused)
+      ? (runtime && runtime.taskStartedAt ? parseTimeToMinutes(new Date(runtime.taskStartedAt)) : nowMin)
+      : nowMin;
+    const endMin = (nowMin + previewMin) % 1440;
+    const startStr = formatMinutesToTime(startMin);
+    const endStr = formatMinutesToTime(endMin);
+
+    if (isTimespans) {
+      activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
+      if (totalDurEl) totalDurEl.textContent = `(${previewMin}m)`;
+    } else {
+      activeTaskTimeSpan.textContent = `${previewMin}m`;
+      if (totalDurEl) totalDurEl.textContent = `(${startStr} → ${endStr})`;
+    }
+    return;
+  }
+
   if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
     // Idle/No task state: Live digital clock start time, end time = now + 30m
     const d = new Date();
@@ -719,10 +745,6 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     }
     return;
   }
-
-  const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
-  const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
-  const isIdle = !runtime || runtime.status === TimerStatus.IDLE || !runtime.taskStartedAt;
 
   if (isTimespans) {
     // Chronological Mode
@@ -2079,6 +2101,11 @@ function setupControls() {
     taskDrawer.classList.add('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
     if (taskDrawerBackdrop) taskDrawerBackdrop.classList.add('hidden');
+    if (runtime && runtime.status === TimerStatus.IDLE) {
+      runtime.initialTasks = taskStore.getTasks();
+      runtime.recalculate();
+      updateActiveTaskDisplay();
+    }
   };
 
   toggleTaskDrawer = function() {
@@ -3813,13 +3840,10 @@ function renderTaskList(rawTasks) {
     if (isCurrentActive) {
       statusClass = 'task-current';
       statusBadge = '<span class="task-status-pill current">▶ Active</span>';
-    } else if (isAllCompleted || (isPastTask && !isCurrentActive) || (!isTimespans && (runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex))) {
+    } else if (task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
       statusClass = 'task-completed';
       statusBadge = '<span class="task-status-pill completed">✓ Done</span>';
-    } else if (isCurrentTask && !isAllCompleted && !isRunning && !isPaused) {
-      statusClass = 'task-current';
-      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
-    } else if (idx === activeIdx && !isAllCompleted && !isPastTask) {
+    } else if (isCurrentActive) {
       statusClass = 'task-current';
       statusBadge = '<span class="task-status-pill current">▶ Active</span>';
     } else {
@@ -4660,13 +4684,16 @@ function setAddTaskType(type) {
       titleInput.value = '';
     }
     if (titleInput) titleInput.placeholder = 'e.g. Core Reading & Practice';
-    if (durationInput) durationInput.value = '30';
+    if (durationInput) durationInput.value = '';
+    if (typeof addModalFieldState !== 'undefined') {
+      addModalFieldState.durationUserDefined = false;
+    }
     if (categoryInput && categoryInput.value === 'Break') categoryInput.value = 'Study';
     const bankInput = document.getElementById('addModalTimeBank');
     if (bankInput) bankInput.checked = false;
 
     document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
-      c.classList.toggle('active', c.getAttribute('data-min') === '30');
+      c.classList.remove('active');
     });
   }
 
@@ -4686,6 +4713,10 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
   ensureHistoryBuffer();
   isAddModalManualEmoji = false;
   isAddModalManualCategory = false;
+  if (typeof addModalFieldState !== 'undefined') {
+    addModalFieldState.durationUserDefined = defaultType === 'break';
+    addModalFieldState.lastEdited = null;
+  }
   const modal = document.getElementById('addTaskModalBackdrop');
   if (!modal) return;
   const inputTitle = document.getElementById('addModalTitle');
@@ -4711,7 +4742,7 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
       : false;
   }
 
-  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '30';
+  if (inputDur) inputDur.value = defaultType === 'break' ? '10' : '';
   if (inputCat) inputCat.value = defaultType === 'break' ? 'Break' : 'Study';
   if (inputFixed) inputFixed.value = '';
   if (inputStart) inputStart.value = '';
@@ -5085,6 +5116,11 @@ function closeCalendar() {
   }
   if (navItemTimer) navItemTimer.classList.add('active');
   if (navItemCalendar) navItemCalendar.classList.remove('active');
+  if (runtime && runtime.status === TimerStatus.IDLE) {
+    runtime.initialTasks = taskStore.getTasks();
+    runtime.recalculate();
+    updateActiveTaskDisplay();
+  }
 }
 
 function openTodo() {
@@ -5226,9 +5262,9 @@ function renderCalendarModal() {
     let statusClass = 'pending';
     if (isCurrentActive) {
       statusClass = 'current';
-    } else if (task.isCompleted || (runtime.activeTaskIndex > 0 && idx < activeIdx)) {
+    } else if (task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < activeIdx)) {
       statusClass = 'completed';
-    } else if (idx === activeIdx) {
+    } else if (isCurrentActive) {
       statusClass = 'current';
     }
 
@@ -6547,18 +6583,26 @@ function setupNavigationAndModals() {
         }
       });
 
-      nativeInput.addEventListener('change', () => {
+      const handleNativeTimeChange = () => {
         if (nativeInput.value && textInput) {
           textInput.value = nativeInput.value;
           textInput.dispatchEvent(new Event('input', { bubbles: true }));
           textInput.dispatchEvent(new Event('change', { bubbles: true }));
           if (onTimeSelected) onTimeSelected();
         }
-      });
+      };
+
+      nativeInput.addEventListener('change', handleNativeTimeChange);
+      nativeInput.addEventListener('input', handleNativeTimeChange);
     }
   }
 
   // Start & End Time calculation listeners for Add Task Modal
+  let addModalFieldState = {
+    durationUserDefined: false,
+    lastEdited: null
+  };
+
   const addModalStartTime = document.getElementById('addModalStartTime');
   const addModalEndTime = document.getElementById('addModalEndTime');
 
@@ -6584,51 +6628,77 @@ function setupNavigationAndModals() {
     if (addModalEndTime) addModalEndTime.value = formatMinutesToTime(endMin);
   }
 
-  bindClockPicker('btnAddModalStartTimeClock', 'addModalStartTimeNative', 'addModalStartTime', () => {
-    if (addModalDurationInput && addModalDurationInput.value) {
-      updateAddModalEndTimeFromDuration();
-    } else if (addModalEndTime && addModalEndTime.value) {
-      updateAddModalDurationFromTimeSpan();
-    }
-  });
-
-  bindClockPicker('btnAddModalEndTimeClock', 'addModalEndTimeNative', 'addModalEndTime', () => {
-    updateAddModalDurationFromTimeSpan();
-  });
-
-  if (addModalStartTime) {
-    addModalStartTime.addEventListener('input', () => {
-      if (addModalStartTime.value.length === 5) {
-        if (addModalDurationInput && addModalDurationInput.value) {
-          updateAddModalEndTimeFromDuration();
-        } else if (addModalEndTime && addModalEndTime.value) {
-          updateAddModalDurationFromTimeSpan();
-        }
-      }
-    });
-    addModalStartTime.addEventListener('change', () => {
-      if (addModalDurationInput && addModalDurationInput.value) {
+  function handleAddModalStartTimeChange() {
+    addModalFieldState.lastEdited = 'start';
+    if (addModalStartTime && addModalStartTime.value.length === 5) {
+      if (addModalFieldState.durationUserDefined && addModalDurationInput && addModalDurationInput.value) {
         updateAddModalEndTimeFromDuration();
-      } else if (addModalEndTime && addModalEndTime.value) {
+      } else if (addModalEndTime && addModalEndTime.value && addModalEndTime.value.length === 5) {
         updateAddModalDurationFromTimeSpan();
       }
-    });
+    }
+  }
+
+  function handleAddModalEndTimeChange() {
+    addModalFieldState.lastEdited = 'end';
+    if (addModalEndTime && addModalEndTime.value.length === 5) {
+      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
+        updateAddModalDurationFromTimeSpan();
+      } else if (!addModalStartTime || !addModalStartTime.value) {
+        if (!addModalFieldState.durationUserDefined) {
+          const allTasks = (typeof taskStore !== 'undefined' && typeof taskStore.getTasks === 'function')
+            ? taskStore.getTasks()
+            : [];
+          if (allTasks.length === 0) {
+            const now = new Date();
+            const nowMin = (now.getHours() * 60) + now.getMinutes();
+            if (addModalStartTime) {
+              addModalStartTime.value = formatMinutesToTime(nowMin);
+              updateAddModalDurationFromTimeSpan();
+            }
+          }
+        } else if (addModalDurationInput && addModalDurationInput.value) {
+          const endMin = parseTimeToMinutes(addModalEndTime.value);
+          const dur = parseInt(addModalDurationInput.value, 10) || 0;
+          let sMin = endMin - dur;
+          if (sMin < 0) sMin += 1440;
+          if (addModalStartTime) addModalStartTime.value = formatMinutesToTime(sMin);
+        }
+      }
+    }
+  }
+
+  bindClockPicker('btnAddModalStartTimeClock', 'addModalStartTimeNative', 'addModalStartTime', handleAddModalStartTimeChange);
+
+  bindClockPicker('btnAddModalEndTimeClock', 'addModalEndTimeNative', 'addModalEndTime', handleAddModalEndTimeChange);
+
+  if (addModalStartTime) {
+    addModalStartTime.addEventListener('input', handleAddModalStartTimeChange);
+    addModalStartTime.addEventListener('change', handleAddModalStartTimeChange);
   }
   if (addModalEndTime) {
-    addModalEndTime.addEventListener('input', () => {
-      if (addModalEndTime.value.length === 5) updateAddModalDurationFromTimeSpan();
-    });
-    addModalEndTime.addEventListener('change', updateAddModalDurationFromTimeSpan);
+    addModalEndTime.addEventListener('input', handleAddModalEndTimeChange);
+    addModalEndTime.addEventListener('change', handleAddModalEndTimeChange);
   }
   if (addModalDurationInput) {
     addModalDurationInput.addEventListener('input', () => {
-      updateAddModalEndTimeFromDuration();
+      addModalFieldState.durationUserDefined = true;
+      addModalFieldState.lastEdited = 'duration';
+      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
+        updateAddModalEndTimeFromDuration();
+      }
       const val = addModalDurationInput.value;
       document.querySelectorAll('#addModalDurationChips .duration-chip').forEach(c => {
         c.classList.toggle('active', c.getAttribute('data-min') === val);
       });
     });
-    addModalDurationInput.addEventListener('change', updateAddModalEndTimeFromDuration);
+    addModalDurationInput.addEventListener('change', () => {
+      addModalFieldState.durationUserDefined = true;
+      addModalFieldState.lastEdited = 'duration';
+      if (addModalStartTime && addModalStartTime.value && addModalStartTime.value.length === 5) {
+        updateAddModalEndTimeFromDuration();
+      }
+    });
   }
 
   // Start & End Time calculation listeners for Edit Task Modal
@@ -6715,16 +6785,26 @@ function setupNavigationAndModals() {
     }
 
     const durInput = document.getElementById('addModalDuration');
-    const duration = parseInt((durInput ? durInput.value : ""), 10) || (currentAddTaskType === 'break' ? 10 : 25);
-
-    const catInput = document.getElementById('addModalCategory');
-    const category = (catInput ? catInput.value : "").trim() || (currentAddTaskType === 'break' ? 'Break' : 'General');
-
     const fixedInput = document.getElementById('addModalFixedTime');
     const startInput = document.getElementById('addModalStartTime');
     const fixedStartTime = (startInput ? startInput.value : "") || (fixedInput ? fixedInput.value : "") || null;
     const endInput = document.getElementById('addModalEndTime');
     const fixedEndTime = (endInput && endInput.value && endInput.value.trim().length === 5) ? endInput.value.trim() : null;
+
+    let duration = parseInt((durInput ? durInput.value : ""), 10);
+    if (isNaN(duration) || duration <= 0) {
+      if (fixedStartTime && fixedEndTime) {
+        const sMin = parseTimeToMinutes(fixedStartTime);
+        let eMin = parseTimeToMinutes(fixedEndTime);
+        if (eMin <= sMin) eMin += 1440;
+        duration = Math.max(1, eMin - sMin);
+      } else {
+        duration = currentAddTaskType === 'break' ? 10 : 25;
+      }
+    }
+
+    const catInput = document.getElementById('addModalCategory');
+    const category = (catInput ? catInput.value : "").trim() || (currentAddTaskType === 'break' ? 'Break' : 'General');
 
     const bankInput = document.getElementById('addModalTimeBank');
     const useTimeBank = bankInput ? bankInput.checked : false;
@@ -6777,6 +6857,12 @@ function setupNavigationAndModals() {
               provider: 'google',
               isDirty: false
             });
+            taskStore.updateCalendarEvent(newTask.id, {
+              googleEventId: res.externalId,
+              externalId: res.externalId,
+              provider: 'google',
+              isDirty: false
+            });
           }
         }).catch(() => {
           taskStore.updateTask(newTask.id, { isDirty: true });
@@ -6793,6 +6879,12 @@ function setupNavigationAndModals() {
               provider: 'microsoft',
               isDirty: false
             });
+            taskStore.updateCalendarEvent(newTask.id, {
+              microsoftEventId: res.externalId,
+              externalId: res.externalId,
+              provider: 'microsoft',
+              isDirty: false
+            });
           }
         }).catch(() => {
           taskStore.updateTask(newTask.id, { isDirty: true });
@@ -6800,6 +6892,10 @@ function setupNavigationAndModals() {
       }
     }
 
+    if (runtime && runtime.status === TimerStatus.COMPLETED) {
+      runtime.status = TimerStatus.IDLE;
+      runtime.activeTaskIndex = 0;
+    }
     runtime.initialTasks = taskStore.getTasks();
     runtime.recalculate();
     syncDynamicScheduleTimesToCalendar();
@@ -7100,6 +7196,12 @@ function setupNavigationAndModals() {
       navItemTimer.classList.add('active');
       if (navItemCalendar) navItemCalendar.classList.remove('active');
       if (navItemTodo) navItemTodo.classList.remove('active');
+      if (runtime && runtime.status === TimerStatus.IDLE) {
+        runtime.initialTasks = taskStore.getTasks();
+        runtime.recalculate();
+        updateActiveTaskDisplay();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      }
       mobileServices.hapticTap();
     });
   }

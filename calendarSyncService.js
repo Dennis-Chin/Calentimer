@@ -510,16 +510,33 @@ export class CalendarSyncService {
 
         // Dedup Guard: Check if an existing local event on this date matches title, start, and end time
         let existingLocal = null;
-        if (incoming.title && incoming.startTime) {
+        if (incoming.title) {
           const incTitle = incoming.title.trim().toLowerCase();
+          const parseMin = (str) => {
+            if (!str || typeof str !== 'string') return -1;
+            const p = str.split(':');
+            return p.length >= 2 ? (parseInt(p[0], 10) * 60) + parseInt(p[1], 10) : -1;
+          };
+          const incStartMin = parseMin(incoming.startTime);
+
           for (let k = 0; k < allEvents.length; k++) {
             const cand = allEvents[k];
-            if (cand && cand.date === incoming.date && cand.startTime === incoming.startTime) {
-              const candTitle = (cand.title || '').trim().toLowerCase();
-              if (candTitle === incTitle) {
-                existingLocal = cand;
-                break;
-              }
+            if (!cand || cand.date !== incoming.date) continue;
+            const candTitle = (cand.title || '').trim().toLowerCase();
+            if (candTitle !== incTitle) continue;
+
+            if (cand.startTime === incoming.startTime) {
+              existingLocal = cand;
+              break;
+            }
+            const candStartMin = parseMin(cand.startTime);
+            if (incStartMin >= 0 && candStartMin >= 0 && Math.abs(candStartMin - incStartMin) <= 15) {
+              existingLocal = cand;
+              break;
+            }
+            if (incStartMin < 0 || candStartMin < 0) {
+              existingLocal = cand;
+              break;
             }
           }
         }
@@ -536,6 +553,14 @@ export class CalendarSyncService {
           existingLocal.isDirty = false;
           updated++;
           eventMap.set(incoming.externalId, existingLocal);
+
+          // Also mirror externalId to corresponding task in taskStore
+          if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+            const taskPayload = { externalId: incoming.externalId };
+            if (provider === 'google') taskPayload.googleEventId = incoming.externalId;
+            if (provider === 'microsoft') taskPayload.microsoftEventId = incoming.externalId;
+            taskStore.updateTask(existingLocal.id, taskPayload);
+          }
           continue;
         }
 

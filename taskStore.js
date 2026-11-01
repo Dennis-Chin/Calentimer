@@ -1383,9 +1383,27 @@ export class TaskStore {
       todayCalEvents.forEach(calEvent => {
         if (deletedIds.has(calEvent.id)) return;
         if (isCalendarDeselected(calEvent)) return;
-        const existingTask = taskMap.get(calEvent.id);
+        let existingTask = taskMap.get(calEvent.id);
         const isEventLocked = Boolean(calEvent.isLocked);
         const fixedStart = calEvent.fixedStartTime || calEvent.startTime || null;
+
+        if (!existingTask) {
+          // Look up by external IDs or identical title & date/time to prevent duplicate task creation
+          existingTask = mergedTasks.find(t => {
+            if (calEvent.externalId && (t.externalId === calEvent.externalId || t.googleEventId === calEvent.externalId || t.microsoftEventId === calEvent.externalId || t.id === calEvent.externalId)) return true;
+            if (calEvent.googleEventId && (t.googleEventId === calEvent.googleEventId || t.externalId === calEvent.googleEventId)) return true;
+            if (calEvent.microsoftEventId && (t.microsoftEventId === calEvent.microsoftEventId || t.externalId === calEvent.microsoftEventId)) return true;
+            if (calEvent.id && (t.externalId === calEvent.id || t.googleEventId === calEvent.id || t.microsoftEventId === calEvent.id)) return true;
+            if (t.title && calEvent.title && t.title.trim().toLowerCase() === calEvent.title.trim().toLowerCase()) {
+              if (t.startTime && calEvent.startTime && t.startTime === calEvent.startTime) return true;
+            }
+            return false;
+          });
+          if (existingTask) {
+            taskMap.set(calEvent.id, existingTask);
+          }
+        }
+
         if (!existingTask) {
           const newTask = {
             id: calEvent.id,
@@ -1415,6 +1433,9 @@ export class TaskStore {
           taskMap.set(newTask.id, newTask);
           tasksChanged = true;
         } else {
+          if (calEvent.externalId && !existingTask.externalId) existingTask.externalId = calEvent.externalId;
+          if (calEvent.googleEventId && !existingTask.googleEventId) existingTask.googleEventId = calEvent.googleEventId;
+          if (calEvent.microsoftEventId && !existingTask.microsoftEventId) existingTask.microsoftEventId = calEvent.microsoftEventId;
           const calMod = calEvent.lastModified || 0;
           const taskMod = existingTask.lastModified || 0;
           if (calMod > taskMod) {
@@ -1449,11 +1470,9 @@ export class TaskStore {
           tasksChanged = true;
           return;
         }
-        const isExternal = (task && (task.origin === 'external' ||
-          task.source === 'google' || task.source === 'microsoft' ||
-          task.provider === 'google' || task.provider === 'microsoft' ||
-          (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0 || task.id.indexOf('cal-sync-') === 0))));
-        if (isExternal && (!calMap.has(task.id) || isCalendarDeselected(task))) {
+        // Only pure external tasks (imported from cloud, not created in Calentimer app) should be purged if deleted from calendar
+        const isPureExternal = Boolean(task && (task.origin === 'external' || (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0 || task.id.indexOf('cal-sync-') === 0))) && !task.createdInApp && (!task.id || task.id.indexOf('task-') !== 0));
+        if (isPureExternal && (!calMap.has(task.id) || isCalendarDeselected(task))) {
           tasksChanged = true;
           return;
         }
@@ -1463,7 +1482,21 @@ export class TaskStore {
       // 3. Sync Tasks -> Calendar Events (Tasks created, reordered, or edited in Schedule)
       tasksToKeep.forEach(task => {
         if (deletedIds.has(task.id)) return;
-        const existingEvent = calMap.get(task.id);
+        let existingEvent = calMap.get(task.id);
+        if (!existingEvent) {
+          existingEvent = mergedTodayEvents.find(e => {
+            if (task.externalId && (e.externalId === task.externalId || e.googleEventId === task.externalId || e.microsoftEventId === task.externalId || e.id === task.externalId)) return true;
+            if (task.googleEventId && (e.googleEventId === task.googleEventId || e.externalId === task.googleEventId)) return true;
+            if (task.microsoftEventId && (e.microsoftEventId === task.microsoftEventId || e.externalId === task.microsoftEventId)) return true;
+            if (e.title && task.title && e.title.trim().toLowerCase() === task.title.trim().toLowerCase()) {
+              if (e.startTime && task.startTime && e.startTime === task.startTime) return true;
+            }
+            return false;
+          });
+          if (existingEvent) {
+            calMap.set(task.id, existingEvent);
+          }
+        }
         const startTime = task.fixedStartTime || task.startTime || '09:00';
         let endTime = task.endTime;
         if (!endTime && startTime) {

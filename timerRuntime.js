@@ -121,6 +121,11 @@ export class TimerRuntime {
       return { success: false, error: err };
     }
 
+    if (this.status === TimerStatus.COMPLETED && this.initialTasks && this.initialTasks.length > 0) {
+      this.status = TimerStatus.IDLE;
+      this.activeTaskIndex = 0;
+    }
+
     // Determine which tasks still need scheduling
     let remainingTasks = [];
     if (this.status === TimerStatus.IDLE) {
@@ -256,11 +261,15 @@ export class TimerRuntime {
       if (this.activeTaskIndex >= 0 && this.activeTaskIndex < this.currentSchedule.tasks.length) {
         // User explicitly focused or viewed this task on the timer screen: start this exact task!
       } else if (isTimespans) {
-        const targetIdx = this.getActiveTaskIndexByTime(this.currentSchedule.tasks);
+        let targetIdx = this.getActiveTaskIndexByTime(this.currentSchedule.tasks);
         if (targetIdx < 0) {
-          this._setStatus(TimerStatus.COMPLETED);
-          this._emit('allTasksCompleted', {});
-          return { success: false, reason: 'ALL_TASKS_PAST' };
+          if (this.currentSchedule.tasks.length > 0) {
+            targetIdx = 0;
+          } else {
+            this._setStatus(TimerStatus.COMPLETED);
+            this._emit('allTasksCompleted', {});
+            return { success: false, reason: 'ALL_TASKS_PAST' };
+          }
         }
         this.activeTaskIndex = targetIdx;
       } else {
@@ -1074,7 +1083,14 @@ export class TimerRuntime {
         }
         return allTasks[nextIdx];
       }
-      return candidate || allTasks[0] || null;
+      const fallbackTask = candidate || allTasks[0] || null;
+      if (fallbackTask && this.status === TimerStatus.IDLE) {
+        const fIdx = allTasks.indexOf(fallbackTask);
+        if (fIdx >= 0) {
+          this.activeTaskIndex = fIdx;
+        }
+      }
+      return fallbackTask;
     }
 
     let index = this.activeTaskIndex;

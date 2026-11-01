@@ -2204,11 +2204,10 @@ export class CalendarView {
       const isEarlierOverlap = hasOverlap[j] && (eventCols[j] === 0);
 
       // Check if event corresponds to completed or currently active timer task
-      let isDone = false;
+      let isDone = Boolean(ev.isCompleted);
       let isCurrent = false;
-      if (ev.isCompleted) {
-        isDone = true;
-      }
+
+      const rt = (typeof window !== 'undefined' && window.runtime) ? window.runtime : (this.runtime || null);
       if (isToday) {
         const now = new Date();
         const currentMinutes = (now.getHours() * 60) + now.getMinutes();
@@ -2216,21 +2215,21 @@ export class CalendarView {
         let evEnd = this._parseTimeToMinutes(ev.endTime);
         if (evEnd <= evStart) evEnd += 1440;
 
-        if (currentMinutes >= evEnd) {
-          isDone = true;
-        } else if (currentMinutes >= evStart && currentMinutes < evEnd) {
-          isCurrent = true;
-        }
-      }
-      const rt = (typeof window !== 'undefined' && window.runtime) ? window.runtime : (this.runtime || null);
-      if (isToday && rt) {
-        const activeTask = (typeof rt.getActiveTask === 'function') ? rt.getActiveTask() : null;
-        const isAllDone = rt.status === 'COMPLETED';
-
-        if (isAllDone) {
-          isDone = true;
-        } else if (!isDone && activeTask && activeTask.id === ev.id && rt.status !== 'COMPLETED') {
-          isCurrent = true;
+        if (rt && (rt.status === 'RUNNING' || rt.status === 'PAUSED')) {
+          const activeTask = (typeof rt.getActiveTask === 'function') ? rt.getActiveTask() : null;
+          if (activeTask && activeTask.id === ev.id) {
+            isCurrent = true;
+          } else if (Array.isArray(rt.tasks)) {
+            const evIdx = rt.tasks.findIndex(t => t.id === ev.id);
+            if (evIdx !== -1 && evIdx < rt.activeTaskIndex) {
+              isDone = true;
+            }
+          }
+        } else {
+          // Timer is idle: highlight current time slot if within range, but DO NOT mark completed
+          if (currentMinutes >= evStart && currentMinutes < evEnd) {
+            isCurrent = true;
+          }
         }
       }
 
