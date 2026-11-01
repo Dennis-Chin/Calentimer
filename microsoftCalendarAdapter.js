@@ -208,6 +208,8 @@ export class MicrosoftCalendarAdapter {
     this.accessToken = null;
     this.tokenExpiresAt = 0;
     this.userEmail = null;
+    this._verifiedCalentimerCalendarId = null;
+    this._calentimerCalendarPromise = null;
 
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
@@ -322,6 +324,21 @@ export class MicrosoftCalendarAdapter {
       return 'ms-mock-calentimer-calendar-id';
     }
 
+    if (this._verifiedCalentimerCalendarId && this._verifiedCalentimerCalendarId !== 'primary') {
+      return this._verifiedCalentimerCalendarId;
+    }
+
+    if (this._calentimerCalendarPromise) {
+      return this._calentimerCalendarPromise;
+    }
+
+    this._calentimerCalendarPromise = this._resolveOrCreateCalentimerCalendar().finally(() => {
+      this._calentimerCalendarPromise = null;
+    });
+    return this._calentimerCalendarPromise;
+  }
+
+  async _resolveOrCreateCalentimerCalendar() {
     let cachedId = (typeof taskStore !== 'undefined' && typeof taskStore.getMicrosoftCalentimerCalendarId === 'function')
       ? taskStore.getMicrosoftCalentimerCalendarId()
       : null;
@@ -336,32 +353,39 @@ export class MicrosoftCalendarAdapter {
     }
 
     let allCals = [];
+    let listFetchSucceeded = false;
     try {
-      const resp = await fetch(`${GRAPH_API_BASE}/me/calendars`, {
+      const resp = await fetch(`${GRAPH_API_BASE}/me/calendars?$top=250`, {
+        cache: 'no-store',
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Accept': 'application/json'
         }
       });
       if (resp.ok) {
+        listFetchSucceeded = true;
         const data = await resp.json();
         if (data && Array.isArray(data.value)) {
           allCals = data.value;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      listFetchSucceeded = false;
+    }
 
     // Check if Calentimer calendar already exists
     let existing = null;
     for (let i = 0; i < allCals.length; i++) {
       const c = allCals[i];
-      if (c && c.name && c.name.trim().toLowerCase() === 'calentimer') {
+      if (!c) continue;
+      if ((cachedId && c.id === cachedId) || (c.name && c.name.trim().toLowerCase() === 'calentimer')) {
         existing = c;
         break;
       }
     }
 
     if (existing) {
+      this._verifiedCalentimerCalendarId = existing.id;
       const hex = existing.hexColor || (existing.color && MICROSOFT_CALENDAR_COLORS[existing.color]) || '#0078d4';
       if (typeof taskStore !== 'undefined') {
         if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') {
@@ -372,6 +396,10 @@ export class MicrosoftCalendarAdapter {
         }
       }
       return existing.id;
+    }
+
+    if (!listFetchSucceeded) {
+      return cachedId || null;
     }
 
     // Color collision cascade for Microsoft:
@@ -424,6 +452,7 @@ export class MicrosoftCalendarAdapter {
       if (createResp.ok) {
         const createdCal = await createResp.json();
         const calId = createdCal.id;
+        this._verifiedCalentimerCalendarId = calId;
         const hex = createdCal.hexColor || chosenHex;
 
         if (typeof taskStore !== 'undefined') {

@@ -945,6 +945,7 @@ testDayLockedCard.dispatchSimulatedEvent('touchstart', {
 testDayLockedCard.dispatchSimulatedEvent('touchmove', {
   touches: [{ clientX: 100, clientY: 215 }] // deltaY = 15 > 8px (swiping)
 });
+testDayLockedCard.dispatchSimulatedEvent('touchend', { cancelable: true });
 assert(toastShown === '', 'Swiping (> 8px) past locked day card does NOT trigger toast alert');
 assert(!testDayLockedCard.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on day card');
 
@@ -952,12 +953,13 @@ assert(!testDayLockedCard.classList.contains('lock-pulse-glow'), 'Swiping does N
 testDayLockedCard.dispatchSimulatedEvent('touchstart', {
   touches: [{ clientX: 100, clientY: 200 }]
 });
-await new Promise(function(resolve) { setTimeout(resolve, 220); });
+await new Promise(function(resolve) { setTimeout(resolve, 250); });
 
 assert(toastShown === '🔒 Unlock event before moving', 'Toast pop-up notifies user to unlock event before moving when press-held');
 assert(testDayLockedCard.classList.contains('lock-pulse-glow'), 'Day card pulses with glowing orange border on press-hold');
 const lockBtnInside = testDayLockedCard.querySelector('.cal-event-lock-btn');
 assert(lockBtnInside && lockBtnInside.classList.contains('pulse-glow'), 'Padlock icon pulses with glow on press-hold');
+testDayLockedCard.dispatchSimulatedEvent('touchend', { cancelable: true });
 
 // Week View: Swiping vs Press-Hold
 calendar.switchView('week');
@@ -980,6 +982,7 @@ if (lockedWeekCardTest) {
   lockedWeekCardTest.dispatchSimulatedEvent('touchmove', {
     touches: [{ clientX: 135, clientY: 200 }] // deltaX = 15 > 8px
   });
+  lockedWeekCardTest.dispatchSimulatedEvent('touchend', { cancelable: true });
   assert(toastShown === '', 'Swiping (> 8px) past locked week card does NOT trigger toast alert');
   assert(!lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on week card');
 
@@ -987,9 +990,10 @@ if (lockedWeekCardTest) {
   lockedWeekCardTest.dispatchSimulatedEvent('touchstart', {
     touches: [{ clientX: 120, clientY: 200 }]
   });
-  await new Promise(function(resolve) { setTimeout(resolve, 220); });
+  await new Promise(function(resolve) { setTimeout(resolve, 250); });
   assert(toastShown === '🔒 Unlock event before moving', 'Press-holding locked week card triggers toast alert');
   assert(lockedWeekCardTest.classList.contains('lock-pulse-glow'), 'Press-holding triggers lock-pulse-glow on week card');
+  lockedWeekCardTest.dispatchSimulatedEvent('touchend', { cancelable: true });
 }
 
 // Month View: Swiping vs Press-Hold
@@ -1018,6 +1022,7 @@ if (lockedMonthPillTest) {
   lockedMonthPillTest.dispatchSimulatedEvent('touchmove', {
     touches: [{ clientX: 120, clientY: 150 }] // deltaX = 20 > 8px
   });
+  lockedMonthPillTest.dispatchSimulatedEvent('touchend', { cancelable: true });
   assert(toastShown === '', 'Swiping (> 8px) past locked month pill does NOT trigger toast alert');
   assert(!lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Swiping does NOT trigger lock-pulse-glow on month pill');
 
@@ -1025,9 +1030,10 @@ if (lockedMonthPillTest) {
   lockedMonthPillTest.dispatchSimulatedEvent('touchstart', {
     touches: [{ clientX: 100, clientY: 150 }]
   });
-  await new Promise(function(resolve) { setTimeout(resolve, 220); });
+  await new Promise(function(resolve) { setTimeout(resolve, 250); });
   assert(toastShown === '🔒 Unlock event before moving', 'Press-holding locked month pill triggers toast alert');
   assert(lockedMonthPillTest.classList.contains('lock-pulse-glow'), 'Press-holding triggers lock-pulse-glow on month pill');
+  lockedMonthPillTest.dispatchSimulatedEvent('touchend', { cancelable: true });
 }
 
 // 2. Calendar Tab defaults to today's date and user's chosen view upon opening

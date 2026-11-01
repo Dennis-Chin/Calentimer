@@ -68,6 +68,8 @@ export class GoogleCalendarAdapter {
     this.tokenClient = null;
     this.mockTransport = opts.mockTransport || null;
     this.userEmail = null;
+    this._verifiedCalentimerCalendarId = null;
+    this._calentimerCalendarPromise = null;
   }
 
   /**
@@ -135,6 +137,8 @@ export class GoogleCalendarAdapter {
     this.accessToken = null;
     this.tokenExpiresAt = 0;
     this.userEmail = null;
+    this._verifiedCalentimerCalendarId = null;
+    this._calentimerCalendarPromise = null;
 
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
@@ -253,7 +257,9 @@ export class GoogleCalendarAdapter {
 
   /**
    * Discovers or creates the dedicated secondary "Calentimer" calendar in Google Calendar.
-   * Applies the Neon Light Blue -> Neon Light Green -> Standout Fallback color collision cascade.
+   * Deduplicates concurrent calls, queries hidden/paginated calendars with cache: 'no-store',
+   * verifies cached calendar ID directly against the strongly-consistent /calendars/{id} endpoint,
+   * and aborts creation if calendarList fetch fails so duplicate "Calentimer" calendars are never created.
    * @returns {Promise<string>} calendarId
    */
   async getOrCreateCalentimerCalendar() {
@@ -261,6 +267,21 @@ export class GoogleCalendarAdapter {
       return this.mockTransport.getOrCreateCalentimerCalendar();
     }
 
+    if (this._verifiedCalentimerCalendarId && this._verifiedCalentimerCalendarId !== 'primary') {
+      return this._verifiedCalentimerCalendarId;
+    }
+
+    if (this._calentimerCalendarPromise) {
+      return this._calentimerCalendarPromise;
+    }
+
+    this._calentimerCalendarPromise = this._resolveOrCreateCalentimerCalendar().finally(() => {
+      this._calentimerCalendarPromise = null;
+    });
+    return this._calentimerCalendarPromise;
+  }
+
+  async _resolveOrCreateCalentimerCalendar() {
     let cachedId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
       ? taskStore.getGoogleCalentimerCalendarId()
       : null;
@@ -272,32 +293,61 @@ export class GoogleCalendarAdapter {
     }
 
     let allCals = [];
+    let listFetchSucceeded = false;
     try {
-      const resp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`, {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Accept': 'application/json'
+      let pageToken = null;
+      do {
+        let listUrl = `${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList?showHidden=true&maxResults=250`;
+        if (pageToken) {
+          listUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
         }
-      });
-      if (resp.ok) {
+        const resp = await fetch(listUrl, {
+          cache: 'no-store',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (!resp.ok) {
+          listFetchSucceeded = false;
+          break;
+        }
+        listFetchSucceeded = true;
         const data = await resp.json();
         if (data && Array.isArray(data.items)) {
-          allCals = data.items;
+          allCals = allCals.concat(data.items);
         }
-      }
-    } catch (_) {}
+        pageToken = (data && data.nextPageToken) ? data.nextPageToken : null;
+      } while (pageToken);
+    } catch (_) {
+      listFetchSucceeded = false;
+    }
 
-    // Check if "Calentimer" calendar already exists in user's account
+    // Check if "Calentimer" calendar already exists in user's account (by cachedId, summary, summaryOverride, or description)
     let existing = null;
+    const matches = [];
     for (let i = 0; i < allCals.length; i++) {
       const c = allCals[i];
-      if (c && c.summary && c.summary.trim().toLowerCase() === 'calentimer') {
-        existing = c;
-        break;
+      if (!c || c.deleted) continue;
+      const sum = c.summary ? c.summary.trim().toLowerCase() : '';
+      const sumOverride = c.summaryOverride ? c.summaryOverride.trim().toLowerCase() : '';
+      const desc = c.description ? c.description.trim() : '';
+      if (
+        (cachedId && c.id === cachedId) ||
+        sum === 'calentimer' ||
+        sumOverride === 'calentimer' ||
+        desc.indexOf('Mirrored tasks and live schedule events from Calentimer') !== -1
+      ) {
+        matches.push(c);
       }
     }
 
+    if (matches.length > 0) {
+      existing = (cachedId && matches.find(m => m.id === cachedId)) || matches[0];
+    }
+
     if (existing) {
+      this._verifiedCalentimerCalendarId = existing.id;
       if (typeof taskStore !== 'undefined') {
         if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
           taskStore.setGoogleCalentimerCalendarId(existing.id);
@@ -307,6 +357,46 @@ export class GoogleCalendarAdapter {
         }
       }
       return existing.id;
+    }
+
+    // Strongly-consistent check: if cachedId exists (e.g. created moments ago before calendarList indexed it,
+    // or from a previous session where it was removed from calendarList), verify /calendars/{cachedId} directly
+    if (cachedId) {
+      try {
+        const directResp = await fetch(`${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(cachedId)}`, {
+          cache: 'no-store',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Accept': 'application/json'
+          }
+        });
+        if (directResp.ok) {
+          const directCal = await directResp.json();
+          if (directCal && directCal.id) {
+            this._verifiedCalentimerCalendarId = directCal.id;
+            // Ensure it is visible in user's calendarList
+            try {
+              await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: directCal.id })
+              });
+            } catch (_) {}
+            if (typeof taskStore !== 'undefined' && typeof taskStore.setGoogleCalentimerCalendarId === 'function') {
+              taskStore.setGoogleCalentimerCalendarId(directCal.id);
+            }
+            return directCal.id;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Safety guard: Never create a new calendar if the calendarList fetch did not succeed
+    if (!listFetchSucceeded) {
+      return cachedId || null;
     }
 
     // Color collision cascade:
@@ -363,6 +453,7 @@ export class GoogleCalendarAdapter {
       if (createResp.ok) {
         const createdCal = await createResp.json();
         const calId = createdCal.id;
+        this._verifiedCalentimerCalendarId = calId;
 
         try {
           await fetch(`${GOOGLE_CALENDAR_API_BASE}/users/me/calendarList`, {

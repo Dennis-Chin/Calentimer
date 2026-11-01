@@ -1110,6 +1110,133 @@ if (typeof global.document === 'undefined') {
     assert(Array.isArray(taskStore.getGoogleSelectedCalendarIds()), 'getGoogleSelectedCalendarIds returns array when set');
     taskStore.setGoogleSelectedCalendarIds(null);
     assert(taskStore.getGoogleSelectedCalendarIds() === null, 'setGoogleSelectedCalendarIds(null) resets to null without saving empty array');
+
+    // 8. Testing Duplicate "Calentimer" Calendar Prevention on Sign-In & Reconnect
+    console.log('\n--- 14. Testing Duplicate "Calentimer" Calendar Prevention on Sign-In & Reconnect ---');
+    const origFetch = global.fetch;
+
+    // Case A: Existing "Calentimer" calendar in calendarList (or summaryOverride / description) is reused without POST /calendars
+    let postCalendarsCount = 0;
+    let listCallsCount = 0;
+    global.fetch = async (url, opts) => {
+      const method = (opts && opts.method) ? opts.method : 'GET';
+      if (method === 'GET' && url.indexOf('/users/me/calendarList') !== -1) {
+        listCallsCount++;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [
+              { id: 'user@gmail.com', summary: 'user@gmail.com', primary: true },
+              { id: 'c_existing_calentimer_999@group.calendar.google.com', summary: 'Calentimer', primary: false }
+            ]
+          })
+        };
+      }
+      if (method === 'POST' && url.indexOf('/calendars') !== -1) {
+        postCalendarsCount++;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 'c_duplicate_created@group.calendar.google.com', summary: 'Calentimer' })
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+
+    taskStore.setGoogleCalentimerCalendarId(null);
+    const dedupGoogleAdapter = new gAdapter.constructor({ useMock: false });
+    dedupGoogleAdapter.accessToken = 'valid_google_token';
+    dedupGoogleAdapter.tokenExpiresAt = Date.now() + 3600000;
+
+    // Concurrent calls during sign-in (connectProvider + syncProvider + saveCloudProfile)
+    const [calId1, calId2, calId3] = await Promise.all([
+      dedupGoogleAdapter.getOrCreateCalentimerCalendar(),
+      dedupGoogleAdapter.getOrCreateCalentimerCalendar(),
+      dedupGoogleAdapter.getOrCreateCalentimerCalendar()
+    ]);
+
+    assert(calId1 === 'c_existing_calentimer_999@group.calendar.google.com', 'Finds existing Calentimer calendar in Google calendarList');
+    assert(calId2 === calId1 && calId3 === calId1, 'Concurrent getOrCreateCalentimerCalendar calls resolve to identical calendar ID');
+    assert(postCalendarsCount === 0, 'Does NOT create a new Calentimer calendar when one already exists');
+    assert(listCallsCount === 1, 'In-flight promise deduplication and verified session cache prevent redundant calendarList fetches');
+
+    // Subsequent call uses _verifiedCalentimerCalendarId without hitting network again
+    const calId4 = await dedupGoogleAdapter.getOrCreateCalentimerCalendar();
+    assert(calId4 === calId1 && listCallsCount === 1, 'Subsequent call in same session returns verified cached ID immediately');
+
+    // Case B: Eventual consistency fallback - calendarList does not yet include cachedId, but GET /calendars/{cachedId} succeeds
+    const dedupGoogleAdapter2 = new gAdapter.constructor({ useMock: false });
+    dedupGoogleAdapter2.accessToken = 'valid_google_token';
+    dedupGoogleAdapter2.tokenExpiresAt = Date.now() + 3600000;
+    taskStore.setGoogleCalentimerCalendarId('c_cached_direct_verify@group.calendar.google.com');
+
+    let directVerifyCalled = false;
+    global.fetch = async (url, opts) => {
+      const method = (opts && opts.method) ? opts.method : 'GET';
+      if (method === 'GET' && url.indexOf('/users/me/calendarList') !== -1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [{ id: 'user@gmail.com', summary: 'user@gmail.com', primary: true }]
+          })
+        };
+      }
+      if (method === 'GET' && url.indexOf('/calendars/c_cached_direct_verify%40group.calendar.google.com') !== -1) {
+        directVerifyCalled = true;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'c_cached_direct_verify@group.calendar.google.com',
+            summary: 'Calentimer',
+            deleted: false
+          })
+        };
+      }
+      if (method === 'POST' && url.indexOf('/calendars') !== -1) {
+        postCalendarsCount++;
+        return { ok: true, status: 200, json: async () => ({ id: 'c_dup' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+
+    const verifiedDirectId = await dedupGoogleAdapter2.getOrCreateCalentimerCalendar();
+    assert(directVerifyCalled === true, 'Verifies cachedId directly via strongly-consistent GET /calendars/{id} when missing from calendarList');
+    assert(verifiedDirectId === 'c_cached_direct_verify@group.calendar.google.com', 'Reuses directly verified cachedId without creating duplicate calendar');
+    assert(postCalendarsCount === 0, 'POST /calendars is never called when direct verification succeeds');
+
+    // Case C: If calendarList fetch fails (e.g. network / 503 error), aborts instead of blindly creating a duplicate calendar
+    const dedupGoogleAdapter3 = new gAdapter.constructor({ useMock: false });
+    dedupGoogleAdapter3.accessToken = 'valid_google_token';
+    dedupGoogleAdapter3.tokenExpiresAt = Date.now() + 3600000;
+    taskStore.setGoogleCalentimerCalendarId(null);
+
+    global.fetch = async (url, opts) => {
+      const method = (opts && opts.method) ? opts.method : 'GET';
+      if (method === 'GET' && url.indexOf('/users/me/calendarList') !== -1) {
+        return { ok: false, status: 503, json: async () => ({}) };
+      }
+      if (method === 'POST' && url.indexOf('/calendars') !== -1) {
+        postCalendarsCount++;
+        return { ok: true, status: 200, json: async () => ({ id: 'c_dup' }) };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    };
+
+    const failedListId = await dedupGoogleAdapter3.getOrCreateCalentimerCalendar();
+    assert(failedListId === null && postCalendarsCount === 0, 'Refuses to create duplicate calendar when calendarList fetch fails');
+
+    // Case D: Disconnecting and reconnecting preserves stored Calentimer calendar ID in taskStore
+    taskStore.setGoogleCalentimerCalendarId('c_preserved_across_reconnect@group.calendar.google.com');
+    await service2.disconnectProvider('google');
+    assert(
+      taskStore.getGoogleCalentimerCalendarId() === 'c_preserved_across_reconnect@group.calendar.google.com',
+      'disconnectProvider preserves known Calentimer calendar ID in taskStore to prevent duplicate on reconnect'
+    );
+
+    global.fetch = origFetch;
   }
 
   console.log('\n========================================');

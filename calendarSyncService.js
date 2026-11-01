@@ -152,13 +152,11 @@ export class CalendarSyncService {
       if (typeof taskStore.setGoogleCalendarConnected === 'function') taskStore.setGoogleCalendarConnected(false);
       if (typeof taskStore.setGoogleSyncToken === 'function') taskStore.setGoogleSyncToken(null);
       if (typeof taskStore.setGoogleUserEmail === 'function') taskStore.setGoogleUserEmail(null);
-      if (typeof taskStore.setGoogleCalentimerCalendarId === 'function') taskStore.setGoogleCalentimerCalendarId(null);
       if (typeof taskStore.setGoogleSelectedCalendarIds === 'function') taskStore.setGoogleSelectedCalendarIds(null);
     } else if (provider === 'microsoft') {
       if (typeof taskStore.setMicrosoftCalendarConnected === 'function') taskStore.setMicrosoftCalendarConnected(false);
       if (typeof taskStore.setMicrosoftDeltaLink === 'function') taskStore.setMicrosoftDeltaLink(null);
       if (typeof taskStore.setMicrosoftUserEmail === 'function') taskStore.setMicrosoftUserEmail(null);
-      if (typeof taskStore.setMicrosoftCalentimerCalendarId === 'function') taskStore.setMicrosoftCalentimerCalendarId(null);
       if (typeof taskStore.setMicrosoftSelectedCalendarIds === 'function') taskStore.setMicrosoftSelectedCalendarIds(null);
     }
 
