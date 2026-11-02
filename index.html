@@ -134,7 +134,7 @@
       </ul>
     </section>
 
-    <!-- Top Header: Menu, Brand & Notifications -->
+    <!-- Top Header: Menu & Brand -->
     <header class="app-header">
       <div class="header-left">
         <button class="btn-menu" id="btnOpenNav" title="Open Navigation Menu" aria-label="Open Navigation Menu">
@@ -147,24 +147,21 @@
         <span class="app-brand">Calentimer</span>
       </div>
       <div class="header-right">
-        <button class="btn-notif-pill" id="btnNotifToggle" title="Enable Android notifications">
-          <span class="notif-icon">🔔</span>
-          <span class="notif-text" id="notifStatusText">Alerts</span>
-        </button>
       </div>
     </header>
 
-    <!-- Schedule Control Bar: Hard Stop & Time Bank -->
+    <!-- Schedule Control Bar: Time Bank & Total Minutes Completed -->
     <div class="schedule-control-bar">
-      <div class="hard-stop-pill" id="hardStopPill" title="Hard Stop: all tasks automatically shrink to finish by this time">
-        <span class="pill-label">HARD STOP</span>
-        <input type="time" id="hardStopInput" class="hard-stop-input" value="15:00">
-      </div>
-
       <div class="time-bank-pill" id="timeBankPill" title="Time Bank: finish tasks early to bank extra time!">
         <span class="time-bank-icon">🐷</span>
         <span class="time-bank-label">TIME BANK:</span>
         <span class="time-bank-amount" id="timeBankAmount">0m</span>
+      </div>
+
+      <div class="total-minutes-pill" id="totalMinutesPill" title="Total minutes completed today">
+        <span class="total-min-icon">⏱️</span>
+        <span class="total-min-label">TOTAL:</span>
+        <span class="total-min-amount" id="totalMinutesAmount">0m</span>
       </div>
     </div>
 
@@ -189,9 +186,9 @@
 
           <!-- The Revolving Circle Handle: Click and drag this moving part to scrub time back and forth in 1-second increments! -->
           <g id="revolvingCircleGroup" class="revolving-circle-group" cursor="grab">
-            <circle class="revolving-hitbox" id="revolvingHitbox" cx="160" cy="30" r="24" fill="transparent" pointer-events="all" />
-            <circle class="revolving-glow" id="revolvingGlow" cx="160" cy="30" r="14" />
-            <circle class="revolving-circle" id="revolvingCircle" cx="160" cy="30" r="8" />
+            <circle class="revolving-hitbox" id="revolvingHitbox" cx="160" cy="30" r="28" fill="transparent" pointer-events="all" />
+            <circle class="revolving-glow" id="revolvingGlow" cx="160" cy="30" r="18" />
+            <circle class="revolving-circle" id="revolvingCircle" cx="160" cy="30" r="11" />
           </g>
         </svg>
 
@@ -776,10 +773,7 @@
           <div class="finish-line-content">
             <div class="finish-line-left">
               <span class="finish-line-flag" aria-hidden="true">🏁</span>
-              <div class="finish-line-labels">
-                <span class="finish-line-title">FINISH LINE</span>
-                <span class="finish-line-sub">TARGET HARD STOP</span>
-              </div>
+              <span class="finish-line-title">FINISH LINE</span>
             </div>
             <div class="finish-line-right">
               <input type="time" id="calendarHardStopInput" class="finish-line-time-input" value="15:00" title="Click to adjust stopping time">

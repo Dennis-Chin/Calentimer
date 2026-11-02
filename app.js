@@ -298,6 +298,7 @@ function initApp() {
           updateActiveTaskDisplay();
           renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || storedTasks);
           renderCalendarModal();
+          updateTotalMinutesDisplay();
           const activeTask = runtime.getActiveTask();
           if (activeTask) {
             renderClockTime(runtime.getRemainingSeconds());
@@ -322,6 +323,7 @@ function initApp() {
     updateResetButtonUI();
     updateNotifToggleUI();
     updateTimeBankDisplay();
+    updateTotalMinutesDisplay();
     renderTodoList();
     const initActiveTask = runtime.getActiveTask();
     const initDurSec = ((initActiveTask ? initActiveTask.allocatedDuration : 0) || (initActiveTask ? initActiveTask.plannedDuration : 0) || 30) * 60;
@@ -335,11 +337,12 @@ function initApp() {
 }
 
 function updateNotifToggleUI() {
-  if (!btnNotifToggle || !notifStatusText) return;
   const isEnabled = taskStore.getAlertsEnabled();
-  const hasPerm = mobileServices.hasNotificationPermission();
   const toggleAlerts = document.getElementById('toggleAlertsEnabled');
   if (toggleAlerts) toggleAlerts.checked = isEnabled;
+
+  if (!btnNotifToggle || !notifStatusText) return;
+  const hasPerm = mobileServices.hasNotificationPermission();
 
   if (isEnabled) {
     btnNotifToggle.classList.add('granted');
@@ -363,8 +366,8 @@ function renderDialTicks() {
   for (let i = 0; i < 60; i++) {
     const isMajor = i % 5 === 0;
     const angleRad = (i * 6 - 90) * (Math.PI / 180);
-    const r1 = isMajor ? 133 : 139;
-    const r2 = 151;
+    const r1 = isMajor ? 132 : 138;
+    const r2 = 152;
     const x1 = 160 + r1 * Math.cos(angleRad);
     const y1 = 160 + r1 * Math.sin(angleRad);
     const x2 = 160 + r2 * Math.cos(angleRad);
@@ -379,6 +382,52 @@ function renderDialTicks() {
     dialTicksGroup.appendChild(line);
   }
 }
+
+/**
+ * Calculates the total minutes of tasks completed today
+ */
+function calculateTotalMinutesToday() {
+  const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+    ? taskStore.getTodayDateString()
+    : new Date().toISOString().split('T')[0];
+  const tasks = (typeof taskStore !== 'undefined' && typeof taskStore.getTasks === 'function')
+    ? taskStore.getTasks()
+    : [];
+  let totalMin = 0;
+
+  tasks.forEach(t => {
+    if (t && t.isCompleted && (!t.completedDate || t.completedDate === todayStr)) {
+      totalMin += Math.round(t.allocatedDuration || t.plannedDuration || 0);
+    }
+  });
+
+  if (runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED) && runtime.activeTaskIndex > 0) {
+    const schedTasks = (runtime.currentSchedule && runtime.currentSchedule.tasks) || [];
+    for (let i = 0; i < runtime.activeTaskIndex && i < schedTasks.length; i++) {
+      const st = schedTasks[i];
+      const isAlreadyCounted = tasks.some(t => t.id === st.id && t.isCompleted && (!t.completedDate || t.completedDate === todayStr));
+      if (!isAlreadyCounted) {
+        totalMin += Math.round(st.allocatedDuration || st.plannedDuration || 0);
+      }
+    }
+  }
+
+  return totalMin;
+}
+
+function updateTotalMinutesDisplay() {
+  const totalMinEl = document.getElementById('totalMinutesAmount');
+  if (!totalMinEl) return;
+  const totalMin = calculateTotalMinutesToday();
+  if (totalMin >= 60) {
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    totalMinEl.textContent = m > 0 ? `${h}h ${m}m` : `${h}h`;
+  } else {
+    totalMinEl.textContent = `${totalMin}m`;
+  }
+}
+window.updateTotalMinutesDisplay = updateTotalMinutesDisplay;
 
 // ==========================================
 // Event Bindings for TimerRuntime
@@ -515,6 +564,21 @@ function setupRuntimeEvents() {
       completedTask: data.task,
       nextTask
     });
+
+    if (data && data.task && data.task.id) {
+      const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+        ? taskStore.getTodayDateString()
+        : new Date().toISOString().split('T')[0];
+      data.task.isCompleted = true;
+      data.task.completedDate = todayStr;
+      if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+        taskStore.updateTask(data.task.id, {
+          isCompleted: true,
+          completedDate: todayStr
+        });
+      }
+    }
+    updateTotalMinutesDisplay();
     updateActiveTaskDisplay();
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
@@ -526,6 +590,7 @@ function setupRuntimeEvents() {
     stopContinuousWheelAnimation();
     mobileServices.disableWakeLock();
     mobileServices.clearLiveNotification();
+    updateTotalMinutesDisplay();
     updateActiveTaskDisplay();
     if (typeof updateTimespansButtonUI === 'function') updateTimespansButtonUI();
     updateResetButtonUI();
@@ -1488,6 +1553,9 @@ function resetWholeDay() {
   // Reset clears Time Bank back to zero (strictly on reset, not on exit)
   taskStore.setTimeBankSeconds(0);
   updateTimeBankDisplay();
+  const tasks = taskStore.getTasks().map(t => Object.assign({}, t, { isCompleted: false, completedDate: null }));
+  taskStore.saveTasks(tasks);
+  updateTotalMinutesDisplay();
   currentDialRotationDeg = 0;
   if (rotaryDialGroup) {
     rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
@@ -2098,6 +2166,7 @@ function setupControls() {
       updateScheduleUI(runtime.currentSchedule);
       renderClockTime(0);
       updateWheelProgress(0);
+      updateTotalMinutesDisplay();
       if (calendarView && typeof calendarView.render === 'function') {
         calendarView.render();
       }
@@ -4016,6 +4085,11 @@ function renderTaskList(rawTasks) {
         <div class="task-card-title-wrap">
           <span class="task-card-title">${escapeHtml(task.title)}</span>
         </div>
+        <button type="button" class="task-check-btn ${task.isCompleted ? 'checked' : ''}" data-action="toggle-task-done" data-id="${task.id}" title="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}" aria-label="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}">
+          <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </button>
       </div>
 
       <!-- Bottom Row: Timing duration in blue text on a single line -->
@@ -4046,7 +4120,7 @@ function renderTaskList(rawTasks) {
     };
 
     card.addEventListener('touchstart', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], .task-emoji-btn, .btn-icon-action')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], .task-check-btn, .task-emoji-btn, .btn-icon-action')) return;
       holdMoved = false;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
@@ -4073,7 +4147,7 @@ function renderTaskList(rawTasks) {
 
     card.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], .task-emoji-btn, .btn-icon-action')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], .task-check-btn, .task-emoji-btn, .btn-icon-action')) return;
       holdMoved = false;
       startX = e.clientX;
       startY = e.clientY;
@@ -4099,6 +4173,45 @@ function renderTaskList(rawTasks) {
       window.addEventListener('mouseup', onMouseUp);
     });
 
+    // Toggle task done tick box
+    const checkBtn = card.querySelector('[data-action="toggle-task-done"]');
+    if (checkBtn) {
+      checkBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const isNowDone = !Boolean(task.isCompleted);
+        const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+          ? taskStore.getTodayDateString()
+          : new Date().toISOString().split('T')[0];
+        task.isCompleted = isNowDone;
+        task.completedDate = isNowDone ? todayStr : null;
+
+        taskStore.updateTask(task.id, {
+          isCompleted: isNowDone,
+          completedDate: isNowDone ? todayStr : null
+        });
+
+        if (runtime && runtime.initialTasks) {
+          const initT = runtime.initialTasks.find(t => t.id === task.id);
+          if (initT) {
+            initT.isCompleted = isNowDone;
+            initT.completedDate = isNowDone ? todayStr : null;
+          }
+        }
+        if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+          const schedT = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+          if (schedT) {
+            schedT.isCompleted = isNowDone;
+            schedT.completedDate = isNowDone ? todayStr : null;
+          }
+        }
+
+        mobileServices.hapticTap();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+        updateTotalMinutesDisplay();
+      });
+    }
+
     // Emoji click
     const _emojiBtn = card.querySelector('[data-action="pick-emoji"]');
     if (_emojiBtn) {
@@ -4112,7 +4225,7 @@ function renderTaskList(rawTasks) {
     const _editBtn = card.querySelector('[data-action="edit-task"]');
     if (_editBtn) {
       _editBtn.addEventListener('click', (e) => {
-        if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]') || e.target.closest('[data-action="swap-overlap-priority"]')) return;
+        if (e.target.closest('[data-action="pick-emoji"]') || e.target.closest('[data-action="drag-handle"]') || e.target.closest('[data-action="locked-drag-attempt"]') || e.target.closest('[data-action="swap-overlap-priority"]') || e.target.closest('[data-action="toggle-task-done"]')) return;
         openTaskEditModal(task.id);
       });
     }

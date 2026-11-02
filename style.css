@@ -609,6 +609,40 @@ body {
   100% { transform: scale(1.04); }
 }
 
+/* Total Minutes Completed Today Pill */
+.total-minutes-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.total-min-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.total-min-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.total-min-amount {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #34d399;
+}
+
 /* Simple, elegant schedule concept explainer */
 .schedule-concept-bar {
   display: flex;
@@ -685,26 +719,26 @@ body {
 
 .dial-tick {
   stroke: rgba(255, 255, 255, 0.32);
-  stroke-width: 2.8;
+  stroke-width: 3.5;
   stroke-linecap: round;
 }
 
 .dial-tick.major {
   stroke: var(--accent-cyan);
-  stroke-width: 4.8;
+  stroke-width: 6.2;
   filter: drop-shadow(0 0 5px rgba(6, 182, 212, 0.45));
 }
 
 .track-bg {
   fill: none;
   stroke: rgba(255, 255, 255, 0.05);
-  stroke-width: 10;
+  stroke-width: 14;
 }
 
 .track-progress {
   fill: none;
   stroke: var(--primary);
-  stroke-width: 10;
+  stroke-width: 14;
   stroke-linecap: round;
   stroke-dasharray: 816.81; /* 2 * PI * 130 */
   stroke-dashoffset: 0;
@@ -725,14 +759,14 @@ body {
 .revolving-glow {
   fill: var(--primary);
   opacity: 0.55;
-  filter: blur(6px);
+  filter: blur(8px);
   transition: none; /* Instant tracking to eliminate cursor lag */
 }
 
 .revolving-circle {
   fill: var(--primary);
   stroke: #ffffff;
-  stroke-width: 2.5;
+  stroke-width: 3.2;
   filter: drop-shadow(0 0 10px var(--primary));
   transition: none; /* Instant tracking to eliminate cursor lag */
 }
@@ -1216,6 +1250,66 @@ body {
   color: #a7f3d0;
   text-decoration: line-through;
   opacity: 0.85;
+}
+
+[data-theme="light"] .task-card.task-completed {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: #10b981 !important;
+  border-left: 5px solid #059669 !important;
+}
+
+[data-theme="light"] .task-card.task-completed .task-card-title {
+  color: #065f46;
+}
+
+/* Task Check Button (Done / Todo toggle) */
+.task-check-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid var(--border-subtle);
+  color: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+  transition: all 0.18s ease;
+  padding: 0;
+}
+
+.task-check-btn:hover {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  color: rgba(16, 185, 129, 0.5);
+}
+
+.task-check-btn.checked {
+  background: #10b981;
+  border-color: #10b981;
+  color: #0c0e14;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+}
+
+[data-theme="light"] .task-check-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+[data-theme="light"] .task-check-btn.checked {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.task-card-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .task-card.task-current {
@@ -2597,6 +2691,7 @@ body {
   letter-spacing: 0.8px;
   color: var(--text-main);
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .finish-line-sub {

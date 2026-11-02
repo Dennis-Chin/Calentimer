@@ -333,6 +333,48 @@ assert(updatedCalContent.includes('localEventSignatures.has(sig)'), 'calendarVie
 assert(updatedSyncServiceContent.includes('existingLocal.externalId = incoming.externalId;'), 'calendarSyncService.js links existing local events on incoming external sync to prevent duplicates');
 assert(updatedCssContent.includes('.day-event-card.is-dragging-cal-event') && updatedCssContent.includes('right: auto !important;'), 'style.css sets right: auto !important on in-flight day event card');
 
+console.log('\n--- 14. Testing Header Cleanup, Schedule Bar, Finish Line, Done Tick Box & Category Colors ---');
+const curHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+const curApp = fs.readFileSync(path.resolve(process.cwd(), 'app.js'), 'utf8');
+const curClassifier = fs.readFileSync(path.resolve(process.cwd(), 'eventClassifier.js'), 'utf8');
+const curCss = fs.readFileSync(path.resolve(process.cwd(), 'style.css'), 'utf8');
+
+// 1. Alerts On button removed from top header (alerts toggle remains in Settings only)
+assert(!curHtml.includes('id="btnNotifToggle"'), 'index.html header has #btnNotifToggle removed');
+
+// 2. Hard Stop removed from timer screen control bar; accessible via Today\'s schedule tabs
+const scheduleControlBarSlice = curHtml.slice(curHtml.indexOf('class="schedule-control-bar"'), curHtml.indexOf('class="timer-viewport"'));
+assert(!scheduleControlBarSlice.includes('id="hardStopPill"'), 'Timer screen schedule control bar has #hardStopPill removed');
+assert(curHtml.includes('id="todayFinishLine"'), 'Today drawer has #todayFinishLine');
+assert(curHtml.includes('id="calendarFinishLine"'), 'Calendar schedule modal has #calendarFinishLine');
+
+// 3. Time Bank on left side; Total Minutes for the day on right side
+assert(scheduleControlBarSlice.indexOf('id="timeBankPill"') < scheduleControlBarSlice.indexOf('id="totalMinutesPill"'), 'Time Bank pill sits on left and Total Minutes pill sits on right');
+assert(curApp.includes('function updateTotalMinutesDisplay('), 'app.js defines updateTotalMinutesDisplay()');
+assert(curApp.includes('function calculateTotalMinutesToday('), 'app.js defines calculateTotalMinutesToday()');
+
+// 4. Calendar Finish Line on one line with TARGET HARD STOP subtext removed
+const calFinishLineSlice = curHtml.slice(curHtml.indexOf('id="calendarFinishLine"'), curHtml.indexOf('class="calendar-modal-footer"'));
+assert(!calFinishLineSlice.includes('class="finish-line-sub"'), '#calendarFinishLine removes TARGET HARD STOP subtext');
+assert(!calFinishLineSlice.includes('TARGET HARD STOP'), '#calendarFinishLine does not contain TARGET HARD STOP');
+assert(curCss.includes('.finish-line-title') && curCss.includes('white-space: nowrap;'), '.finish-line-title has white-space: nowrap;');
+
+// 5. Done tick box on far right of name in Today\'s Schedule drawer
+assert(curApp.includes('data-action="toggle-task-done"'), 'app.js renders toggle-task-done button');
+assert(curApp.includes('class="task-check-btn'), 'app.js renders .task-check-btn');
+assert(curCss.includes('.task-check-btn'), 'style.css defines styles for .task-check-btn');
+assert(curCss.includes('.task-card.task-completed .task-card-title') && curCss.includes('line-through'), 'Completed task name is crossed out with line-through');
+
+// 6. Timer dial ring and revolving circle thicker/larger
+assert(curCss.includes('.track-progress') && curCss.includes('stroke-width: 14;'), '.track-progress stroke-width increased to 14');
+assert(curCss.includes('.dial-tick.major') && curCss.includes('stroke-width: 6.2;'), '.dial-tick.major stroke-width increased to 6.2');
+assert(curHtml.includes('id="revolvingCircle" cx="160" cy="30" r="11"'), 'revolvingCircle radius increased to 11');
+
+// 7. Category colors cannot have done green or active light blue
+const presetColorsSlice = curClassifier.slice(curClassifier.indexOf('export const PRESET_CATEGORY_COLORS = ['), curClassifier.indexOf('];', curClassifier.indexOf('export const PRESET_CATEGORY_COLORS = [')));
+assert(presetColorsSlice && !presetColorsSlice.includes("'#047857'"), 'PRESET_CATEGORY_COLORS excludes greens');
+assert(curClassifier.includes('const activeBlues =') && curClassifier.includes('const doneGreens ='), 'sanitizeCategoryColor checks active cyan/blues and done greens');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

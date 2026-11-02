@@ -90,11 +90,11 @@ export const CATEGORY_DEFINITIONS = {
 };
 
 // Curated, high-contrast preset palette for user category color customization
+// Strictly excludes light green (reserved for completed tasks) and light cyan/blue (reserved for active task)
 export const PRESET_CATEGORY_COLORS = [
   '#3b82f6', // Electric Royal Blue
   '#0284c7', // Sky Blue
   '#0d9488', // Deep Teal
-  '#047857', // Forest Emerald
   '#f59e0b', // Warm Amber / Gold
   '#ea580c', // Sunset Orange
   '#f97316', // Coral Orange
@@ -109,8 +109,8 @@ export const PRESET_CATEGORY_COLORS = [
 
 /**
  * Ensures category colours can never be the exact same colour as statuses:
- * - Active: light blue / cyan (#00f0ff, #38bdf8, #7dd3fc, #06b6d4, #0ea5e9)
- * - Done: light green / emerald (#10b981, #00ff88, #34d399, #4ade80)
+ * - Active: light blue / cyan (#00f0ff, #38bdf8, #7dd3fc, #06b6d4, #0ea5e9, #22d3ee, #67e8f9, etc.)
+ * - Done: light green / emerald (#10b981, #00ff88, #34d399, #4ade80, #86efac, #a7f3d0, etc.)
  * Remaps them to distinct, accessible colors.
  * @param {string} hex
  * @returns {string} Sanitized hex color
@@ -120,30 +120,47 @@ export function sanitizeCategoryColor(hex) {
   const cleanHex = hex.trim().toLowerCase();
 
   // Colliding Light Blues / Cyans (Active Status)
-  if (
-    cleanHex === '#00f0ff' ||
-    cleanHex === '#38bdf8' ||
-    cleanHex === '#7dd3fc' ||
-    cleanHex === '#06b6d4' ||
-    cleanHex === '#0ea5e9' ||
-    cleanHex === '#22d3ee' ||
-    cleanHex === '#67e8f9'
-  ) {
+  const activeBlues = [
+    '#00f0ff', '#38bdf8', '#7dd3fc', '#06b6d4', '#0ea5e9',
+    '#22d3ee', '#67e8f9', '#bae6fd', '#00e5ff', '#60a5fa',
+    '#93c5fd', '#bfdbfe', '#00d2ff', '#00c3ff', '#33b5e5'
+  ];
+  if (activeBlues.indexOf(cleanHex) !== -1) {
     return '#2563eb'; // Deep Royal Blue
   }
 
   // Colliding Light Greens / Emeralds (Done / Completed Status)
-  if (
-    cleanHex === '#10b981' ||
-    cleanHex === '#00ff88' ||
-    cleanHex === '#34d399' ||
-    cleanHex === '#4ade80' ||
-    cleanHex === '#86efac' ||
-    cleanHex === '#a7f3d0' ||
-    cleanHex === '#059669' ||
-    cleanHex === '#00e57a'
-  ) {
+  const doneGreens = [
+    '#10b981', '#00ff88', '#34d399', '#4ade80', '#86efac',
+    '#a7f3d0', '#059669', '#00e57a', '#22c55e', '#16a34a',
+    '#15803d', '#166534', '#84cc16', '#a3e635', '#6ee7b7',
+    '#047857', '#065f46', '#022c22', '#2e7d32', '#388e3c',
+    '#4caf50', '#81c784', '#00c853', '#69f0ae', '#b9f6ca'
+  ];
+  if (doneGreens.indexOf(cleanHex) !== -1) {
     return '#ea580c'; // Warm Terracotta / Sunset Orange
+  }
+
+  // Dynamic RGB heuristic check to guard arbitrary custom hex inputs:
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cleanHex)) {
+    let h = cleanHex.slice(1);
+    if (h.length === 3) {
+      h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+    }
+    const num = parseInt(h, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+
+    // Green dominance check (Done indicator protection)
+    if (g >= 120 && g > r * 1.15 && g > b * 1.05) {
+      return '#ea580c';
+    }
+
+    // Light cyan / high blue+green brightness check (Active task indicator protection)
+    if (b >= 170 && g >= 160 && r < 130) {
+      return '#2563eb';
+    }
   }
 
   return cleanHex;
