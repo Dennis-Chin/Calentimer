@@ -2740,8 +2740,8 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
   const onTouchStart = (e) => {
     if (isDraggingTask || isSwipingCardToDelete) return;
-    // Only exclude horizontal range sliders (e.g. volume slider); allow swipe-down starting on inputs, checkboxes, buttons, emoji badges, and close buttons
-    if (e.target.closest('input[type="range"]')) {
+    // Only exclude horizontal range sliders (e.g. volume slider) and category chips list so scrolling categories doesn't minimise modal
+    if (e.target.closest('input[type="range"], .category-chips-list, .category-chip')) {
       return;
     }
     if (!e.touches || e.touches.length !== 1) return;
@@ -2754,6 +2754,16 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
   const onTouchMove = (e) => {
     if (!touchStartY || !e.touches || e.touches.length !== 1) return;
+    if (e.target.closest('.category-chips-list, .category-chip')) {
+      if (isPullingDown) {
+        modal.style.removeProperty('transform');
+        modal.classList.remove('will-minimise');
+        isPullingDown = false;
+      }
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      return;
+    }
     if (isDraggingTask || isSwipingCardToDelete) {
       if (isPullingDown) {
         modal.style.removeProperty('transform');

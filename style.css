@@ -370,11 +370,12 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 12px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 19px);
+  padding-bottom: 10px;
 }
 
 .app-brand {
-  font-size: 1.65rem;
+  font-size: 1.82rem;
   font-weight: 800;
   letter-spacing: -0.5px;
   background: linear-gradient(
@@ -418,7 +419,7 @@ body {
   padding: 6px;
   border-radius: var(--radius-sm);
   transition: all 0.2s ease;
-  margin-right: 2px;
+  margin-right: 4px;
 }
 
 .btn-menu:active {
@@ -429,7 +430,7 @@ body {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .header-right {
@@ -472,7 +473,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 2px;
   width: 100%;
 }
@@ -679,14 +680,14 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center; /* Centers timer vertically so space above hard stop and below today's tasks tab are equal */
-  padding: 4px 0;
+  padding: 2px 0 6px 0;
 }
 
 .wheel-container {
   position: relative;
   width: 300px;
   height: 300px;
-  margin-top: 4px;
+  margin-top: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3041,9 +3042,11 @@ body {
    ========================================================================== */
 .add-task-modal,
 #addTaskModal,
-#taskEditModal {
-  max-height: 96vh;
-  max-height: 96dvh;
+#taskEditModal,
+.edit-task-modal {
+  max-width: 440px;
+  max-height: 98vh;
+  max-height: 98dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3051,7 +3054,8 @@ body {
 
 .add-task-modal .modal-header,
 #addTaskModal .modal-header,
-#taskEditModal .modal-header {
+#taskEditModal .modal-header,
+.edit-task-modal .modal-header {
   padding: 6px 16px 6px;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -3059,18 +3063,22 @@ body {
 
 .add-task-modal .modal-body,
 #addTaskModal .modal-body,
-#taskEditModal .modal-body {
+#taskEditModal .modal-body,
+.edit-task-modal .modal-body {
   padding: 6px 14px 8px;
-  max-height: calc(96vh - 50px);
-  max-height: calc(96dvh - 50px);
+  max-height: calc(98vh - 46px);
+  max-height: calc(98dvh - 46px);
   gap: 3px;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   scrollbar-width: none;
 }
 
 .add-task-modal .modal-body::-webkit-scrollbar,
 #addTaskModal .modal-body::-webkit-scrollbar,
-#taskEditModal .modal-body::-webkit-scrollbar {
+#taskEditModal .modal-body::-webkit-scrollbar,
+.edit-task-modal .modal-body::-webkit-scrollbar {
   display: none;
 }
 
@@ -3088,14 +3096,16 @@ body {
 
 .add-task-modal .edit-task-form-group,
 #addTaskModal .edit-task-form-group,
-#taskEditModal .edit-task-form-group {
+#taskEditModal .edit-task-form-group,
+.edit-task-modal .edit-task-form-group {
   margin-bottom: 3px;
   gap: 2px;
 }
 
 .add-task-modal .edit-task-label,
 #addTaskModal .edit-task-label,
-#taskEditModal .edit-task-label {
+#taskEditModal .edit-task-label,
+.edit-task-modal .edit-task-label {
   font-size: 0.70rem;
   font-weight: 600;
   margin-bottom: 1px;
@@ -3103,7 +3113,8 @@ body {
 
 .add-task-modal .edit-task-input,
 #addTaskModal .edit-task-input,
-#taskEditModal .edit-task-input {
+#taskEditModal .edit-task-input,
+.edit-task-modal .edit-task-input {
   padding: 5px 8px;
   font-size: 0.84rem;
   height: 32px;
@@ -3112,7 +3123,8 @@ body {
 
 .add-task-modal .quick-duration-chips,
 #addTaskModal .quick-duration-chips,
-#taskEditModal .quick-duration-chips {
+#taskEditModal .quick-duration-chips,
+.edit-task-modal .quick-duration-chips {
   margin-top: 1px;
   margin-bottom: 3px;
   gap: 4px;
@@ -3120,23 +3132,28 @@ body {
 
 .add-task-modal .duration-chip,
 #addTaskModal .duration-chip,
-#taskEditModal .duration-chip {
+#taskEditModal .duration-chip,
+.edit-task-modal .duration-chip {
   padding: 2px 7px;
   font-size: 0.72rem;
 }
 
 .add-task-modal .category-chips-list,
 #addTaskModal .category-chips-list,
-#taskEditModal .category-chips-list {
+#taskEditModal .category-chips-list,
+.edit-task-modal .category-chips-list {
   margin-top: 2px;
   gap: 4px;
-  max-height: 40px;
+  max-height: 104px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .add-task-modal .setting-row,
 #addTaskModal .setting-row,
-#taskEditModal .setting-row {
+#taskEditModal .setting-row,
+.edit-task-modal .setting-row {
   padding: 3px 8px;
   margin-top: 3px !important;
   min-height: unset;
@@ -3144,19 +3161,22 @@ body {
 
 .add-task-modal .setting-label,
 #addTaskModal .setting-label,
-#taskEditModal .setting-label {
+#taskEditModal .setting-label,
+.edit-task-modal .setting-label {
   font-size: 0.78rem;
 }
 
 .add-task-modal .setting-desc,
 #addTaskModal .setting-desc,
-#taskEditModal .setting-desc {
+#taskEditModal .setting-desc,
+.edit-task-modal .setting-desc {
   display: none;
 }
 
 .add-task-modal .sync-destination-group,
 #addTaskModal .sync-destination-group,
-#taskEditModal .sync-destination-group {
+#taskEditModal .sync-destination-group,
+.edit-task-modal .sync-destination-group {
   padding: 4px 8px;
   margin-top: 3px;
   margin-bottom: 3px;
@@ -3165,26 +3185,30 @@ body {
 
 .add-task-modal .sync-destination-label,
 #addTaskModal .sync-destination-label,
-#taskEditModal .sync-destination-label {
+#taskEditModal .sync-destination-label,
+.edit-task-modal .sync-destination-label {
   font-size: 0.68rem;
 }
 
 .add-task-modal .sync-boxes-row,
 #addTaskModal .sync-boxes-row,
-#taskEditModal .sync-boxes-row {
+#taskEditModal .sync-boxes-row,
+.edit-task-modal .sync-boxes-row {
   gap: 8px;
 }
 
 .add-task-modal .sync-destination-box,
 #addTaskModal .sync-destination-box,
-#taskEditModal .sync-destination-box {
+#taskEditModal .sync-destination-box,
+.edit-task-modal .sync-destination-box {
   padding: 3px 8px;
   font-size: 0.76rem;
 }
 
 .add-task-modal .edit-modal-footer,
 #addTaskModal .edit-modal-footer,
-#taskEditModal .edit-modal-footer {
+#taskEditModal .edit-modal-footer,
+.edit-task-modal .edit-modal-footer {
   margin-top: 6px;
   padding-top: 2px;
 }
@@ -3192,7 +3216,9 @@ body {
 .add-task-modal .btn-modal-save,
 #addTaskModal .btn-modal-save,
 #taskEditModal .btn-modal-save,
-#taskEditModal .btn-modal-delete {
+#taskEditModal .btn-modal-delete,
+.edit-task-modal .btn-modal-save,
+.edit-task-modal .btn-modal-delete {
   padding: 7px 14px;
   font-size: 0.84rem;
   min-height: 34px;
