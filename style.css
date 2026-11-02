@@ -2758,8 +2758,10 @@ body {
   flex-wrap: wrap;
   gap: 5px;
   margin-top: 8px;
-  max-height: 80px;
+  max-height: 104px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .category-chip {
@@ -6028,8 +6030,8 @@ body {
 /* Event Inspector & Edit Modal: Compact layout to fit on screen without scrolling */
 .calendar-event-modal {
   max-width: 440px;
-  max-height: 96vh;
-  max-height: 96dvh;
+  max-height: 98vh;
+  max-height: 98dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -6042,8 +6044,8 @@ body {
 }
 
 .calendar-event-modal .modal-body {
-  max-height: calc(96vh - 50px);
-  max-height: calc(96dvh - 50px);
+  max-height: calc(98vh - 46px);
+  max-height: calc(98dvh - 46px);
   overflow-y: auto;
   scrollbar-width: none;
   padding: 6px 14px 8px;
@@ -6098,8 +6100,10 @@ body {
 .calendar-event-modal .category-chips-list {
   margin-top: 2px;
   gap: 4px;
-  max-height: 40px;
+  max-height: 104px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .calendar-event-modal .setting-row {
@@ -7008,5 +7012,47 @@ body {
 [data-theme="light"] .color-swatch-btn {
   border-color: rgba(0, 0, 0, 0.15);
 }
+
+/* ==========================================
+   Swipe Right on Task to Toggle Done Status
+   ========================================== */
+.calendar-swipe-done-action {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 32%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10b981;
+  color: #ffffff;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  font-size: 1.35rem;
+  font-weight: 800;
+  transition: opacity 0.15s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.calendar-item-wrapper.has-swiped-open .calendar-swipe-delete-action,
+.calendar-item-wrapper.is-swiping .calendar-swipe-delete-action {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.calendar-item-wrapper.is-swiping-done .calendar-swipe-done-action {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.calendar-block.completed .calendar-block-title {
+  text-decoration: line-through;
+  opacity: 0.82;
+}
+
 
 

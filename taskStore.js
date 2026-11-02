@@ -301,6 +301,9 @@ export class TaskStore {
       category: (task && task.category) ? task.category : 'General',
       tags: (task && Array.isArray(task.tags)) ? task.tags : ((task && task.tags) ? task.tags.split(',').map(t => t.trim()).filter(Boolean) : []),
       emoji: (task && task.emoji) ? task.emoji : '📌',
+      isCompleted: Boolean(task && task.isCompleted),
+      completedDate: (task && task.completedDate) ? task.completedDate : null,
+      manualCompleted: (task && typeof task.manualCompleted === 'boolean') ? task.manualCompleted : null,
       source: (task && task.source) ? task.source : 'local',
       origin: (task && task.origin) ? task.origin : ((task && ((task.source === 'google' || task.source === 'microsoft') || (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0)))) ? 'external' : 'local'),
       createdInApp: (task && task.createdInApp !== undefined) ? Boolean(task.createdInApp) : !Boolean(task && (task.origin === 'external' || (task.source === 'google' || task.source === 'microsoft') || (task.id && (task.id.indexOf('cal-gcal-') === 0 || task.id.indexOf('cal-ms-') === 0)))),
@@ -399,7 +402,11 @@ export class TaskStore {
   updateTask(taskId, updates) {
     const tasks = this.getTasks().map(t => {
       if (t.id === taskId) {
-        return Object.assign({}, t, updates, { lastModified: Date.now() });
+        let appliedUpdates = Object.assign({}, updates);
+        if (updates && updates.category && updates.category !== t.category && updates.color === undefined) {
+          appliedUpdates.color = this.getCategoryColor(updates.category) || null;
+        }
+        return Object.assign({}, t, appliedUpdates, { lastModified: Date.now() });
       }
       return t;
     });
@@ -1097,6 +1104,9 @@ export class TaskStore {
       fixedEndTime: (eventData && (eventData.fixedEndTime || eventData.endTime)) ? (eventData.fixedEndTime || eventData.endTime) : null,
       plannedDuration: (eventData && typeof eventData.plannedDuration === 'number') ? eventData.plannedDuration : 60,
       isLocked: (eventData && typeof eventData.isLocked === 'boolean') ? eventData.isLocked : false,
+      isCompleted: Boolean(eventData && eventData.isCompleted),
+      completedDate: (eventData && eventData.completedDate) ? eventData.completedDate : null,
+      manualCompleted: (eventData && typeof eventData.manualCompleted === 'boolean') ? eventData.manualCompleted : null,
       useTimeBank: (eventData && eventData.useTimeBank !== undefined) ? Boolean(eventData.useTimeBank) : false,
       emoji: (eventData && eventData.emoji) ? eventData.emoji : '📅',
       category: (eventData && eventData.category) ? eventData.category : 'General',
@@ -1241,6 +1251,9 @@ export class TaskStore {
         fixedEndTime: task.fixedEndTime || null,
         plannedDuration: task.plannedDuration,
         isLocked: Boolean(task.isLocked),
+        isCompleted: Boolean(task.isCompleted),
+        completedDate: task.completedDate || null,
+        manualCompleted: (typeof task.manualCompleted === 'boolean') ? task.manualCompleted : null,
         useTimeBank: task.useTimeBank !== false,
         emoji: task.emoji || '📌',
         category: task.category || 'General',
@@ -1289,6 +1302,9 @@ export class TaskStore {
         color: calEvent.color || null,
         colorId: calEvent.colorId || null,
         isLocked: isEventLocked,
+        isCompleted: Boolean(calEvent.isCompleted),
+        completedDate: calEvent.completedDate || null,
+        manualCompleted: (typeof calEvent.manualCompleted === 'boolean') ? calEvent.manualCompleted : null,
         useTimeBank: calEvent.useTimeBank !== false,
         fixedStartTime: fixedStart,
         fixedEndTime: fixedEnd,
@@ -1438,6 +1454,9 @@ export class TaskStore {
             color: calEvent.color || null,
             colorId: calEvent.colorId || null,
             isLocked: isEventLocked,
+            isCompleted: Boolean(calEvent.isCompleted),
+            completedDate: calEvent.completedDate || null,
+            manualCompleted: (typeof calEvent.manualCompleted === 'boolean') ? calEvent.manualCompleted : null,
             useTimeBank: calEvent.useTimeBank !== false,
             fixedStartTime: fixedStart,
             startTime: calEvent.startTime || null,
@@ -1470,6 +1489,9 @@ export class TaskStore {
             if (calEvent.color) existingTask.color = calEvent.color;
             if (calEvent.colorId) existingTask.colorId = calEvent.colorId;
             existingTask.isLocked = isEventLocked;
+            if (typeof calEvent.isCompleted === 'boolean') existingTask.isCompleted = calEvent.isCompleted;
+            if (calEvent.completedDate) existingTask.completedDate = calEvent.completedDate;
+            if (typeof calEvent.manualCompleted === 'boolean') existingTask.manualCompleted = calEvent.manualCompleted;
             existingTask.useTimeBank = calEvent.useTimeBank !== false;
             existingTask.fixedStartTime = fixedStart;
             existingTask.startTime = calEvent.startTime;
@@ -1542,6 +1564,9 @@ export class TaskStore {
             endTime: endTime || '10:00',
             plannedDuration: task.plannedDuration || 30,
             isLocked: Boolean(task.isLocked),
+            isCompleted: Boolean(task.isCompleted),
+            completedDate: task.completedDate || null,
+            manualCompleted: (typeof task.manualCompleted === 'boolean') ? task.manualCompleted : null,
             useTimeBank: task.useTimeBank !== false,
             emoji: task.emoji || '📌',
             category: task.category || 'General',
@@ -1589,6 +1614,18 @@ export class TaskStore {
             if (existingEvent.createdInApp !== undefined && task.createdInApp === undefined) { task.createdInApp = existingEvent.createdInApp; }
             const lockedState = Boolean(task.isLocked);
             if (existingEvent.isLocked !== lockedState) { existingEvent.isLocked = lockedState; updated = true; }
+            if (typeof task.isCompleted === 'boolean' && existingEvent.isCompleted !== task.isCompleted) {
+              existingEvent.isCompleted = task.isCompleted;
+              updated = true;
+            }
+            if (task.completedDate && existingEvent.completedDate !== task.completedDate) {
+              existingEvent.completedDate = task.completedDate;
+              updated = true;
+            }
+            if (typeof task.manualCompleted === 'boolean' && existingEvent.manualCompleted !== task.manualCompleted) {
+              existingEvent.manualCompleted = task.manualCompleted;
+              updated = true;
+            }
             if (updated) {
               existingEvent.lastModified = Date.now();
               calChanged = true;

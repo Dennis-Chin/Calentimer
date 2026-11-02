@@ -84,7 +84,7 @@ export const CATEGORY_DEFINITIONS = {
   },
   General: {
     name: 'General',
-    color: '#64748b', // Slate Steel
+    color: '#6366f1', // Royal Indigo
     defaultEmoji: '📌'
   }
 };
@@ -103,14 +103,14 @@ export const PRESET_CATEGORY_COLORS = [
   '#ec4899', // Hot Pink
   '#d946ef', // Vivid Magenta
   '#8b5cf6', // Vivid Purple
-  '#6366f1', // Royal Indigo
-  '#64748b'  // Slate Steel
+  '#6366f1'  // Royal Indigo
 ];
 
 /**
  * Ensures category colours can never be the exact same colour as statuses:
  * - Active: light blue / cyan (#00f0ff, #38bdf8, #7dd3fc, #06b6d4, #0ea5e9, #22d3ee, #67e8f9, etc.)
  * - Done: light green / emerald (#10b981, #00ff88, #34d399, #4ade80, #86efac, #a7f3d0, etc.)
+ * - Also removes grey (#64748b, etc.) as an option per user preference.
  * Remaps them to distinct, accessible colors.
  * @param {string} hex
  * @returns {string} Sanitized hex color
@@ -118,6 +118,12 @@ export const PRESET_CATEGORY_COLORS = [
 export function sanitizeCategoryColor(hex) {
   if (!hex || typeof hex !== 'string') return CATEGORY_DEFINITIONS.General.color;
   const cleanHex = hex.trim().toLowerCase();
+
+  // Disallowed greys/slates (user removed grey option)
+  const greyTones = ['#64748b', '#475569', '#94a3b8', '#334155', '#6b7280', '#9ca3af', '#71717a'];
+  if (greyTones.indexOf(cleanHex) !== -1) {
+    return '#6366f1'; // Royal Indigo
+  }
 
   // Colliding Light Blues / Cyans (Active Status)
   const activeBlues = [

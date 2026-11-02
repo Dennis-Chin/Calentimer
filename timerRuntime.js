@@ -429,6 +429,20 @@ export class TimerRuntime {
     const currentTask = this.getActiveTask();
     const remainingSec = this.getRemainingSeconds();
 
+    if (currentTask && currentTask.id) {
+      const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+        ? taskStore.getTodayDateString()
+        : new Date().toISOString().split('T')[0];
+      currentTask.isCompleted = true;
+      currentTask.completedDate = todayStr;
+      if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+        taskStore.updateTask(currentTask.id, {
+          isCompleted: true,
+          completedDate: todayStr
+        });
+      }
+    }
+
     if (this.isOverrunning) {
       this.isOverrunning = false;
       this.overrunStartTime = null;
@@ -842,6 +856,21 @@ export class TimerRuntime {
   }
 
   _advanceToNextTask() {
+    const finishedTask = this.getActiveTask();
+    if (finishedTask && finishedTask.id) {
+      const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+        ? taskStore.getTodayDateString()
+        : new Date().toISOString().split('T')[0];
+      finishedTask.isCompleted = true;
+      finishedTask.completedDate = todayStr;
+      if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+        taskStore.updateTask(finishedTask.id, {
+          isCompleted: true,
+          completedDate: todayStr
+        });
+      }
+    }
+
     this.activeTaskIndex++;
     this.accumulatedElapsedMs = 0;
     this.lastResumeTimestamp = null;

@@ -576,8 +576,8 @@ export class CalendarView {
     const onTouchStart = (e) => {
       if (this.isDraggingEvent || this.activeResizeCard) return;
       // Do not block header controls (Day dropdown, Today/arrow buttons, Close X button).
-      // Only block dedicated task drag handles or bottom action buttons.
-      if (e.target.closest('.event-resize-handle, .cal-event-lock-btn, .time-clock-addon-btn, #btnFullCalAddEvent, #calResolutionSelect')) return;
+      // Only block dedicated task drag handles, category chips, or bottom action buttons.
+      if (e.target.closest('.event-resize-handle, .cal-event-lock-btn, .time-clock-addon-btn, #btnFullCalAddEvent, #calResolutionSelect, .category-chips-list, .category-chip')) return;
       if (!e.touches || e.touches.length !== 1) return;
 
       const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)
@@ -1989,6 +1989,8 @@ export class CalendarView {
   }
 
   render(preserveScrollTop) {
+    const prevResizeEv = (!this.isDraggingEvent && this.activeResizeEvent) ? this.activeResizeEvent : null;
+    const prevResizeView = (!this.isDraggingEvent && this.activeResizeCard) ? this.activeView : null;
     this._clearActiveResizeHandles();
     this._renderRangeLabel();
     this.updateProviderToggleUI();
@@ -2011,6 +2013,17 @@ export class CalendarView {
       }
     } else if (this.activeView === 'month') {
       this._renderMonthView();
+    }
+
+    if (prevResizeEv && prevResizeView === this.activeView) {
+      const container = (this.activeView === 'week') ? this.elements.weekGridBody : this.elements.dayTimelineBody;
+      const selector = (this.activeView === 'week')
+        ? `.week-event-card[data-event-id="${prevResizeEv.id}"]`
+        : `.day-event-card[data-event-id="${prevResizeEv.id}"]`;
+      const freshCard = container ? container.querySelector(selector) : null;
+      if (freshCard) {
+        this._attachResizeHandles(freshCard, prevResizeEv, this.activeView);
+      }
     }
   }
 
@@ -2762,6 +2775,11 @@ export class CalendarView {
 
   _clearActiveResizeHandles() {
     this.isDraggingEvent = false;
+    if (this._outsideDismissHandler) {
+      document.removeEventListener('pointerdown', this._outsideDismissHandler, true);
+      document.removeEventListener('touchstart', this._outsideDismissHandler, true);
+      this._outsideDismissHandler = null;
+    }
     if (this.activeResizeCard) {
       this.activeResizeCard.classList.remove('has-resize-handles');
       const handles = this.activeResizeCard.querySelectorAll('.event-resize-handle');
@@ -2813,17 +2831,26 @@ export class CalendarView {
     this._setupResizeHandleDrag(topHandle, 'top', card, ev, viewType);
     this._setupResizeHandleDrag(bottomHandle, 'bottom', card, ev, viewType);
 
+    const attachTime = Date.now();
     const outsideDismissHandler = (e) => {
-      if (!card.contains(e.target)) {
-        this._clearActiveResizeHandles();
-        document.removeEventListener('pointerdown', outsideDismissHandler, true);
-        document.removeEventListener('touchstart', outsideDismissHandler, true);
+      // Ignore click/pointer events fired during touch release or within 450ms of attaching
+      if (Date.now() - attachTime < 450) return;
+      if (!e || !e.target) return;
+      if (e.target.closest && e.target.closest('.event-resize-handle')) return;
+      const targetCard = e.target.closest && e.target.closest('.day-event-card[data-event-id="' + ev.id + '"], .week-event-card[data-event-id="' + ev.id + '"]');
+      if (targetCard || (card && card.contains && card.contains(e.target))) {
+        return;
       }
+      this._clearActiveResizeHandles();
     };
+
+    this._outsideDismissHandler = outsideDismissHandler;
     setTimeout(() => {
-      document.addEventListener('pointerdown', outsideDismissHandler, true);
-      document.addEventListener('touchstart', outsideDismissHandler, true);
-    }, 60);
+      if (this.activeResizeCard === card) {
+        document.addEventListener('pointerdown', outsideDismissHandler, true);
+        document.addEventListener('touchstart', outsideDismissHandler, true);
+      }
+    }, 120);
   }
 
   _setupResizeHandleDrag(handleEl, edge, card, ev, viewType) {

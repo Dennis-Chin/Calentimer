@@ -474,6 +474,7 @@ function setupRuntimeEvents() {
 
     // Dynamic intuitive text: Finish Early & Send X To Time Bank
     updateFinishEarlyButtonText(data.remainingSeconds);
+    syncPastTasksCompletion();
   });
 
   runtime.on('hardStopReached', (data) => {
@@ -3868,6 +3869,7 @@ function setupTaskPipeline() {
 }
 
 function renderTaskList(rawTasks) {
+  syncPastTasksCompletion();
   const tasks = (rawTasks || []).filter(t => t && t.title !== '[Calentimer Cloud Sync]');
   taskCountBadge.textContent = `${tasks.length} task${tasks.length === 1 ? '' : 's'}`;
   taskListContainer.innerHTML = '';
@@ -4179,36 +4181,7 @@ function renderTaskList(rawTasks) {
       checkBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const isNowDone = !Boolean(task.isCompleted);
-        const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
-          ? taskStore.getTodayDateString()
-          : new Date().toISOString().split('T')[0];
-        task.isCompleted = isNowDone;
-        task.completedDate = isNowDone ? todayStr : null;
-
-        taskStore.updateTask(task.id, {
-          isCompleted: isNowDone,
-          completedDate: isNowDone ? todayStr : null
-        });
-
-        if (runtime && runtime.initialTasks) {
-          const initT = runtime.initialTasks.find(t => t.id === task.id);
-          if (initT) {
-            initT.isCompleted = isNowDone;
-            initT.completedDate = isNowDone ? todayStr : null;
-          }
-        }
-        if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
-          const schedT = runtime.currentSchedule.tasks.find(t => t.id === task.id);
-          if (schedT) {
-            schedT.isCompleted = isNowDone;
-            schedT.completedDate = isNowDone ? todayStr : null;
-          }
-        }
-
-        mobileServices.hapticTap();
-        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
-        updateTotalMinutesDisplay();
+        toggleTaskDoneStatus(task.id);
       });
     }
 
@@ -4332,6 +4305,114 @@ function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+/**
+ * Toggles a task's done status between complete and todo,
+ * recording user manual overrides so automatic time checks won't revert manual changes.
+ * @param {string} taskId
+ */
+function toggleTaskDoneStatus(taskId) {
+  if (!taskId) return;
+  const tasks = taskStore.getTasks();
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  const isNowDone = !Boolean(task.isCompleted);
+  const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+    ? taskStore.getTodayDateString()
+    : new Date().toISOString().split('T')[0];
+
+  task.isCompleted = isNowDone;
+  task.completedDate = isNowDone ? todayStr : null;
+  task.manualCompleted = isNowDone;
+
+  taskStore.updateTask(task.id, {
+    isCompleted: isNowDone,
+    completedDate: isNowDone ? todayStr : null,
+    manualCompleted: isNowDone
+  });
+
+  if (runtime && runtime.initialTasks) {
+    const initT = runtime.initialTasks.find(t => t.id === task.id);
+    if (initT) {
+      initT.isCompleted = isNowDone;
+      initT.completedDate = isNowDone ? todayStr : null;
+      initT.manualCompleted = isNowDone;
+    }
+  }
+  if (runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) {
+    const schedT = runtime.currentSchedule.tasks.find(t => t.id === task.id);
+    if (schedT) {
+      schedT.isCompleted = isNowDone;
+      schedT.completedDate = isNowDone ? todayStr : null;
+      schedT.manualCompleted = isNowDone;
+    }
+  }
+
+  mobileServices.hapticTap();
+  renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+  renderCalendarModal();
+  updateTotalMinutesDisplay();
+  if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+    calendarView.render();
+  }
+}
+window.toggleTaskDoneStatus = toggleTaskDoneStatus;
+
+/**
+ * Evaluates tasks against current time:
+ * - Once current time is past a task's end time, marks it as completed (unless manually unmarked by user: manualCompleted === false).
+ * - If moved/rescheduled into future (current time < endTime), automatically unmarks it (isCompleted: false, manualCompleted: null).
+ */
+function syncPastTasksCompletion() {
+  const tasks = taskStore.getTasks();
+  if (!Array.isArray(tasks) || tasks.length === 0) return;
+
+  const now = new Date();
+  const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+  const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+    ? taskStore.getTodayDateString()
+    : now.toISOString().split('T')[0];
+
+  let hasUpdates = false;
+
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    if (!t || !t.startTime) continue;
+    const sMin = parseTimeToMinutes(t.startTime);
+    let eMin = t.endTime ? parseTimeToMinutes(t.endTime) : (sMin + (t.allocatedDuration || t.plannedDuration || 30));
+    if (eMin <= sMin) eMin += 1440;
+
+    const isPast = currentMinutes >= eMin;
+
+    if (isPast) {
+      // Past task: mark done by default unless user explicitly unmarked it
+      if (!t.isCompleted && t.manualCompleted !== false) {
+        t.isCompleted = true;
+        t.completedDate = todayStr;
+        taskStore.updateTask(t.id, { isCompleted: true, completedDate: todayStr });
+        hasUpdates = true;
+      }
+    } else {
+      // Future task: if task is in future, unmark as done and reset manual override
+      if (t.isCompleted && t.manualCompleted !== true) {
+        t.isCompleted = false;
+        t.completedDate = null;
+        t.manualCompleted = null;
+        taskStore.updateTask(t.id, { isCompleted: false, completedDate: null, manualCompleted: null });
+        hasUpdates = true;
+      }
+    }
+  }
+
+  if (hasUpdates) {
+    if (runtime && runtime.initialTasks) {
+      runtime.initialTasks = taskStore.getTasks();
+    }
+    updateTotalMinutesDisplay();
+  }
+}
+window.syncPastTasksCompletion = syncPastTasksCompletion;
 
 // ==========================================
 // Theme Management (Default/System, Light, Dark)
@@ -5147,8 +5228,9 @@ function saveCurrentTaskEdit() {
     }
   }
 
-  const taskColor = (prevTask && prevTask.color) ? prevTask.color : classifierGetCategoryColor(category);
-  let taskColorId = (prevTask && prevTask.colorId) ? prevTask.colorId : null;
+  const categoryChanged = Boolean(prevTask && prevTask.category !== category);
+  const taskColor = (prevTask && prevTask.color && !categoryChanged) ? prevTask.color : classifierGetCategoryColor(category);
+  let taskColorId = (prevTask && prevTask.colorId && !categoryChanged) ? prevTask.colorId : null;
   if (!taskColorId && taskColor && typeof googleCalendarAdapter !== 'undefined' && typeof googleCalendarAdapter.getGoogleColorId === 'function') {
     taskColorId = googleCalendarAdapter.getGoogleColorId(category, taskColor, null);
   }
@@ -5376,6 +5458,7 @@ function getCategoryColor(category) {
 // Condensed Calendar Timeline Renderer
 function renderCalendarModal() {
   if (!calendarTimelineList) return;
+  syncPastTasksCompletion();
   calendarTimelineList.innerHTML = '';
 
   const finishLine = document.getElementById('calendarFinishLine');
@@ -5494,6 +5577,10 @@ function renderCalendarModal() {
     const deleteAction = document.createElement('div');
     deleteAction.className = 'calendar-swipe-delete-action';
     deleteAction.innerHTML = `<button type="button" class="btn-swipe-delete" data-action="swipe-delete-task" data-id="${task.id}" title="Delete task">✕</button>`;
+
+    const doneAction = document.createElement('div');
+    doneAction.className = 'calendar-swipe-done-action';
+    doneAction.innerHTML = `<span>✓</span>`;
 
     const item = document.createElement('div');
     item.className = `calendar-block ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''}`;
@@ -5668,6 +5755,7 @@ function renderCalendarModal() {
     let touchStartY = 0;
     let hasMoved = false;
     let isSwiping = false;
+    let swipeDirection = null; // 'left' (delete) or 'right' (toggle done)
     let holdTimer = null;
     let startIsOpen = false;
     let currentShiftPct = 0;
@@ -5695,6 +5783,7 @@ function renderCalendarModal() {
 
       hasMoved = false;
       isSwiping = false;
+      swipeDirection = null;
       startIsOpen = item.classList.contains('swiped-open') || wrapper.classList.contains('has-swiped-open');
       currentShiftPct = startIsOpen ? -25 : 0;
       touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
@@ -5738,20 +5827,35 @@ function renderCalendarModal() {
       // Check if predominantly horizontal swipe
       if (Math.abs(diffX) > 8 && Math.abs(diffX) * 1.3 >= Math.abs(diffY)) {
         isSwiping = true;
-        isSwipingCardToDelete = true;
-        wrapper.classList.add('is-swiping');
         const itemW = item.offsetWidth || 300;
         const deltaPct = (diffX / itemW) * 100;
-        const basePct = startIsOpen ? -25 : 0;
-        currentShiftPct = Math.min(0, Math.max(-25, basePct + deltaPct));
 
-        item.style.transition = 'none';
-        item.style.transform = `translateX(${currentShiftPct}%)`;
-
-        if (currentShiftPct < -5) {
-          wrapper.classList.add('has-swiped-open');
+        if (diffX > 0 && !startIsOpen) {
+          // Swipe Right: toggle done status (green tick mark)
+          swipeDirection = 'right';
+          isSwipingCardToDelete = false;
+          wrapper.classList.remove('is-swiping');
+          wrapper.classList.add('is-swiping-done');
+          currentShiftPct = Math.max(0, Math.min(30, deltaPct));
+          item.style.transition = 'none';
+          item.style.transform = `translateX(${currentShiftPct}%)`;
         } else {
-          wrapper.classList.remove('has-swiped-open');
+          // Swipe Left: delete action (red X)
+          swipeDirection = 'left';
+          isSwipingCardToDelete = true;
+          wrapper.classList.remove('is-swiping-done');
+          wrapper.classList.add('is-swiping');
+          const basePct = startIsOpen ? -25 : 0;
+          currentShiftPct = Math.min(0, Math.max(-25, basePct + deltaPct));
+
+          item.style.transition = 'none';
+          item.style.transform = `translateX(${currentShiftPct}%)`;
+
+          if (currentShiftPct < -5) {
+            wrapper.classList.add('has-swiped-open');
+          } else {
+            wrapper.classList.remove('has-swiped-open');
+          }
         }
       }
     };
@@ -5761,19 +5865,29 @@ function renderCalendarModal() {
       isSwipingCardToDelete = false;
       if (isSwiping) {
         wrapper.classList.remove('is-swiping');
-        item.style.transition = '';
+        wrapper.classList.remove('is-swiping-done');
+        item.style.transition = 'transform 0.2s ease';
         item.style.removeProperty('transform');
 
-        // If shifted at least halfway to -25% (<= -12%), snap open; otherwise snap closed
-        if (currentShiftPct <= -12) {
-          wrapper.classList.add('has-swiped-open');
-          item.classList.add('swiped-open');
-          mobileServices.hapticTap();
+        if (swipeDirection === 'right') {
+          // One-handed swipe right threshold reached: instantly toggle task done status!
+          if (currentShiftPct >= 12 || Math.abs(currentShiftPct) >= 12) {
+            mobileServices.hapticTap();
+            toggleTaskDoneStatus(task.id);
+          }
         } else {
-          wrapper.classList.remove('has-swiped-open');
-          item.classList.remove('swiped-open');
+          // If shifted at least halfway to -25% (<= -12%), snap open; otherwise snap closed
+          if (currentShiftPct <= -12) {
+            wrapper.classList.add('has-swiped-open');
+            item.classList.add('swiped-open');
+            mobileServices.hapticTap();
+          } else {
+            wrapper.classList.remove('has-swiped-open');
+            item.classList.remove('swiped-open');
+          }
         }
         isSwiping = false;
+        swipeDirection = null;
       }
     };
 
@@ -5856,6 +5970,7 @@ function renderCalendarModal() {
     });
 
     wrapper.appendChild(deleteAction);
+    wrapper.appendChild(doneAction);
     wrapper.appendChild(item);
     calendarTimelineList.appendChild(wrapper);
   });
