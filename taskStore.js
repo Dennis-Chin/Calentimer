@@ -658,6 +658,54 @@ export class TaskStore {
   }
 
   /**
+   * Retrieves whether screen should stay awake while app is open.
+   * Default is false.
+   * @returns {boolean}
+   */
+  getKeepScreenAwake() {
+    try {
+      return safeGetItem('calentimer_keep_screen_awake') === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Sets whether screen should stay awake while app is open.
+   * @param {boolean} enabled
+   */
+  setKeepScreenAwake(enabled) {
+    try {
+      safeSetItem('calentimer_keep_screen_awake', enabled ? 'true' : 'false');
+      this._notify();
+    } catch (e) {}
+  }
+
+  /**
+   * Retrieves whether vibration feedback should play when a task or break finishes.
+   * Default is true.
+   * @returns {boolean}
+   */
+  getCompletionHapticsEnabled() {
+    try {
+      return safeGetItem('calentimer_completion_haptics_enabled') !== 'false';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  /**
+   * Sets whether vibration feedback should play when a task or break finishes.
+   * @param {boolean} enabled
+   */
+  setCompletionHapticsEnabled(enabled) {
+    try {
+      safeSetItem('calentimer_completion_haptics_enabled', enabled ? 'true' : 'false');
+      this._notify();
+    } catch (e) {}
+  }
+
+  /**
    * Retrieves alert volume (0.0 to 1.0).
    * Default is 0.8.
    * @returns {number}

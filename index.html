@@ -158,9 +158,9 @@
         <span class="time-bank-amount" id="timeBankAmount">0m</span>
       </div>
 
-      <div class="total-minutes-pill" id="totalMinutesPill" title="Total minutes completed today">
+      <div class="total-minutes-pill" id="totalMinutesPill" title="Total work minutes completed today">
         <span class="total-min-icon">⏱️</span>
-        <span class="total-min-label">TOTAL TODAY:</span>
+        <span class="total-min-label">WORK TODAY:</span>
         <span class="total-min-amount" id="totalMinutesAmount">0m</span>
       </div>
     </div>
@@ -477,6 +477,18 @@
               </label>
             </div>
 
+            <!-- Keep Screen On -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Keep Screen On</span>
+                <span class="setting-desc">Prevent screen from sleeping while Calentimer is open.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleKeepScreenAwake">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
             <!-- 3. Timer Settings (Sits above calendar settings) -->
             <div class="setting-row setting-row-clickable" id="settingRowTimer" title="Configure timer alerts, volume, and dial settings">
               <div class="setting-info">
@@ -545,6 +557,17 @@
                 <input type="range" id="alertVolumeSlider" min="0" max="100" value="80" class="volume-range-input">
                 <span class="volume-percent-badge" id="alertVolumeLabel">80%</span>
               </div>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Completion Vibration</span>
+                <span class="setting-desc">Vibrate phone when a task or break timer finishes.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleCompletionHaptics" checked>
+                <span class="toggle-slider"></span>
+              </label>
             </div>
 
             <div class="setting-row">

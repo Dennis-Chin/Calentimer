@@ -252,6 +252,10 @@ function initApp() {
     calendarView.init();
     setupScheduleConflictModal();
 
+    if (typeof taskStore !== 'undefined' && typeof taskStore.getKeepScreenAwake === 'function' && taskStore.getKeepScreenAwake()) {
+      mobileServices.enableWakeLock();
+    }
+
     if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.init === 'function') {
       calendarSyncService.init();
       calendarSyncService.onSyncStatusChange((isSyncing, details) => {
@@ -384,7 +388,7 @@ function renderDialTicks() {
 }
 
 /**
- * Calculates the total minutes of tasks completed today
+ * Calculates the total work minutes completed today (excluding breaks)
  */
 function calculateTotalMinutesToday() {
   const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
@@ -395,8 +399,15 @@ function calculateTotalMinutesToday() {
     : [];
   let totalMin = 0;
 
+  function isBreak(t) {
+    if (!t) return false;
+    const cat = (t.category || '').toLowerCase();
+    const title = (t.title || '').toLowerCase();
+    return cat === 'break' || title === 'break';
+  }
+
   tasks.forEach(t => {
-    if (t && t.isCompleted && (!t.completedDate || t.completedDate === todayStr)) {
+    if (t && t.isCompleted && (!t.completedDate || t.completedDate === todayStr) && !isBreak(t)) {
       totalMin += Math.round(t.allocatedDuration || t.plannedDuration || 0);
     }
   });
@@ -405,9 +416,11 @@ function calculateTotalMinutesToday() {
     const schedTasks = (runtime.currentSchedule && runtime.currentSchedule.tasks) || [];
     for (let i = 0; i < runtime.activeTaskIndex && i < schedTasks.length; i++) {
       const st = schedTasks[i];
-      const isAlreadyCounted = tasks.some(t => t.id === st.id && t.isCompleted && (!t.completedDate || t.completedDate === todayStr));
-      if (!isAlreadyCounted) {
-        totalMin += Math.round(st.allocatedDuration || st.plannedDuration || 0);
+      if (!isBreak(st)) {
+        const isAlreadyCounted = tasks.some(t => t.id === st.id && t.isCompleted && (!t.completedDate || t.completedDate === todayStr));
+        if (!isAlreadyCounted) {
+          totalMin += Math.round(st.allocatedDuration || st.plannedDuration || 0);
+        }
       }
     }
   }
@@ -5345,6 +5358,18 @@ function openSettings() {
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
+  const toggleHaptics = document.getElementById('toggleHapticsEnabled');
+  if (toggleHaptics && typeof taskStore.getHapticsEnabled === 'function') {
+    toggleHaptics.checked = taskStore.getHapticsEnabled();
+  }
+  const toggleKeepAwake = document.getElementById('toggleKeepScreenAwake');
+  if (toggleKeepAwake && typeof taskStore.getKeepScreenAwake === 'function') {
+    toggleKeepAwake.checked = taskStore.getKeepScreenAwake();
+  }
+  const toggleCompletion = document.getElementById('toggleCompletionHaptics');
+  if (toggleCompletion && typeof taskStore.getCompletionHapticsEnabled === 'function') {
+    toggleCompletion.checked = taskStore.getCompletionHapticsEnabled();
+  }
   const timerSettingsSubPanel = document.getElementById('timerSettingsSubPanel');
   const calendarSettingsSubPanel = document.getElementById('calendarSettingsSubPanel');
   const settingsMainPanel = document.getElementById('settingsMainPanel');
@@ -7679,6 +7704,38 @@ function setupNavigationAndModals() {
       taskStore.setHapticsEnabled(enabled);
       if (enabled) mobileServices.hapticTap();
       showToastNotification(enabled ? 'Haptic feedback enabled' : 'Haptic feedback disabled');
+    });
+  }
+
+  const toggleKeepScreenAwake = document.getElementById('toggleKeepScreenAwake');
+  if (toggleKeepScreenAwake) {
+    toggleKeepScreenAwake.checked = (typeof taskStore.getKeepScreenAwake === 'function') ? taskStore.getKeepScreenAwake() : true;
+    toggleKeepScreenAwake.addEventListener('change', () => {
+      const enabled = toggleKeepScreenAwake.checked;
+      taskStore.setKeepScreenAwake(enabled);
+      if (enabled) {
+        mobileServices.enableWakeLock();
+      } else {
+        const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+        if (!isRunning) {
+          mobileServices.forceReleaseWakeLock();
+        }
+      }
+      mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Keep screen on enabled' : 'Keep screen on disabled');
+    });
+  }
+
+  const toggleCompletionHaptics = document.getElementById('toggleCompletionHaptics');
+  if (toggleCompletionHaptics) {
+    toggleCompletionHaptics.checked = (typeof taskStore.getCompletionHapticsEnabled === 'function') ? taskStore.getCompletionHapticsEnabled() : true;
+    toggleCompletionHaptics.addEventListener('change', () => {
+      const enabled = toggleCompletionHaptics.checked;
+      taskStore.setCompletionHapticsEnabled(enabled);
+      if (enabled) {
+        mobileServices.hapticTaskComplete();
+      }
+      showToastNotification(enabled ? 'Task completion vibration enabled' : 'Task completion vibration disabled');
     });
   }
 

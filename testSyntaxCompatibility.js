@@ -375,6 +375,27 @@ const presetColorsSlice = curClassifier.slice(curClassifier.indexOf('export cons
 assert(presetColorsSlice && !presetColorsSlice.includes("'#047857'"), 'PRESET_CATEGORY_COLORS excludes greens');
 assert(curClassifier.includes('const activeBlues =') && curClassifier.includes('const doneGreens ='), 'sanitizeCategoryColor checks active cyan/blues and done greens');
 
+console.log('\n--- 15. Testing Work Today Label, Keep Screen Awake & Completion Haptics ---');
+// 1. Work Today label in timer screen
+assert(curHtml.includes('WORK TODAY:'), 'index.html has WORK TODAY: label in #totalMinutesPill');
+assert(curApp.includes('isBreak') && curApp.includes('calculateTotalMinutesToday'), 'app.js calculateTotalMinutesToday excludes breaks');
+
+// 2. Keep Screen Awake toggle & taskStore persistence
+assert(curHtml.includes('id="toggleKeepScreenAwake"'), 'index.html has #toggleKeepScreenAwake toggle');
+const posHapticsRow = curHtml.indexOf('id="toggleHapticsEnabled"');
+const posKeepScreenRow = curHtml.indexOf('id="toggleKeepScreenAwake"');
+const posTimerRowEnd = curHtml.indexOf('id="settingRowTimer"');
+assert(posKeepScreenRow > posHapticsRow && posKeepScreenRow < posTimerRowEnd, '#toggleKeepScreenAwake sits directly below #toggleHapticsEnabled and above Timer Settings');
+assert(storeContent.includes('getKeepScreenAwake()') && storeContent.includes('setKeepScreenAwake('), 'taskStore.js implements getKeepScreenAwake and setKeepScreenAwake');
+
+// 3. Completion Haptics toggle & taskStore persistence
+assert(curHtml.includes('id="toggleCompletionHaptics"'), 'index.html has #toggleCompletionHaptics toggle in #timerSettingsSubPanel');
+assert(curHtml.indexOf('id="toggleCompletionHaptics"') > curHtml.indexOf('id="timerSettingsSubPanel"'), '#toggleCompletionHaptics is inside #timerSettingsSubPanel');
+assert(storeContent.includes('getCompletionHapticsEnabled()') && storeContent.includes('setCompletionHapticsEnabled('), 'taskStore.js implements getCompletionHapticsEnabled and setCompletionHapticsEnabled');
+const mobileServicesContent = fs.readFileSync(path.resolve(process.cwd(), 'mobileServices.js'), 'utf8');
+assert(mobileServicesContent.includes('hapticTaskComplete()'), 'mobileServices.js defines hapticTaskComplete()');
+assert(mobileServicesContent.includes('forceReleaseWakeLock()'), 'mobileServices.js defines forceReleaseWakeLock()');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

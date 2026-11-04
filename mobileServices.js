@@ -78,6 +78,17 @@ class MobileServices {
 
   disableWakeLock() {
     this.isWakeLockRequested = false;
+    if (typeof taskStore.getKeepScreenAwake === 'function' && taskStore.getKeepScreenAwake()) {
+      return;
+    }
+    if (this.wakeLock) {
+      this.wakeLock.release().catch(() => {});
+      this.wakeLock = null;
+    }
+  }
+
+  forceReleaseWakeLock() {
+    this.isWakeLockRequested = false;
     if (this.wakeLock) {
       this.wakeLock.release().catch(() => {});
       this.wakeLock = null;
@@ -86,7 +97,8 @@ class MobileServices {
 
   _setupVisibilityListener() {
     document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible' && this.isWakeLockRequested) {
+      const isKeepAwake = typeof taskStore.getKeepScreenAwake === 'function' && taskStore.getKeepScreenAwake();
+      if (document.visibilityState === 'visible' && (this.isWakeLockRequested || isKeepAwake)) {
         // Re-acquire wake lock after switching back to app
         await this.enableWakeLock();
       }
@@ -121,16 +133,23 @@ class MobileServices {
   }
 
   /**
-   * Celebratory rhythmic vibration pattern when task completes
+   * Celebratory rhythmic vibration pattern when task or break completes
    */
   hapticCelebration() {
-    if (!taskStore.getHapticsEnabled()) return;
+    const isCompletionHaptics = (typeof taskStore !== 'undefined' && typeof taskStore.getCompletionHapticsEnabled === 'function')
+      ? taskStore.getCompletionHapticsEnabled()
+      : (typeof taskStore !== 'undefined' && typeof taskStore.getHapticsEnabled === 'function' ? taskStore.getHapticsEnabled() : true);
+    if (!isCompletionHaptics) return;
     if ('vibrate' in navigator) {
       try {
         // Rhythmic victory burst: tap, tap, buzz, long buzz
-        navigator.vibrate([100, 60, 100, 60, 220, 100, 380]);
+        navigator.vibrate([120, 80, 120, 80, 260, 100, 400]);
       } catch (e) {}
     }
+  }
+
+  hapticTaskComplete() {
+    this.hapticCelebration();
   }
 
   /**
