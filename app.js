@@ -2837,8 +2837,8 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
   const onTouchStart = (e) => {
     if (isDraggingTask || isSwipingCardToDelete) return;
-    // Only exclude horizontal range sliders (e.g. volume slider) and category chips list so scrolling categories doesn't minimise modal
-    if (e.target.closest('input[type="range"], .category-chips-list, .category-chip')) {
+    // Only exclude horizontal range sliders (e.g. volume slider) so moving sliders left/right doesn't pull down
+    if (e.target.closest('input[type="range"]')) {
       return;
     }
     if (!e.touches || e.touches.length !== 1) return;
@@ -2851,16 +2851,6 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
   const onTouchMove = (e) => {
     if (!touchStartY || !e.touches || e.touches.length !== 1) return;
-    if (e.target.closest('.category-chips-list, .category-chip')) {
-      if (isPullingDown) {
-        modal.style.removeProperty('transform');
-        modal.classList.remove('will-minimise');
-        isPullingDown = false;
-      }
-      touchStartY = e.touches[0].clientY;
-      touchStartX = e.touches[0].clientX;
-      return;
-    }
     if (isDraggingTask || isSwipingCardToDelete) {
       if (isPullingDown) {
         modal.style.removeProperty('transform');
@@ -2871,6 +2861,14 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
+
+    // Check if user is touching inside a category chips list that is actively scrolled down
+    const chipsList = e.target.closest('.category-chips-list');
+    if (chipsList && chipsList.scrollTop > 0) {
+      touchStartY = currentY;
+      touchStartX = currentX;
+      return;
+    }
 
     const allScrolls = Array.from(modal.querySelectorAll('.modal-body'));
     const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
@@ -2898,7 +2896,7 @@ function setupModalPullToDismiss(modal, onDismiss) {
     }
 
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
-      if (isAtTop || isHeaderOrFooterTouch) {
+      if (isAtTop || isHeaderOrFooterTouch || Boolean(chipsList)) {
         if (!isPullingDown && document.activeElement && modal.contains(document.activeElement) && typeof document.activeElement.blur === 'function') {
           document.activeElement.blur();
         }

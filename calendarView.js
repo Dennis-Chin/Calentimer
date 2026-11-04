@@ -576,8 +576,8 @@ export class CalendarView {
     const onTouchStart = (e) => {
       if (this.isDraggingEvent || this.activeResizeCard) return;
       // Do not block header controls (Day dropdown, Today/arrow buttons, Close X button).
-      // Only block dedicated task drag handles, category chips, or bottom action buttons.
-      if (e.target.closest('.event-resize-handle, .cal-event-lock-btn, .time-clock-addon-btn, #btnFullCalAddEvent, #calResolutionSelect, .category-chips-list, .category-chip')) return;
+      // Only block dedicated task drag handles or bottom action buttons.
+      if (e.target.closest('.event-resize-handle, .cal-event-lock-btn, .time-clock-addon-btn, #btnFullCalAddEvent, #calResolutionSelect')) return;
       if (!e.touches || e.touches.length !== 1) return;
 
       const activeScroll = (this.activeView === 'day' && this.elements.dayTimelineScroll)

@@ -449,6 +449,12 @@ assert(iconSvgContent.includes('#00f0ff'), 'icon.svg includes light blue tick ma
 // 6. Dynamic background countdown Web Worker in timerRuntime
 assert(latestRuntimeContent.includes('new Worker(workerUrl)'), 'timerRuntime.js uses dedicated Web Worker for unthrottled background countdown');
 
+// 7. Modal swipe down allowed when touching categories
+const latestAppContent = fs.readFileSync(path.resolve(process.cwd(), 'app.js'), 'utf8');
+assert(!latestAppContent.includes("if (e.target.closest('input[type=\"range\"], .category-chips-list, .category-chip'))"), 'app.js does not block modal pull-to-dismiss touch start on categories');
+assert(latestAppContent.includes("const chipsList = e.target.closest('.category-chips-list');") && latestAppContent.includes("if (isAtTop || isHeaderOrFooterTouch || Boolean(chipsList))"), 'app.js allows modal pull-to-dismiss when touching categories');
+
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);
