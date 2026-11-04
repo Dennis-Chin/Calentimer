@@ -1,58 +1,70 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <!-- Mild green to blue shimmer across the circle -->
-    <radialGradient id="innerShimmer" cx="40%" cy="35%" r="70%">
-      <stop offset="0%" stop-color="#0a3c36" stop-opacity="0.95"/>
-      <stop offset="45%" stop-color="#082b35" stop-opacity="0.85"/>
-      <stop offset="80%" stop-color="#071924" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#061219" stop-opacity="1"/>
+    <radialGradient id="innerShimmer" cx="35%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#0a4d3c" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#083a44" stop-opacity="0.85"/>
+      <stop offset="80%" stop-color="#081822" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#08090d" stop-opacity="1"/>
     </radialGradient>
     <radialGradient id="beadGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#10b981" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#00ff88" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#00ff88" stop-opacity="0"/>
     </radialGradient>
-    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+    <filter id="greenGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="4" result="blur"/>
       <feComposite in="SourceGraphic" in2="blur" operator="over"/>
     </filter>
   </defs>
 
-  <!-- Solid Black Background with small perimeter gap -->
+  <!-- Solid Black Background with perimeter gap -->
   <rect width="512" height="512" fill="#08090d"/>
 
-  <!-- Mild green-to-blue shimmer inner circle fill -->
-  <circle cx="256" cy="256" r="152" fill="url(#innerShimmer)"/>
+  <!-- Mild green-to-blue shimmer inner circle fill (smaller center gap) -->
+  <circle cx="256" cy="256" r="117" fill="url(#innerShimmer)"/>
 
   <!-- Outer Bezel Ring -->
-  <circle cx="256" cy="256" r="222" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="2.5"/>
+  <circle cx="256" cy="256" r="198" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="2.5"/>
 
-  <!-- 16 Tick Marks: 8 Blue (#00f0ff) and 8 Grey (rgba(255,255,255,0.42)) -->
+  <!-- 24 Tick Marks: 8 Neon Cyan (#00f0ff) and 16 Grey (rgba(255,255,255,0.45)) -->
   <g id="iconTicks">
-    <line x1="256.00" y1="61.00" x2="256.00" y2="34.00" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="333.68" y1="68.45" x2="340.96" y2="50.90" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="393.89" y1="118.11" x2="412.98" y2="99.02" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="443.55" y1="178.32" x2="461.10" y2="171.04" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="451.00" y1="256.00" x2="478.00" y2="256.00" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="443.55" y1="333.68" x2="461.10" y2="340.96" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="393.89" y1="393.89" x2="412.98" y2="412.98" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="333.68" y1="443.55" x2="340.96" y2="461.10" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="256.00" y1="451.00" x2="256.00" y2="478.00" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="178.32" y1="443.55" x2="171.04" y2="461.10" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="118.11" y1="393.89" x2="99.02" y2="412.98" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="68.45" y1="333.68" x2="50.90" y2="340.96" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="61.00" y1="256.00" x2="34.00" y2="256.00" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="68.45" y1="178.32" x2="50.90" y2="171.04" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
-    <line x1="118.11" y1="118.11" x2="99.02" y2="99.02" stroke="#00f0ff" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="178.32" y1="68.45" x2="171.04" y2="50.90" stroke="rgba(255, 255, 255, 0.42)" stroke-width="3.8" stroke-linecap="round"/>
+    <line x1="256.00" y1="88.00" x2="256.00" y2="58.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="301.55" y1="86.00" x2="306.73" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="344.00" y1="103.58" x2="354.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="374.79" y1="137.21" x2="396.01" y2="115.99" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="408.42" y1="168.00" x2="425.74" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="426.00" y1="210.45" x2="445.32" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="424.00" y1="256.00" x2="454.00" y2="256.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="426.00" y1="301.55" x2="445.32" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="408.42" y1="344.00" x2="425.74" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="374.79" y1="374.79" x2="396.01" y2="396.01" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="344.00" y1="408.42" x2="354.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="301.55" y1="426.00" x2="306.73" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="256.00" y1="424.00" x2="256.00" y2="454.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="210.45" y1="426.00" x2="205.27" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="168.00" y1="408.42" x2="158.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="137.21" y1="374.79" x2="115.99" y2="396.01" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="103.58" y1="344.00" x2="86.26" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="86.00" y1="301.55" x2="66.68" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="88.00" y1="256.00" x2="58.00" y2="256.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="86.00" y1="210.45" x2="66.68" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="103.58" y1="168.00" x2="86.26" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="137.21" y1="137.21" x2="115.99" y2="115.99" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="168.00" y1="103.58" x2="158.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="210.45" y1="86.00" x2="205.27" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
   </g>
 
   <!-- Stationary Progress Track -->
-  <circle cx="256" cy="256" r="165" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="26"/>
+  <circle cx="256" cy="256" r="135" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="36"/>
 
-  <!-- Centre thick green line dragged 0 to 360 degrees (100% finished) -->
-  <circle cx="256" cy="256" r="165" fill="none" stroke="#10b981" stroke-width="26" filter="url(#softGlow)"/>
+  <!-- Centre thick green line dragged 0 to 360 degrees (100% finished, vivid electric neon green #00ff88) -->
+  <circle cx="256" cy="256" r="135" fill="none" stroke="#00ff88" stroke-width="36" filter="url(#greenGlow)"/>
 
-  <!-- Dragging green circle (the bead) at 0/360 degrees (top: cx=256, cy=91) -->
-  <circle cx="256" cy="91" r="28" fill="url(#beadGlow)"/>
-  <circle cx="256" cy="91" r="14" fill="#ffffff" stroke="#10b981" stroke-width="6.5"/>
+  <!-- Dragging green circle (the bead) at 0/360 degrees (top: cx=256, cy=121) -->
+  <circle cx="256" cy="121" r="32" fill="url(#beadGlow)"/>
+  <circle cx="256" cy="121" r="16" fill="#00ff88" stroke="#ffffff" stroke-width="5" filter="url(#greenGlow)"/>
 </svg>

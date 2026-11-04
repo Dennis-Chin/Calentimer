@@ -445,6 +445,9 @@ assert(fs.existsSync(path.resolve(process.cwd(), 'icon-512.png')), 'icon-512.png
 const iconSvgContent = fs.readFileSync(path.resolve(process.cwd(), 'icon.svg'), 'utf8');
 assert(iconSvgContent.includes('id="innerShimmer"'), 'icon.svg includes mild green-to-blue inner shimmer gradient');
 assert(iconSvgContent.includes('#00f0ff'), 'icon.svg includes light blue tick markers');
+assert(iconSvgContent.includes('#00ff88'), 'icon.svg includes vivid neon green matching actual timer');
+assert(iconSvgContent.includes('stroke-width="36"'), 'icon.svg features thick 36px green ring');
+assert((iconSvgContent.match(/stroke="rgba\(255, 255, 255, 0\.45\)"/g) || []).length === 16, 'icon.svg includes exactly 16 grey tick marks');
 
 // 6. Dynamic background countdown Web Worker in timerRuntime
 assert(latestRuntimeContent.includes('new Worker(workerUrl)'), 'timerRuntime.js uses dedicated Web Worker for unthrottled background countdown');
