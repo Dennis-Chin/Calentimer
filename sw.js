@@ -3,7 +3,7 @@
  * Manages caching, offline reliability, and notification interactions for PWA.
  */
 
-const CACHE_NAME = 'calentimer-v2';
+const CACHE_NAME = 'calentimer-v3';
 const ASSETS = [
   '/',
   '/index.html',
@@ -19,7 +19,9 @@ const ASSETS = [
   '/manifest.json',
   '/icon.png',
   '/icon-512.png',
-  '/icon.svg'
+  '/icon.svg',
+  '/badge-icon.png',
+  '/badge-icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
@@ -100,3 +102,67 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// ========================================================
+// Dynamic Background Countdown Ticking via Service Worker
+// ========================================================
+let bgTimerId = null;
+let bgTimerState = null;
+
+function renderBackgroundNotification(state, remainingSec) {
+  if (!state || !state.activeTask) return;
+  const mins = Math.floor(remainingSec / 60);
+  const secs = remainingSec % 60;
+  const timeStr = (mins < 10 ? '0' + mins : mins) + ':' + (secs < 10 ? '0' + secs : secs);
+  const title = state.isPaused ? '⏸ Paused · ' + state.activeTask.title : state.activeTask.title;
+  const timespan = state.timespanText ? ' · ' + state.timespanText : '';
+  const body = timeStr + ' left' + timespan;
+
+  return self.registration.showNotification(title, {
+    body: body,
+    icon: '/icon.png',
+    badge: '/badge-icon.png',
+    tag: 'calentimer-active-countdown',
+    renotify: false,
+    silent: true,
+    requireInteraction: !state.isPaused,
+    ongoing: !state.isPaused,
+    data: { url: '/' }
+  });
+}
+
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data) return;
+
+  if (data.type === 'START_BG_TIMER') {
+    bgTimerState = data.payload;
+    if (bgTimerId) {
+      clearInterval(bgTimerId);
+      bgTimerId = null;
+    }
+    if (!bgTimerState || bgTimerState.isPaused) return;
+
+    const remainingSec = typeof bgTimerState.remainingSeconds === 'number' ? bgTimerState.remainingSeconds : 0;
+    const targetEndTime = Date.now() + (remainingSec * 1000);
+
+    bgTimerId = setInterval(() => {
+      const now = Date.now();
+      const currentRemaining = Math.max(0, Math.round((targetEndTime - now) / 1000));
+      renderBackgroundNotification(bgTimerState, currentRemaining);
+      if (currentRemaining <= 0) {
+        if (bgTimerId) {
+          clearInterval(bgTimerId);
+          bgTimerId = null;
+        }
+      }
+    }, 1000);
+  } else if (data.type === 'STOP_BG_TIMER') {
+    if (bgTimerId) {
+      clearInterval(bgTimerId);
+      bgTimerId = null;
+    }
+    bgTimerState = null;
+  }
+});
+

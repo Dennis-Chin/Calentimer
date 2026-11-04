@@ -76,8 +76,21 @@ export class GoogleCalendarAdapter {
    * Initializes adapter and attempts to restore stored access token or GIS client.
    */
   init() {
-    // Check if token exists in session
-    if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
+    // Check if token exists in localStorage first, then fallback to sessionStorage
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      try {
+        const savedToken = localStorage.getItem('calentimer_gcal_token');
+        const savedExpiry = localStorage.getItem('calentimer_gcal_expiry');
+        if (savedToken && savedExpiry) {
+          const exp = parseInt(savedExpiry, 10);
+          if (Date.now() < exp) {
+            this.accessToken = savedToken;
+            this.tokenExpiresAt = exp;
+          }
+        }
+      } catch (_) {}
+    }
+    if (!this.accessToken && typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
         const savedToken = sessionStorage.getItem('calentimer_gcal_token');
         const savedExpiry = sessionStorage.getItem('calentimer_gcal_expiry');
@@ -109,7 +122,7 @@ export class GoogleCalendarAdapter {
   }
 
   /**
-   * Saves the acquired access token in memory and session.
+   * Saves the acquired access token in memory, localStorage, and sessionStorage.
    * @param {string} token 
    * @param {number} expiresInSeconds 
    */
@@ -117,6 +130,13 @@ export class GoogleCalendarAdapter {
     this.accessToken = token;
     const expiresSec = (typeof expiresInSeconds === 'number' && expiresInSeconds > 0) ? expiresInSeconds : 3600;
     this.tokenExpiresAt = Date.now() + (expiresSec * 1000);
+
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      try {
+        localStorage.setItem('calentimer_gcal_token', token);
+        localStorage.setItem('calentimer_gcal_expiry', String(this.tokenExpiresAt));
+      } catch (_) {}
+    }
 
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
@@ -140,6 +160,13 @@ export class GoogleCalendarAdapter {
     this._verifiedCalentimerCalendarId = null;
     this._calentimerCalendarPromise = null;
 
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      try {
+        localStorage.removeItem('calentimer_gcal_token');
+        localStorage.removeItem('calentimer_gcal_expiry');
+      } catch (_) {}
+    }
+
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
         sessionStorage.removeItem('calentimer_gcal_token');
@@ -161,12 +188,19 @@ export class GoogleCalendarAdapter {
   }
 
   /**
-   * Clears in-memory and session token without destroying user's connected intent or email.
+   * Clears in-memory, localStorage, and session token without destroying user's connected intent or email.
    * Used for background token expiration and 401s so user is not forcibly logged out.
    */
   markTokenExpired() {
     this.accessToken = null;
     this.tokenExpiresAt = 0;
+
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      try {
+        localStorage.removeItem('calentimer_gcal_token');
+        localStorage.removeItem('calentimer_gcal_expiry');
+      } catch (_) {}
+    }
 
     if (typeof sessionStorage !== 'undefined' && sessionStorage !== null) {
       try {
@@ -178,13 +212,20 @@ export class GoogleCalendarAdapter {
 
   /**
    * Silently refreshes or verifies Google OAuth access token if nearing expiration.
+   * Only initiates an interactive popup window when interactive is explicitly true.
+   * @param {boolean} [interactive=false]
    * @returns {Promise<string|null>}
    */
-  async ensureValidToken() {
+  async ensureValidToken(interactive = false) {
     if (this.mockTransport) return this.accessToken;
 
     // If token exists and is valid for more than 2 minutes, return immediately
     if (this.accessToken && (!this.tokenExpiresAt || Date.now() < this.tokenExpiresAt - 120000)) {
+      return this.accessToken;
+    }
+
+    // Do NOT trigger an interactive GIS popup if this is a background auto-sync or silent startup check
+    if (!interactive) {
       return this.accessToken;
     }
 

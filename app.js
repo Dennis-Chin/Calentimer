@@ -395,6 +395,7 @@ function updateNotifToggleUI() {
  */
 function renderDialTicks() {
   if (!dialTicksGroup) return;
+  if (dialTicksGroup.children && dialTicksGroup.children.length === 60) return;
   dialTicksGroup.innerHTML = '';
   for (let i = 0; i < 60; i++) {
     const isMajor = i % 5 === 0;
@@ -7607,38 +7608,30 @@ function setupNavigationAndModals() {
       }
     }
 
+    const touch = e.touches && e.touches[0];
+    if (!touch) return;
+
     // Guard: If touch starts inside or on the timer wheel/dial elements, check if inside dial circle.
-    // If touch starts at the 4 outer corner spandrels of the dial container, allow swiping right to open the menu!
+    // Swipes starting near the left edge of the screen (touch.clientX <= 90) or at the outer corner spandrels
+    // are allowed to open the nav menu drawer immediately even if touching over the wheel container!
     const wheelEl = document.getElementById('wheelContainer');
-    if (wheelEl && target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
-      const touch = e.touches && e.touches[0];
-      if (touch) {
-        const rect = wheelEl.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dist = Math.hypot(touch.clientX - cx, touch.clientY - cy);
-        const wheelRadius = rect.width / 2;
-        // Outer dial tick radius is ~1.02 * wheelRadius (bezel).
-        // The green track is at ~0.81 * wheelRadius.
-        // We define the protected dial rotation zone between innerGreenBorderRadius (~0.68 * wheelRadius) and dialSafeRadius (1.02 * wheelRadius).
-        // Touching outside in the 4 corner spandrels (dist > dialSafeRadius) OR inside the inner green dial (dist < innerGreenBorderRadius)
-        // allows swiping left-to-right to open the menu drawer, while preventing thumb dragging near the dials from accidentally triggering it!
-        const dialSafeRadius = wheelRadius * 1.02;
-        const innerGreenBorderRadius = wheelRadius * 0.68;
-        if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius) {
-          navTouchStartX = null;
-          navTouchStartY = null;
-          return;
-        }
-      } else {
+    if (touch.clientX > 90 && wheelEl && target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
+      const rect = wheelEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dist = Math.hypot(touch.clientX - cx, touch.clientY - cy);
+      const wheelRadius = rect.width / 2;
+      // Outer dial tick radius is ~1.02 * wheelRadius (bezel).
+      // The green track is at ~0.81 * wheelRadius.
+      // We define the protected dial rotation zone between innerGreenBorderRadius (~0.68 * wheelRadius) and dialSafeRadius (1.02 * wheelRadius).
+      const dialSafeRadius = wheelRadius * 1.02;
+      const innerGreenBorderRadius = wheelRadius * 0.68;
+      if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius) {
         navTouchStartX = null;
         navTouchStartY = null;
         return;
       }
     }
-
-    const touch = e.touches[0];
-    if (!touch) return;
 
     // Never start nav menu swipe if Today's Tasks drawer is open or actively pulling up/down
     if (isDrawerPullingUp || isDrawerPullingDown || (taskDrawer && !taskDrawer.classList.contains('collapsed'))) {

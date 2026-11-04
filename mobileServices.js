@@ -181,29 +181,37 @@ class MobileServices {
   /**
    * Updates or creates the live persistent timer notification in the notification bar
    */
-  async updateLiveNotification({ activeTask, remainingSeconds, nextTask, isPaused = false }) {
+  async updateLiveNotification(data) {
+    if (!data) return;
+    const activeTask = data.activeTask;
+    const remainingSeconds = typeof data.remainingSeconds === 'number' ? data.remainingSeconds : 0;
+    const nextTask = data.nextTask || null;
+    const isPaused = Boolean(data.isPaused);
+
     if (!this.hasNotificationPermission() || !activeTask || !taskStore.getAlertsEnabled()) return;
 
     const mins = Math.floor(remainingSeconds / 60);
     const secs = remainingSeconds % 60;
     const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    const emoji = activeTask.emoji || '⏱️';
 
+    // Top line: Name of the task without square brackets
     const title = isPaused
-      ? `⏸ [${timeStr}] Paused · ${emoji} ${activeTask.title}`
-      : `⏱ [${timeStr}] ${emoji} ${activeTask.title}`;
+      ? `⏸ Paused · ${activeTask.title}`
+      : `${activeTask.title}`;
 
     const durMin = activeTask.allocatedDuration || activeTask.plannedDuration || Math.max(1, Math.ceil(remainingSeconds / 60));
     const startTime = activeTask.fixedStartTime || activeTask.startTime;
     const endTime = activeTask.fixedEndTime || activeTask.endTime;
-    const timespanText = (startTime && endTime) ? ` · ${startTime} → ${endTime}` : (endTime ? ` · Ends at ${endTime}` : '');
-    const nextText = nextTask ? `\n⏭️ Next: ${nextTask.emoji || '📌'} ${nextTask.title} (${nextTask.allocatedDuration || nextTask.plannedDuration || 30}m)` : '\n🌟 Final task on today\'s schedule!';
-    const body = `⏳ ${mins}m ${secs}s left of ${durMin}m${timespanText}${nextText}`;
+    const timespanText = (startTime && endTime) ? `${startTime} → ${endTime}` : (endTime ? `Ends at ${endTime}` : `${durMin}m`);
+    const nextPart = nextTask ? `\nNext: ${nextTask.title} (${nextTask.allocatedDuration || nextTask.plannedDuration || 30}m)` : '';
+
+    // Second line: countdown and time span
+    const body = `${timeStr} left · ${timespanText}${nextPart}`;
 
     const notifOptions = {
       body: body,
       icon: '/icon.png',
-      badge: '/icon.png',
+      badge: '/badge-icon.png',
       tag: 'calentimer-active-countdown',
       renotify: false,
       silent: true,
@@ -213,6 +221,21 @@ class MobileServices {
         url: '/'
       }
     };
+
+    // Forward background timer sync to Service Worker to keep dynamic ticking alive while minimised
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: isPaused ? 'STOP_BG_TIMER' : 'START_BG_TIMER',
+          payload: {
+            activeTask: { title: activeTask.title },
+            remainingSeconds: remainingSeconds,
+            timespanText: timespanText,
+            isPaused: isPaused
+          }
+        });
+      }
+    } catch (_) {}
 
     try {
       const reg = this.swRegistration || (navigator.serviceWorker && (await navigator.serviceWorker.ready));
@@ -233,7 +256,9 @@ class MobileServices {
   /**
    * Celebratory transition alert banner when a task finishes
    */
-  async notifyTaskComplete({ completedTask, nextTask }) {
+  async notifyTaskComplete(data) {
+    const completedTask = data && data.completedTask;
+    const nextTask = data && data.nextTask;
     if (!this.hasNotificationPermission() || !completedTask || !taskStore.getAlertsEnabled()) return;
 
     const title = `🎉 Task Complete: ${completedTask.title}`;
@@ -242,12 +267,18 @@ class MobileServices {
       : 'All tasks on your schedule are complete! 🌟';
 
     try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'STOP_BG_TIMER' });
+      }
+    } catch (_) {}
+
+    try {
       const reg = this.swRegistration || await navigator.serviceWorker.ready;
       if (reg && reg.showNotification) {
         await reg.showNotification(title, {
           body: nextStr,
           icon: '/icon.png',
-          badge: '/icon.png',
+          badge: '/badge-icon.png',
           tag: 'calentimer-task-alert',
           renotify: true,
           silent: false,
@@ -261,6 +292,11 @@ class MobileServices {
    * Closes active countdown notification
    */
   async clearLiveNotification() {
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'STOP_BG_TIMER' });
+      }
+    } catch (_) {}
     try {
       const reg = this.swRegistration || await navigator.serviceWorker.ready;
       if (reg && reg.getNotifications) {

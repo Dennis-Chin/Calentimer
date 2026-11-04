@@ -271,7 +271,7 @@ export class CalendarSyncService {
     let isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : true;
     if (!isAuth && typeof adapter.ensureValidToken === 'function') {
       try {
-        await adapter.ensureValidToken();
+        await adapter.ensureValidToken(isForce);
       } catch (_) {}
       isAuth = (typeof adapter.isAuthenticated === 'function') ? adapter.isAuthenticated() : true;
     }

@@ -418,6 +418,37 @@ assert(mobileServicesContent.includes('ongoing: !isPaused'), 'mobileServices.js 
 assert(mobileServicesContent.includes('timespanText'), 'mobileServices.js includes timespan in live notification');
 assert(mobileServicesContent.includes('durMin'), 'mobileServices.js includes duration in live notification');
 
+console.log('\n--- 17. Testing Dial Pre-rendering, Nav Swipe, Google Auth Persistence & Notification Icons ---');
+// 1. Dial pre-rendering in HTML & app.js skip check
+assert(curHtml.includes('class="dial-tick major"') && curHtml.indexOf('dialTicksGroup') !== -1, 'index.html contains pre-rendered dial ticks');
+assert(curApp.includes('dialTicksGroup.children.length === 60'), 'app.js skips re-rendering dial ticks when pre-rendered');
+
+// 2. Nav drawer swipe from left edge
+assert(curApp.includes('touch.clientX > 90') && curApp.includes('target.closest(\'.wheel-container'), 'app.js allows edge swipe (clientX <= 90) to open nav drawer without dial blockage');
+
+// 3. Google OAuth persistence in localStorage
+const gcalAdapterContent = fs.readFileSync(path.resolve(process.cwd(), 'googleCalendarAdapter.js'), 'utf8');
+assert(gcalAdapterContent.includes('localStorage.getItem(\'calentimer_gcal_token\')'), 'googleCalendarAdapter.js reads token from localStorage');
+assert(gcalAdapterContent.includes('localStorage.setItem(\'calentimer_gcal_token\', token)'), 'googleCalendarAdapter.js stores token in localStorage');
+assert(gcalAdapterContent.includes('ensureValidToken(interactive = false)') && gcalAdapterContent.includes('if (!interactive)'), 'googleCalendarAdapter.js guards against startup GIS popup when not interactive');
+
+// 4. Notification format without square brackets & badge icon
+assert(!mobileServicesContent.includes('`⏱ [${timeStr}]'), 'mobileServices.js notification title removes square brackets');
+assert(mobileServicesContent.includes('badge: \'/badge-icon.png\''), 'mobileServices.js uses transparent silhouette badge-icon.png for Android status bar');
+
+// 5. Timer icons exist and icon.svg has 16 ticks and mild shimmer
+assert(fs.existsSync(path.resolve(process.cwd(), 'badge-icon.png')), 'badge-icon.png exists');
+assert(fs.existsSync(path.resolve(process.cwd(), 'badge-icon.svg')), 'badge-icon.svg exists');
+assert(fs.existsSync(path.resolve(process.cwd(), 'icon.svg')), 'icon.svg exists');
+assert(fs.existsSync(path.resolve(process.cwd(), 'icon.png')), 'icon.png exists');
+assert(fs.existsSync(path.resolve(process.cwd(), 'icon-512.png')), 'icon-512.png exists');
+const iconSvgContent = fs.readFileSync(path.resolve(process.cwd(), 'icon.svg'), 'utf8');
+assert(iconSvgContent.includes('id="innerShimmer"'), 'icon.svg includes mild green-to-blue inner shimmer gradient');
+assert(iconSvgContent.includes('#00f0ff'), 'icon.svg includes light blue tick markers');
+
+// 6. Dynamic background countdown Web Worker in timerRuntime
+assert(latestRuntimeContent.includes('new Worker(workerUrl)'), 'timerRuntime.js uses dedicated Web Worker for unthrottled background countdown');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

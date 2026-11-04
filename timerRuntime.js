@@ -1154,11 +1154,57 @@ export class TimerRuntime {
 
   _startTicker() {
     this._stopTicker();
-    // 500ms ticker interval prevents jitter while staying lightweight on battery
+
+    // Dedicated Web Worker prevents Android / browser background timer throttling
+    if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      try {
+        const workerBlob = new Blob([
+          'var intervalId = null;\n' +
+          'self.onmessage = function(e) {\n' +
+          '  if (e.data === "start") {\n' +
+          '    if (intervalId) clearInterval(intervalId);\n' +
+          '    intervalId = setInterval(function() {\n' +
+          '      self.postMessage("tick");\n' +
+          '    }, 500);\n' +
+          '  } else if (e.data === "stop") {\n' +
+          '    if (intervalId) {\n' +
+          '      clearInterval(intervalId);\n' +
+          '      intervalId = null;\n' +
+          '    }\n' +
+          '  }\n' +
+          '};\n'
+        ], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(workerBlob);
+        this._worker = new Worker(workerUrl);
+        this._workerUrl = workerUrl;
+        this._worker.onmessage = (e) => {
+          if (e.data === 'tick') {
+            this._tick();
+          }
+        };
+        this._worker.postMessage('start');
+        return;
+      } catch (_) {}
+    }
+
+    // 500ms fallback ticker interval
     this._intervalId = setInterval(() => this._tick(), 500);
   }
 
   _stopTicker() {
+    if (this._worker) {
+      try {
+        this._worker.postMessage('stop');
+        this._worker.terminate();
+      } catch (_) {}
+      this._worker = null;
+    }
+    if (this._workerUrl) {
+      try {
+        URL.revokeObjectURL(this._workerUrl);
+      } catch (_) {}
+      this._workerUrl = null;
+    }
     if (this._intervalId) {
       clearInterval(this._intervalId);
       this._intervalId = null;
