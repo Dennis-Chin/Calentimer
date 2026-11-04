@@ -263,6 +263,42 @@ const expectedDialEndStr = `${String(Math.floor(expectedDialEndMin / 60)).padSta
 assert(dialRt.getActiveTask().endTime === expectedDialEndStr, `Running endTime matches adjusted duration (${expectedDialEndStr})`);
 dialRt.pause();
 
+console.log('\n--- 12. Testing previousTask, setActiveTaskById, and Session State Restoration ---');
+const sessionRt = new TimerRuntime({
+  hardStop: '23:59',
+  tasks: [
+    { id: 't1', title: 'Task 1', plannedDuration: 20, isLocked: false },
+    { id: 't2', title: 'Task 2', plannedDuration: 30, isLocked: true },
+    { id: 't3', title: 'Task 3', plannedDuration: 15, isLocked: false }
+  ]
+});
+
+// Move to Task 2
+sessionRt.setActiveTaskById('t2');
+assert(sessionRt.activeTaskIndex === 1, 'setActiveTaskById sets activeTaskIndex to 1');
+assert(sessionRt.getActiveTask().id === 't2', 'Active task is Task 2');
+
+// Previous task should go back to Task 1
+const prevRes = sessionRt.previousTask();
+assert(prevRes && prevRes.id === 't1', 'previousTask returns Task 1');
+assert(sessionRt.activeTaskIndex === 0, 'activeTaskIndex is now 0');
+
+// Test session restoration
+const fakeSession = {
+  activeTaskId: 't3',
+  activeTaskIndex: 2,
+  status: TimerStatus.PAUSED,
+  taskDurationMs: 15 * 60 * 1000,
+  accumulatedElapsedMs: 5 * 60 * 1000,
+  sessionDate: new Date().toISOString().split('T')[0]
+};
+const restored = sessionRt.restoreSessionState(fakeSession);
+assert(restored === true, 'restoreSessionState successfully restored session');
+assert(sessionRt.activeTaskIndex === 2, 'Restored activeTaskIndex is 2');
+assert(sessionRt.getActiveTask().id === 't3', 'Restored active task is Task 3');
+assert(sessionRt.status === TimerStatus.PAUSED, 'Restored status is PAUSED');
+assert(sessionRt.getRemainingSeconds() === 10 * 60, 'Restored remaining seconds is 10 minutes');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

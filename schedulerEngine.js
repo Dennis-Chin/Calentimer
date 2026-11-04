@@ -404,7 +404,18 @@ export function calculateSchedule(config) {
       }
     }
 
-    const taskEnd = taskStart + allocated;
+    let taskEnd = taskStart + allocated;
+    const specifiedEnd = task.fixedEndTime || (task.isLocked ? task.endTime : null);
+    if (specifiedEnd) {
+      try {
+        const parsedEnd = parseTimeToMinutes(specifiedEnd);
+        if (parsedEnd > taskStart || (task.isLocked && parsedEnd !== taskStart)) {
+          taskEnd = parsedEnd;
+        }
+      } catch (e) {
+        // Fallback to sequential
+      }
+    }
     currentClockMinutes = taskEnd;
 
     return {

@@ -37,7 +37,8 @@ const STORAGE_KEYS = {
   GOOGLE_CALENTIMER_CAL_ID: 'calentimer_gcal_calentimer_id_v1',
   MS_CALENTIMER_CAL_ID: 'calentimer_ms_calentimer_id_v1',
   CALENTIMER_CAL_COLORS: 'calentimer_cal_colors_v1',
-  CATEGORY_CUSTOM_COLORS: 'calentimer_category_custom_colors_v1'
+  CATEGORY_CUSTOM_COLORS: 'calentimer_category_custom_colors_v1',
+  TIMER_SESSION: 'calentimer_timer_session_v1'
 };
 
 const memoryStorage = {};
@@ -2183,6 +2184,43 @@ export class TaskStore {
       safeSetItem(STORAGE_KEYS.CALENTIMER_CAL_COLORS, JSON.stringify(current));
       this._notify();
     } catch (_) {}
+  }
+
+  /**
+   * Persists active timer session (active task, status, elapsed milliseconds, task duration).
+   * @param {object} session
+   */
+  saveTimerSession(session) {
+    if (session && typeof session === 'object') {
+      safeSetItem(STORAGE_KEYS.TIMER_SESSION, JSON.stringify(session));
+    }
+  }
+
+  /**
+   * Retrieves active timer session from storage.
+   * @returns {object|null}
+   */
+  getTimerSession() {
+    try {
+      const val = safeGetItem(STORAGE_KEYS.TIMER_SESSION);
+      if (!val) return null;
+      const parsed = JSON.parse(val);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Clears saved timer session from storage.
+   */
+  clearTimerSession() {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage !== null) {
+        localStorage.removeItem(STORAGE_KEYS.TIMER_SESSION);
+      }
+    } catch (_) {}
+    delete memoryStorage[STORAGE_KEYS.TIMER_SESSION];
   }
 }
 

@@ -155,15 +155,21 @@ export class TimerRuntime {
           const startedStartStr = formatMinutesToTime(parseTimeToMinutes(new Date(this.taskStartedAt)));
           remainingTasks.push({
             ...origTask,
-            fixedStartTime: startedStartStr,
-            fixedEndTime: origTask.isLocked ? origTask.fixedEndTime : null,
-            plannedDuration: remainingMin,
+            fixedStartTime: origTask.isLocked ? (origTask.fixedStartTime || origTask.startTime) : startedStartStr,
+            fixedEndTime: origTask.isLocked ? (origTask.fixedEndTime || origTask.endTime) : null,
+            startTime: origTask.isLocked ? (origTask.startTime || origTask.fixedStartTime) : undefined,
+            endTime: origTask.isLocked ? (origTask.endTime || origTask.fixedEndTime) : undefined,
+            plannedDuration: origTask.isLocked ? origTask.plannedDuration : remainingMin,
             isLocked: Boolean(origTask.isLocked)
           });
         } else {
           // Task has not started ticking yet: use its full planned duration!
           remainingTasks.push({
             ...origTask,
+            startTime: origTask.startTime || null,
+            endTime: origTask.endTime || null,
+            fixedStartTime: origTask.fixedStartTime || (origTask.isLocked ? origTask.startTime : null),
+            fixedEndTime: origTask.fixedEndTime || (origTask.isLocked ? origTask.endTime : null),
             plannedDuration: origTask.plannedDuration,
             isLocked: Boolean(origTask.isLocked)
           });
@@ -183,7 +189,10 @@ export class TimerRuntime {
           colorId: initTask.colorId || null,
           useTimeBank: initTask.useTimeBank !== false,
           tags: initTask.tags,
-          fixedStartTime: initTask.fixedStartTime,
+          startTime: initTask.startTime || null,
+          endTime: initTask.endTime || null,
+          fixedStartTime: initTask.fixedStartTime || (initTask.isLocked ? initTask.startTime : null),
+          fixedEndTime: initTask.fixedEndTime || (initTask.isLocked ? initTask.endTime : null),
           isLocked: Boolean(initTask.isLocked),
           plannedDuration: initTask.plannedDuration
         });
@@ -316,6 +325,7 @@ export class TimerRuntime {
 
     this._stopTicker();
     this._setStatus(TimerStatus.PAUSED);
+    this.saveSessionState();
     this._emit('pause', {
       activeTask: this.getActiveTask(),
       elapsedSeconds: this.getElapsedSeconds(),
@@ -342,6 +352,7 @@ export class TimerRuntime {
       this.taskDurationMs = allocatedMin * 60 * 1000;
     }
     this.taskStartedAt = Date.now();
+    this.saveSessionState();
 
     const totalSeconds = Math.floor(this.taskDurationMs / 1000);
     const nowMinutes = parseTimeToMinutes(new Date());
@@ -357,6 +368,7 @@ export class TimerRuntime {
       currentClock: formatMinutesToTime(nowMinutes),
       hardStop: typeof this.hardStop === 'string' ? this.hardStop : formatMinutesToTime(stopMinutes)
     });
+    this.saveSessionState();
 
     this._emit('statusChange', this.status);
   }
@@ -376,6 +388,9 @@ export class TimerRuntime {
     this.overrunStartTime = null;
     this.initialOverrunBankSeconds = 0;
     this.overrunPausedElapsedMs = 0;
+    if (typeof taskStore !== 'undefined' && typeof taskStore.clearTimerSession === 'function') {
+      taskStore.clearTimerSession();
+    }
     this.recalculate();
     this._emit('statusChange', this.status);
   }
@@ -785,18 +800,28 @@ export class TimerRuntime {
         const nowMin = (now.getHours() * 60) + now.getMinutes();
 
         if (nowMin > sMin && nowMin < eMin) {
-          // Time is past the start time: duration shortens, start switches to current time
+          // Time is past the start time: remaining duration counts down, but scheduled timespan remains fixed
           const remainingDurationMin = eMin - nowMin;
           this.taskDurationMs = remainingDurationMin * 60 * 1000;
           this.accumulatedElapsedMs = 0;
-          task.startTime = formatMinutesToTime(nowMin);
+          task.startTime = startTimeVal;
+          task.endTime = endTimeVal;
           task.allocatedDuration = remainingDurationMin;
         } else if (nowMin <= sMin) {
           // Started before or at scheduled start time: full duration
           const fullDurationMin = eMin - sMin;
           this.taskDurationMs = fullDurationMin * 60 * 1000;
           this.accumulatedElapsedMs = 0;
+          task.startTime = startTimeVal;
+          task.endTime = endTimeVal;
           task.allocatedDuration = fullDurationMin;
+        } else {
+          // Past end time: run with planned duration or remaining time
+          const fullDurationMin = Math.max(1, (task.allocatedDuration || task.plannedDuration || (eMin - sMin) || 1));
+          this.taskDurationMs = fullDurationMin * 60 * 1000;
+          this.accumulatedElapsedMs = 0;
+          task.startTime = startTimeVal;
+          task.endTime = endTimeVal;
         }
       } else if (!isLockedTask && hasDefinedEndTime) {
         // Chronological mode, unlocked, but has explicitly defined fixed end time:
@@ -823,7 +848,7 @@ export class TimerRuntime {
         task.endTime = formatMinutesToTime((nowMin + plannedDur) % 1440);
         task.allocatedDuration = plannedDur;
       }
-      if (origTask) {
+      if (origTask && !isLockedTask) {
         origTask.startTime = task.startTime;
         origTask.endTime = task.endTime;
         origTask.allocatedDuration = task.allocatedDuration;
@@ -844,6 +869,7 @@ export class TimerRuntime {
 
     this._setStatus(TimerStatus.RUNNING);
     this._startTicker();
+    this.saveSessionState();
 
     this._emit('taskStart', {
       task,
@@ -904,6 +930,201 @@ export class TimerRuntime {
 
     if (this.status === TimerStatus.RUNNING) {
       this._startTask(this.activeTaskIndex);
+    }
+    this.saveSessionState();
+  }
+
+  /**
+   * Goes back to the previous non-indented task in the schedule,
+   * unmarking it as completed if it was done, and setting it active on the timer.
+   */
+  previousTask() {
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || this.initialTasks || [];
+    if (tasks.length === 0) return null;
+
+    const indentedIds = this.getIndentedOverlapTaskIds(tasks);
+    let prevIndex = (this.activeTaskIndex >= 0 ? this.activeTaskIndex : 0) - 1;
+    while (prevIndex >= 0) {
+      const cand = tasks[prevIndex];
+      if (cand && !indentedIds.has(cand.id)) break;
+      prevIndex--;
+    }
+
+    if (prevIndex < 0) {
+      return null;
+    }
+
+    this.setActiveTaskByIndex(prevIndex);
+    return this.getActiveTask();
+  }
+
+  /**
+   * Sets a specific task as the active task on the timer by ID.
+   * If completed, marks it as to-do so user can work on it again.
+   * @param {string} taskId
+   */
+  setActiveTaskById(taskId) {
+    if (!taskId) return;
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || this.initialTasks || [];
+    const index = tasks.findIndex(t => t && t.id === taskId);
+    if (index >= 0) {
+      this.setActiveTaskByIndex(index);
+    }
+  }
+
+  /**
+   * Sets a specific task as the active task on the timer by index.
+   * @param {number} index
+   */
+  setActiveTaskByIndex(index) {
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || this.initialTasks || [];
+    if (index < 0 || index >= tasks.length) return;
+
+    const wasRunning = this.status === TimerStatus.RUNNING;
+    this._stopTicker();
+    this.activeTaskIndex = index;
+    this.accumulatedElapsedMs = 0;
+    this.lastResumeTimestamp = null;
+    this.taskStartedAt = null;
+    this.isOverrunning = false;
+    this.overrunStartTime = null;
+    this.initialOverrunBankSeconds = 0;
+    this.overrunPausedElapsedMs = 0;
+
+    const targetTask = tasks[index];
+    if (targetTask && targetTask.id) {
+      targetTask.isCompleted = false;
+      targetTask.completedDate = null;
+      targetTask.manualCompleted = false;
+      if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+        taskStore.updateTask(targetTask.id, {
+          isCompleted: false,
+          completedDate: null,
+          manualCompleted: false
+        });
+      }
+    }
+
+    const orig = (this.initialTasks && this.initialTasks.find(t => t.id === (targetTask && targetTask.id))) || targetTask;
+    this.taskDurationMs = ((orig && (orig.allocatedDuration || orig.plannedDuration)) || 25) * 60 * 1000;
+
+    this.recalculate();
+
+    if (wasRunning) {
+      this._startTask(this.activeTaskIndex);
+    } else {
+      this._setStatus(TimerStatus.IDLE);
+      this._emit('taskStart', {
+        task: targetTask,
+        index: this.activeTaskIndex,
+        totalDurationSeconds: Math.floor(this.taskDurationMs / 1000)
+      });
+      this._tick();
+    }
+    this.saveSessionState();
+  }
+
+  /**
+   * Saves active timer session state to taskStore for seamless persistence across app close/reopen.
+   */
+  saveSessionState() {
+    if (typeof taskStore === 'undefined' || typeof taskStore.saveTimerSession !== 'function') return;
+    const activeTask = this.getActiveTask();
+    if (!activeTask || this.status === TimerStatus.COMPLETED) {
+      if (typeof taskStore.clearTimerSession === 'function') {
+        taskStore.clearTimerSession();
+      }
+      return;
+    }
+    const todayStr = (typeof taskStore.getTodayDateString === 'function')
+      ? taskStore.getTodayDateString()
+      : new Date().toISOString().split('T')[0];
+
+    taskStore.saveTimerSession({
+      activeTaskId: activeTask.id,
+      activeTaskIndex: this.activeTaskIndex,
+      status: this.status,
+      taskDurationMs: this.taskDurationMs,
+      accumulatedElapsedMs: this.getElapsedMilliseconds(),
+      lastResumeTimestamp: this.lastResumeTimestamp,
+      taskStartedAt: this.taskStartedAt,
+      isOverrunning: this.isOverrunning,
+      overrunStartTime: this.overrunStartTime,
+      initialOverrunBankSeconds: this.initialOverrunBankSeconds,
+      overrunPausedElapsedMs: this.overrunPausedElapsedMs,
+      sessionSavedAt: Date.now(),
+      sessionDate: todayStr
+    });
+  }
+
+  /**
+   * Restores previously saved timer session.
+   * @param {object} session
+   * @returns {boolean} true if restored
+   */
+  restoreSessionState(session) {
+    if (!session || typeof session !== 'object') return false;
+    const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
+      ? taskStore.getTodayDateString()
+      : new Date().toISOString().split('T')[0];
+    if (session.sessionDate && session.sessionDate !== todayStr) {
+      if (typeof taskStore !== 'undefined' && typeof taskStore.clearTimerSession === 'function') {
+        taskStore.clearTimerSession();
+      }
+      return false;
+    }
+
+    const tasks = (this.currentSchedule && this.currentSchedule.tasks) || this.initialTasks || [];
+    let targetIdx = -1;
+    if (session.activeTaskId) {
+      targetIdx = tasks.findIndex(t => t && t.id === session.activeTaskId);
+    }
+    if (targetIdx === -1 && typeof session.activeTaskIndex === 'number' && session.activeTaskIndex >= 0 && session.activeTaskIndex < tasks.length) {
+      targetIdx = session.activeTaskIndex;
+    }
+    if (targetIdx === -1) return false;
+
+    this.activeTaskIndex = targetIdx;
+    const activeTask = tasks[targetIdx];
+    this.taskDurationMs = session.taskDurationMs || (((activeTask && (activeTask.allocatedDuration || activeTask.plannedDuration)) || 25) * 60 * 1000);
+    this.taskStartedAt = session.taskStartedAt || null;
+
+    if (session.status === TimerStatus.RUNNING) {
+      const now = Date.now();
+      const timeAwayMs = Math.max(0, now - (session.lastResumeTimestamp || session.sessionSavedAt || now));
+      const totalElapsedMs = (session.accumulatedElapsedMs || 0) + timeAwayMs;
+
+      if (totalElapsedMs < this.taskDurationMs) {
+        // Still has time remaining on current task
+        this.accumulatedElapsedMs = totalElapsedMs;
+        this.lastResumeTimestamp = now;
+        this.status = TimerStatus.RUNNING;
+        this._startTicker();
+        this.saveSessionState();
+        return true;
+      } else {
+        // Task duration finished while app was closed
+        this.accumulatedElapsedMs = this.taskDurationMs;
+        this.lastResumeTimestamp = null;
+        this.status = TimerStatus.PAUSED;
+        this.saveSessionState();
+        return true;
+      }
+    } else if (session.status === TimerStatus.PAUSED) {
+      this.accumulatedElapsedMs = session.accumulatedElapsedMs || 0;
+      this.lastResumeTimestamp = null;
+      this.status = TimerStatus.PAUSED;
+      this.isOverrunning = Boolean(session.isOverrunning);
+      this.overrunStartTime = session.overrunStartTime || null;
+      this.initialOverrunBankSeconds = session.initialOverrunBankSeconds || 0;
+      this.overrunPausedElapsedMs = session.overrunPausedElapsedMs || 0;
+      this.saveSessionState();
+      return true;
+    } else {
+      this.accumulatedElapsedMs = session.accumulatedElapsedMs || 0;
+      this.lastResumeTimestamp = null;
+      this.status = TimerStatus.IDLE;
+      return true;
     }
   }
 
@@ -1003,6 +1224,7 @@ export class TimerRuntime {
       currentClock: formatMinutesToTime(nowMinutes),
       hardStop: typeof this.hardStop === 'string' ? this.hardStop : formatMinutesToTime(stopMinutes)
     });
+    this.saveSessionState();
 
     if (this.isHardStopEnabled && isHardStopPassed) {
       this.pause();
@@ -1091,6 +1313,7 @@ export class TimerRuntime {
       currentClock: formatMinutesToTime(nowMinutes),
       hardStop: typeof this.hardStop === 'string' ? this.hardStop : formatMinutesToTime(stopMinutes)
     });
+    this.saveSessionState();
 
     this._emit('seek', {
       remainingSeconds: clampedRemaining,
@@ -1180,36 +1403,23 @@ export class TimerRuntime {
       }
     }
 
-    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-      ? taskStore.getTimespansEnabled()
-      : true;
     const allTasks = this.currentSchedule.tasks;
     const indentedIds = this.getIndentedOverlapTaskIds(allTasks);
 
-    if (isTimespans) {
-      const nowMin = (new Date().getHours() * 60) + new Date().getMinutes();
-
-      const rawCandidate = (this.activeTaskIndex >= 0 && this.activeTaskIndex < allTasks.length)
-        ? allTasks[this.activeTaskIndex]
-        : null;
-      const candidate = (rawCandidate && !indentedIds.has(rawCandidate.id)) ? rawCandidate : null;
-
-      let isCandidatePast = false;
-      if (candidate && candidate.endTime) {
-        const sMin = candidate.startTime ? parseTimeToMinutes(candidate.startTime) : 0;
-        let eMin = parseTimeToMinutes(candidate.endTime);
-        if (eMin <= sMin) eMin += 1440;
-        if (nowMin >= eMin) {
-          isCandidatePast = true;
-        }
-      }
-
-      // If current candidate exists, is not indented, and is not past, use it
-      if (candidate && !isCandidatePast) {
+    // If an active task index is selected and not indented, preserve it (allows returning to previous / completed tasks)
+    if (this.activeTaskIndex >= 0 && this.activeTaskIndex < allTasks.length) {
+      const candidate = allTasks[this.activeTaskIndex];
+      if (candidate && !indentedIds.has(candidate.id)) {
         return candidate;
       }
+    }
 
-      // If no valid candidate or candidate is past/indented, find active or upcoming non-indented task
+    const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+      ? taskStore.getTimespansEnabled()
+      : true;
+
+    if (isTimespans) {
+      const nowMin = (new Date().getHours() * 60) + new Date().getMinutes();
       const nextIdx = this.getActiveTaskIndexByTime(allTasks, nowMin);
       if (nextIdx >= 0 && nextIdx < allTasks.length) {
         if (this.status === TimerStatus.IDLE) {
@@ -1218,14 +1428,13 @@ export class TimerRuntime {
         return allTasks[nextIdx];
       }
       const firstValidTask = allTasks.find(t => t && !indentedIds.has(t.id)) || allTasks[0] || null;
-      const fallbackTask = candidate || firstValidTask;
-      if (fallbackTask && this.status === TimerStatus.IDLE) {
-        const fIdx = allTasks.indexOf(fallbackTask);
+      if (firstValidTask && this.status === TimerStatus.IDLE) {
+        const fIdx = allTasks.indexOf(firstValidTask);
         if (fIdx >= 0) {
           this.activeTaskIndex = fIdx;
         }
       }
-      return fallbackTask;
+      return firstValidTask;
     }
 
     let index = this.activeTaskIndex;
