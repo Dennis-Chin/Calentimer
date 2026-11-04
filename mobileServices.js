@@ -179,40 +179,55 @@ class MobileServices {
   // 4. Live Notification Panel Countdown & Transition Alerts
   // ========================================================
   /**
-   * Updates or creates the live timer notification in the Android notification panel
+   * Updates or creates the live persistent timer notification in the notification bar
    */
   async updateLiveNotification({ activeTask, remainingSeconds, nextTask, isPaused = false }) {
     if (!this.hasNotificationPermission() || !activeTask || !taskStore.getAlertsEnabled()) return;
 
-    // Throttle updates: update on minute changes or when 5 seconds pass to save battery
     const mins = Math.floor(remainingSeconds / 60);
     const secs = remainingSeconds % 60;
     const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    const emoji = activeTask.emoji || '⏱️';
 
     const title = isPaused
-      ? `⏸ [${timeStr}] Paused: ${activeTask.title}`
-      : `⏱ [${timeStr}] ${activeTask.title}`;
+      ? `⏸ [${timeStr}] Paused · ${emoji} ${activeTask.title}`
+      : `⏱ [${timeStr}] ${emoji} ${activeTask.title}`;
 
-    const endTime = activeTask.endTime || 'End of schedule';
-    const nextText = nextTask ? `\nNext up: ${nextTask.title} (${nextTask.endTime})` : '\nFinal task on schedule!';
-    const body = `⏳ ${mins}m ${secs}s left • Ends at ${endTime}${nextText}`;
+    const durMin = activeTask.allocatedDuration || activeTask.plannedDuration || Math.max(1, Math.ceil(remainingSeconds / 60));
+    const startTime = activeTask.fixedStartTime || activeTask.startTime;
+    const endTime = activeTask.fixedEndTime || activeTask.endTime;
+    const timespanText = (startTime && endTime) ? ` · ${startTime} → ${endTime}` : (endTime ? ` · Ends at ${endTime}` : '');
+    const nextText = nextTask ? `\n⏭️ Next: ${nextTask.emoji || '📌'} ${nextTask.title} (${nextTask.allocatedDuration || nextTask.plannedDuration || 30}m)` : '\n🌟 Final task on today\'s schedule!';
+    const body = `⏳ ${mins}m ${secs}s left of ${durMin}m${timespanText}${nextText}`;
+
+    const notifOptions = {
+      body: body,
+      icon: '/icon.png',
+      badge: '/icon.png',
+      tag: 'calentimer-active-countdown',
+      renotify: false,
+      silent: true,
+      requireInteraction: !isPaused,
+      ongoing: !isPaused,
+      data: {
+        url: '/'
+      }
+    };
 
     try {
-      const reg = this.swRegistration || await navigator.serviceWorker.ready;
+      const reg = this.swRegistration || (navigator.serviceWorker && (await navigator.serviceWorker.ready));
       if (reg && reg.showNotification) {
-        await reg.showNotification(title, {
-          body,
-          icon: '/icon.png',
-          badge: '/icon.png',
-          tag: 'calentimer-active-countdown',
-          renotify: false,
-          silent: true,
-          requireInteraction: !isPaused
-        });
+        await reg.showNotification(title, notifOptions);
+        return;
       }
-    } catch (err) {
-      // Background notifications might fail if document is strictly inactive
-    }
+    } catch (err) {}
+
+    // Fallback standard Web Notification if service worker is not active
+    try {
+      if (typeof Notification !== 'undefined') {
+        new Notification(title, notifOptions);
+      }
+    } catch (fallbackErr) {}
   }
 
   /**

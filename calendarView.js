@@ -2254,11 +2254,7 @@ export class CalendarView {
           const activeTask = (typeof rt.getActiveTask === 'function') ? rt.getActiveTask() : null;
           if (activeTask && activeTask.id === ev.id) {
             isCurrent = true;
-          } else if (Array.isArray(rt.tasks)) {
-            const evIdx = rt.tasks.findIndex(t => t.id === ev.id);
-            if (evIdx !== -1 && evIdx < rt.activeTaskIndex) {
-              isDone = true;
-            }
+            isDone = false;
           }
         } else {
           // Timer is idle: highlight current time slot if within range, but DO NOT mark completed

@@ -194,6 +194,9 @@ export class TimerRuntime {
           fixedStartTime: initTask.fixedStartTime || (initTask.isLocked ? initTask.startTime : null),
           fixedEndTime: initTask.fixedEndTime || (initTask.isLocked ? initTask.endTime : null),
           isLocked: Boolean(initTask.isLocked),
+          isCompleted: Boolean(initTask.isCompleted),
+          completedDate: initTask.completedDate || null,
+          manualCompleted: (typeof initTask.manualCompleted === 'boolean') ? initTask.manualCompleted : null,
           plannedDuration: initTask.plannedDuration
         });
       }
@@ -220,10 +223,20 @@ export class TimerRuntime {
       if (this.status === TimerStatus.IDLE) {
         this.currentSchedule = schedule;
       } else {
-        // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category, color) are reflected
+        // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category, color, completion status) are reflected
         const completedTasks = ((this.currentSchedule && this.currentSchedule.tasks) || []).slice(0, this.activeTaskIndex).map(t => {
           const orig = this.initialTasks.find(init => init.id === t.id);
-          return orig ? { ...t, emoji: orig.emoji, title: orig.title, category: orig.category, color: orig.color, colorId: orig.colorId } : t;
+          return orig ? {
+            ...t,
+            emoji: orig.emoji,
+            title: orig.title,
+            category: orig.category,
+            color: orig.color,
+            colorId: orig.colorId,
+            isCompleted: Boolean(orig.isCompleted),
+            completedDate: orig.completedDate || null,
+            manualCompleted: (typeof orig.manualCompleted === 'boolean') ? orig.manualCompleted : null
+          } : t;
         });
         this.currentSchedule = {
           ...schedule,

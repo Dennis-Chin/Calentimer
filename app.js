@@ -1709,6 +1709,9 @@ function setupControls() {
       }
       mobileServices.hapticTap();
       analytics.trackInteraction('btn_click', 'btnPlayPause', { action: 'start' });
+      if ('Notification' in window && Notification.permission === 'default' && taskStore.getAlertsEnabled()) {
+        mobileServices.requestNotificationPermission();
+      }
       runtime.start();
     }
   });
@@ -4101,19 +4104,16 @@ function renderTaskList(rawTasks) {
 
     if (isCurrentActive) {
       statusClass = 'task-current';
-      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
-    } else if (task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)) {
+      statusBadge = `<span class="task-status-pill current" data-action="tap-status-pill" data-id="${task.id}" title="Active on timer (tap to mark done)">▶ Active</span>`;
+    } else if (Boolean(task.isCompleted)) {
       statusClass = 'task-completed';
-      statusBadge = '<span class="task-status-pill completed">✓ Done</span>';
-    } else if (isCurrentActive) {
-      statusClass = 'task-current';
-      statusBadge = '<span class="task-status-pill current">▶ Active</span>';
+      statusBadge = `<span class="task-status-pill completed" data-action="tap-status-pill" data-id="${task.id}" title="Completed (tap to unmark as to-do)">✓ Done</span>`;
     } else {
       statusClass = 'task-pending';
       const catHex = task.color || getCategoryHexColor(task.category);
       statusBadge = isBreak
-        ? '<span class="task-status-pill break-pill">☕ Break</span>'
-        : `<span class="task-status-pill pending" style="background:${hexToRgba(catHex, 0.18)};color:${catHex};border:1px solid ${hexToRgba(catHex, 0.45)};">⏳ Todo</span>`;
+        ? `<span class="task-status-pill break-pill" data-action="tap-status-pill" data-id="${task.id}" title="Break (tap to activate on timer)">☕ Break</span>`
+        : `<span class="task-status-pill pending" data-action="tap-status-pill" data-id="${task.id}" title="To-do (tap to activate on timer)" style="background:${hexToRgba(catHex, 0.18)};color:${catHex};border:1px solid ${hexToRgba(catHex, 0.45)};">⏳ Todo</span>`;
     }
 
     card.className = `task-card ${statusClass} ${isBreak ? 'is-break-task' : ''} ${isLocked ? 'is-locked-task' : ''} ${isOverlap ? 'is-schedule-overlap' : ''}`;
@@ -4240,7 +4240,7 @@ function renderTaskList(rawTasks) {
     };
 
     card.addEventListener('touchstart', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], .task-check-btn, .task-emoji-btn, .btn-icon-action')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill')) return;
       holdMoved = false;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
@@ -4267,7 +4267,7 @@ function renderTaskList(rawTasks) {
 
     card.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], .task-check-btn, .task-emoji-btn, .btn-icon-action')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill')) return;
       holdMoved = false;
       startX = e.clientX;
       startY = e.clientY;
@@ -4312,15 +4312,22 @@ function renderTaskList(rawTasks) {
       });
     }
 
-    // Tap status pill to set task as active timer task
+    // Tap status pill to toggle done or set as active timer task
     const statusWrap = card.querySelector('.task-card-status-wrap');
     if (statusWrap) {
       statusWrap.style.cursor = 'pointer';
-      statusWrap.title = isCurrentActive ? 'Active task on timer' : 'Tap to set as active timer task';
-      statusWrap.addEventListener('click', (e) => {
+      const onStatusPillTap = (e) => {
         if (e.target.closest('[data-action="swap-overlap-priority"]')) return;
         e.stopPropagation();
-        if (runtime) {
+        e.preventDefault();
+        if (task.isCompleted) {
+          // Untick completed task back to to-do and activate on timer!
+          toggleTaskDoneStatus(task.id);
+        } else if (isCurrentActive) {
+          // Already active task -> tap pill marks it as done!
+          toggleTaskDoneStatus(task.id);
+        } else if (runtime) {
+          // Todo / Break task -> tap pill activates it on timer!
           runtime.setActiveTaskById(task.id);
           updateActiveTaskDisplay();
           const actTask = runtime.getActiveTask();
@@ -4328,12 +4335,13 @@ function renderTaskList(rawTasks) {
           renderClockTime(durSec);
           updateWheelProgress(0);
           updateFinishEarlyButtonText(durSec);
-          renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+          renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
           renderCalendarModal();
           showToastNotification('✓ "' + task.title + '" is now active on the timer');
           mobileServices.hapticTap();
         }
-      });
+      };
+      statusWrap.addEventListener('click', onStatusPillTap);
     }
 
     // Edit task click
@@ -4548,7 +4556,7 @@ function syncPastTasksCompletion() {
     const isActiveBeingTimed = Boolean(activeTask && activeTask.id === t.id && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED));
 
     if (isPast && !isActiveBeingTimed) {
-      // Past task: mark done by default unless user explicitly unmarked it
+      // Past task: mark done by default unless user explicitly unmarked it (manualCompleted === false)
       if (!t.isCompleted && t.manualCompleted !== false) {
         t.isCompleted = true;
         t.completedDate = todayStr;
@@ -4556,12 +4564,11 @@ function syncPastTasksCompletion() {
         hasUpdates = true;
       }
     } else if (!isPast) {
-      // Future task: if task is in future, unmark as done and reset manual override
-      if (t.isCompleted && t.manualCompleted !== true) {
+      // Future task: if it was automatically marked done in the past and then rescheduled/moved to future without manual completion, reset to todo
+      if (t.isCompleted && t.manualCompleted !== true && (typeof t.manualCompleted === 'undefined' || t.manualCompleted === null)) {
         t.isCompleted = false;
         t.completedDate = null;
-        t.manualCompleted = null;
-        taskStore.updateTask(t.id, { isCompleted: false, completedDate: null, manualCompleted: null });
+        taskStore.updateTask(t.id, { isCompleted: false, completedDate: null });
         hasUpdates = true;
       }
     }
@@ -4571,7 +4578,12 @@ function syncPastTasksCompletion() {
     if (runtime && runtime.initialTasks) {
       runtime.initialTasks = taskStore.getTasks();
     }
+    renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+    renderCalendarModal();
     updateTotalMinutesDisplay();
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
   }
 }
 window.syncPastTasksCompletion = syncPastTasksCompletion;
@@ -5738,10 +5750,8 @@ function renderCalendarModal() {
     let statusClass = 'pending';
     if (isCurrentActive) {
       statusClass = 'current';
-    } else if (task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < activeIdx)) {
+    } else if (Boolean(task.isCompleted)) {
       statusClass = 'completed';
-    } else if (isCurrentActive) {
-      statusClass = 'current';
     }
 
     const lockTitle = isLocked
@@ -9178,9 +9188,19 @@ function setupNavigationAndModals() {
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      if (runtime && runtime.status === TimerStatus.RUNNING) {
+      if (runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED)) {
         analytics.recordSessionEvent('visibility_loss');
         analytics.trackInteraction('app_lifecycle', 'visibility_hidden_while_running');
+        const activeTask = runtime.getActiveTask();
+        if (activeTask) {
+          const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
+          mobileServices.updateLiveNotification({
+            activeTask: activeTask,
+            remainingSeconds: runtime.getRemainingSeconds(),
+            nextTask: nextTask,
+            isPaused: runtime.status === TimerStatus.PAUSED
+          });
+        }
       }
     }
   });

@@ -396,6 +396,28 @@ const mobileServicesContent = fs.readFileSync(path.resolve(process.cwd(), 'mobil
 assert(mobileServicesContent.includes('hapticTaskComplete()'), 'mobileServices.js defines hapticTaskComplete()');
 assert(mobileServicesContent.includes('forceReleaseWakeLock()'), 'mobileServices.js defines forceReleaseWakeLock()');
 
+console.log('\n--- 16. Testing Status Pill Tap, Completion Sync & Persistent Notification ---');
+// 1. Status pill tap handler and touch exemption
+assert(curApp.includes('data-action="tap-status-pill"'), 'app.js renders data-action="tap-status-pill" on status pills');
+assert(curApp.includes('[data-action="tap-status-pill"]') && curApp.includes('.task-card-status-wrap'), 'card touch and mouse events exempt status pill actions');
+assert(!curApp.includes('task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < runtime.activeTaskIndex)'), 'renderTaskList bases completion strictly on task.isCompleted');
+assert(!curApp.includes('task.isCompleted || ((isRunning || isPaused) && runtime && runtime.activeTaskIndex > 0 && idx < activeIdx)'), 'renderCalendarModal bases completion strictly on task.isCompleted');
+
+// 2. Calendar view completion sync
+const calViewContent = fs.readFileSync(path.resolve(process.cwd(), 'calendarView.js'), 'utf8');
+assert(!calViewContent.includes('evIdx < rt.activeTaskIndex'), 'calendarView.js does not override isDone using activeTaskIndex');
+assert(calViewContent.includes('let isDone = Boolean(ev.isCompleted);'), 'calendarView.js strictly bases event completion on ev.isCompleted');
+
+// 3. Timer runtime property preservation
+const latestRuntimeContent = fs.readFileSync(path.resolve(process.cwd(), 'timerRuntime.js'), 'utf8');
+assert(latestRuntimeContent.includes('isCompleted: Boolean(initTask.isCompleted)'), 'timerRuntime.js preserves isCompleted in recalculate()');
+assert(latestRuntimeContent.includes('manualCompleted: (typeof initTask.manualCompleted === \'boolean\') ? initTask.manualCompleted : null'), 'timerRuntime.js preserves manualCompleted in recalculate()');
+
+// 4. Mobile services persistent notification bar
+assert(mobileServicesContent.includes('ongoing: !isPaused'), 'mobileServices.js sets ongoing flag for notification bar persistence');
+assert(mobileServicesContent.includes('timespanText'), 'mobileServices.js includes timespan in live notification');
+assert(mobileServicesContent.includes('durMin'), 'mobileServices.js includes duration in live notification');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);
