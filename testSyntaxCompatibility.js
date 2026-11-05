@@ -39,7 +39,9 @@ const targetFiles = [
   'microsoftCalendarAdapter.js',
   'calendarSyncService.js',
   'eventClassifier.js',
-  'cryptoPolyfill.js'
+  'cryptoPolyfill.js',
+  'telemetrySyncService.js',
+  'server/worker.js'
 ];
 
 console.log('--- 1. Testing Mobile WebView Syntax Compatibility ---');
@@ -456,6 +458,21 @@ assert(latestRuntimeContent.includes('new Worker(workerUrl)'), 'timerRuntime.js 
 const latestAppContent = fs.readFileSync(path.resolve(process.cwd(), 'app.js'), 'utf8');
 assert(!latestAppContent.includes("if (e.target.closest('input[type=\"range\"], .category-chips-list, .category-chip'))"), 'app.js does not block modal pull-to-dismiss touch start on categories');
 assert(latestAppContent.includes("const chipsList = e.target.closest('.category-chips-list');") && latestAppContent.includes("if (isAtTop || isHeaderOrFooterTouch || Boolean(chipsList))"), 'app.js allows modal pull-to-dismiss when touching categories');
+
+// 8. Phase 4: Adaptable Telemetry & Insights Dashboard Verification
+console.log('\n--- 17. Testing Phase 4 Telemetry & Insights Integration ---');
+const telemetryServiceContent = fs.readFileSync(path.resolve(process.cwd(), 'telemetrySyncService.js'), 'utf8');
+const workerContent = fs.readFileSync(path.resolve(process.cwd(), 'server/worker.js'), 'utf8');
+const latestStoreContent = fs.readFileSync(path.resolve(process.cwd(), 'taskStore.js'), 'utf8');
+const indexHtmlContent = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+
+assert(telemetryServiceContent.includes('class TelemetrySyncService'), 'telemetrySyncService.js defines TelemetrySyncService');
+assert(telemetryServiceContent.includes('sendHeartbeat') && telemetryServiceContent.includes('sendSessionSummary'), 'telemetrySyncService.js implements heartbeat and session summary');
+assert(workerContent.includes('/api/telemetry') && workerContent.includes('/api/stats') && workerContent.includes('/admin'), 'server/worker.js routes telemetry, stats, and admin dashboard');
+assert(latestStoreContent.includes('getTelemetryEnabled') && latestStoreContent.includes('getAnonymousClientId'), 'taskStore.js manages telemetry preference and anonymous UUID');
+assert(indexHtmlContent.includes('id="navItemInsights"') && indexHtmlContent.includes('id="insightsModalBackdrop"'), 'index.html includes Insights nav item and modal backdrop');
+assert(latestAppContent.includes('openInsights') && latestAppContent.includes('renderInsightsModal'), 'app.js implements openInsights and renderInsightsModal');
+
 
 
 console.log(`\n========================================`);

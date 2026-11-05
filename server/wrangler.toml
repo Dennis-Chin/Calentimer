@@ -1,0 +1,14 @@
+name = "calentimer-telemetry"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "calentimer-telemetry-db"
+database_id = "placeholder-replace-with-your-d1-id"
+
+# Environment Variables (Admin Secret for Dashboard)
+# NOTE: In production, store secrets safely via: `npx wrangler secret put ADMIN_SECRET`
+[vars]
+ADMIN_SECRET = "placeholder-replace-with-your-secret"

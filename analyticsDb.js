@@ -6,6 +6,8 @@
  * Zero external libraries, zero cloud dependencies, 100% private and offline.
  */
 
+import { telemetrySync } from './telemetrySyncService.js';
+
 const DB_NAME = 'CalentimerAnalyticsDB';
 const DB_VERSION = 1;
 
@@ -290,6 +292,12 @@ class AnalyticsDB {
       timestamp: now,
       schedulePosition: typeof (scheduleContext && scheduleContext.index) === 'number' ? scheduleContext.index : 0
     };
+
+    try {
+      if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.startActiveHeartbeats === 'function') {
+        telemetrySync.startActiveHeartbeats(task.category || 'General');
+      }
+    } catch (_) {}
   }
 
   /**
@@ -301,12 +309,22 @@ class AnalyticsDB {
     if (isPaused) {
       this.activeTaskMetric.pauseCount = (this.activeTaskMetric.pauseCount || 0) + 1;
       this.activeTaskMetric.lastPauseTimestamp = Date.now();
+      try {
+        if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.stopActiveHeartbeats === 'function') {
+          telemetrySync.stopActiveHeartbeats();
+        }
+      } catch (_) {}
     } else {
       if (this.activeTaskMetric.lastPauseTimestamp) {
         const pauseDurationSec = Math.round((Date.now() - this.activeTaskMetric.lastPauseTimestamp) / 1000);
         this.activeTaskMetric.totalPausedSec = (this.activeTaskMetric.totalPausedSec || 0) + Math.max(0, pauseDurationSec);
         this.activeTaskMetric.lastPauseTimestamp = null;
       }
+      try {
+        if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.startActiveHeartbeats === 'function') {
+          telemetrySync.startActiveHeartbeats(this.activeTaskMetric.category || 'General');
+        }
+      } catch (_) {}
     }
   }
 
@@ -357,6 +375,16 @@ class AnalyticsDB {
 
     // Update daily session summary with this completed task
     this._accumulateToSessionSummary(this.activeTaskMetric);
+
+    // Egress anonymous session summary to telemetry endpoint
+    try {
+      if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.sendSessionSummary === 'function') {
+        telemetrySync.sendSessionSummary(this.activeTaskMetric);
+      }
+      if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.stopActiveHeartbeats === 'function') {
+        telemetrySync.stopActiveHeartbeats();
+      }
+    } catch (_) {}
 
     this.activeTaskMetric = null;
     this.scheduleFlush(1000);

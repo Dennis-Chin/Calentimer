@@ -17,6 +17,7 @@ const suites = [
   'testCalendarScheduleSync.js',
   'testAppDrawerGestures.js',
   'testCalendarSyncService.js',
+  'testTelemetrySyncService.js',
   'testSyntaxCompatibility.js'
 ];
 

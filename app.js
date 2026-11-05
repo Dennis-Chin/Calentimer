@@ -5502,9 +5502,14 @@ function openSettings() {
   closeDrawer();
   closeCalendar();
   closeTodo();
-  calendarView.close();
+  closeInsights();
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.close === 'function') {
+    calendarView.close();
+  }
   const navItemFullCalendar = document.getElementById('navItemFullCalendar');
   if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) navItemInsights.classList.remove('active');
   if (toggleConfirmAdjust) {
     toggleConfirmAdjust.checked = taskStore.getConfirmAdjustments();
   }
@@ -5560,9 +5565,14 @@ function openCalendar() {
   closeDrawer();
   closeSettings();
   closeTodo();
-  calendarView.close();
+  closeInsights();
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.close === 'function') {
+    calendarView.close();
+  }
   const navItemFullCalendar = document.getElementById('navItemFullCalendar');
   if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) navItemInsights.classList.remove('active');
   if (!runtime || runtime.status === TimerStatus.IDLE) {
     taskStore.syncScheduleAndCalendar();
     runtime.initialTasks = taskStore.getTasks();
@@ -5608,9 +5618,14 @@ function openTodo() {
   closeDrawer();
   closeSettings();
   closeCalendar();
-  calendarView.close();
+  closeInsights();
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.close === 'function') {
+    calendarView.close();
+  }
   const navItemFullCalendar = document.getElementById('navItemFullCalendar');
   if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) navItemInsights.classList.remove('active');
   renderTodoList();
   const todoModal = document.getElementById('todoModalBackdrop');
   if (todoModal) {
@@ -5630,6 +5645,295 @@ function closeTodo() {
   if (navItemTimer) navItemTimer.classList.add('active');
   if (navItemTodo) navItemTodo.classList.remove('active');
 }
+
+// ==========================================
+// Insights & Analytics Modal (Phase 4)
+// ==========================================
+let currentInsightsRangeDays = 7;
+
+function openInsights() {
+  ensureHistoryBuffer();
+  closeDrawer();
+  closeSettings();
+  closeCalendar();
+  closeTodo();
+  if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.close === 'function') {
+    calendarView.close();
+  }
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
+
+  const insightsModal = document.getElementById('insightsModalBackdrop');
+  if (insightsModal) {
+    insightsModal.classList.remove('hidden');
+  }
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) navItemInsights.classList.add('active');
+  if (navItemTimer) navItemTimer.classList.remove('active');
+  if (navItemCalendar) navItemCalendar.classList.remove('active');
+  if (navItemTodo) navItemTodo.classList.remove('active');
+
+  renderInsightsModal(currentInsightsRangeDays);
+  mobileServices.hapticTap();
+}
+
+function closeInsights() {
+  const insightsModal = document.getElementById('insightsModalBackdrop');
+  if (insightsModal) {
+    insightsModal.classList.add('hidden');
+  }
+  if (navItemTimer) navItemTimer.classList.add('active');
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) navItemInsights.classList.remove('active');
+}
+
+async function renderInsightsModal(days) {
+  const range = typeof days === 'number' ? days : (currentInsightsRangeDays || 7);
+  currentInsightsRangeDays = range;
+
+  const insightsMeta = document.getElementById('insightsChartMeta');
+  if (insightsMeta) {
+    insightsMeta.textContent = range === 7 ? 'Past 7 days' : (range === 30 ? 'Past 30 days' : 'All recorded time');
+  }
+
+  let insights = null;
+  try {
+    if (typeof analytics !== 'undefined' && analytics && typeof analytics.getProductivityInsights === 'function') {
+      insights = await analytics.getProductivityInsights(range);
+    }
+  } catch (err) {
+    console.warn('Failed to load productivity insights:', err);
+  }
+
+  if (!insights) {
+    insights = {
+      totalFocusHours: 0,
+      completedCount: 0,
+      earlyCount: 0,
+      overrunCount: 0,
+      netBankMin: 0,
+      totalBankDepositedMin: 0,
+      totalBankConsumedMin: 0,
+      categoryInsights: []
+    };
+  }
+
+  // 1. KPI Cards
+  const kpiFocusHours = document.getElementById('kpiFocusHours');
+  const kpiFocusAvg = document.getElementById('kpiFocusAvg');
+  if (kpiFocusHours) kpiFocusHours.textContent = (insights.totalFocusHours || 0) + 'h';
+  if (kpiFocusAvg) {
+    const avgPerDay = ((insights.totalFocusHours || 0) / Math.max(1, range)).toFixed(1);
+    kpiFocusAvg.textContent = avgPerDay + 'h / day avg';
+  }
+
+  const kpiTasksCompleted = document.getElementById('kpiTasksCompleted');
+  const kpiTasksSub = document.getElementById('kpiTasksSub');
+  if (kpiTasksCompleted) kpiTasksCompleted.textContent = String(insights.completedCount || 0);
+  if (kpiTasksSub) {
+    kpiTasksSub.textContent = (insights.earlyCount > 0) ? (insights.earlyCount + ' finished early') : 'Tasks completed';
+  }
+
+  // Conditional Hard Stop Card (if feature disabled or removed, hide gracefully)
+  const isHardStopActive = (typeof taskStore !== 'undefined' && typeof taskStore.getHardStopEnabled === 'function')
+    ? taskStore.getHardStopEnabled()
+    : true;
+  const kpiHardStopCard = document.getElementById('kpiHardStopCard');
+  if (kpiHardStopCard) {
+    if (isHardStopActive) {
+      kpiHardStopCard.style.display = 'flex';
+      const kpiHardStopRate = document.getElementById('kpiHardStopRate');
+      const totalAttempted = (insights.completedCount || 0) + (insights.overrunCount || 0);
+      const ratePct = totalAttempted > 0 ? Math.round(((insights.completedCount || 0) / totalAttempted) * 100) : 100;
+      if (kpiHardStopRate) kpiHardStopRate.textContent = ratePct + '%';
+    } else {
+      kpiHardStopCard.style.display = 'none';
+    }
+  }
+
+  // Conditional Time Bank Card
+  const kpiTimeBankCard = document.getElementById('kpiTimeBankCard');
+  if (kpiTimeBankCard) {
+    const net = insights.netBankMin || 0;
+    const kpiTimeBankNet = document.getElementById('kpiTimeBankNet');
+    const kpiTimeBankSub = document.getElementById('kpiTimeBankSub');
+    if (kpiTimeBankNet) kpiTimeBankNet.textContent = (net >= 0 ? '+' : '') + net + 'm';
+    if (kpiTimeBankSub) {
+      kpiTimeBankSub.textContent = (insights.totalBankDepositedMin || 0) + 'm saved • ' + (insights.totalBankConsumedMin || 0) + 'm used';
+    }
+  }
+
+  // 2. Daily Focus Activity Bar Chart
+  await renderInsightsFocusChart(range);
+
+  // 3. Category Distribution Donut Ring
+  renderInsightsCategoryDonut(insights.categoryInsights);
+
+  // 4. Estimation Bias Coach
+  renderInsightsEstimationCoach(insights.categoryInsights);
+}
+
+async function renderInsightsFocusChart(rangeDays) {
+  const container = document.getElementById('insightsChartContainer');
+  if (!container) return;
+
+  const numDays = Math.min(14, rangeDays);
+  const now = new Date();
+  const dayBuckets = [];
+
+  for (let i = numDays - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const key = y + '-' + m + '-' + day;
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+    dayBuckets.push({ dateKey: key, label: weekday, minutes: 0 });
+  }
+
+  const startKey = dayBuckets[0].dateKey;
+  const endKey = dayBuckets[dayBuckets.length - 1].dateKey;
+
+  try {
+    if (typeof analytics !== 'undefined' && analytics && typeof analytics.getTaskMetrics === 'function') {
+      const tasks = await analytics.getTaskMetrics(startKey, endKey);
+      if (tasks && tasks.length) {
+        for (let j = 0; j < tasks.length; j++) {
+          const t = tasks[j];
+          const match = dayBuckets.find(b => b.dateKey === t.date);
+          if (match) {
+            match.minutes += Math.round((t.actualDurationSec || 0) / 60);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  let maxMin = 60;
+  for (let k = 0; k < dayBuckets.length; k++) {
+    if (dayBuckets[k].minutes > maxMin) maxMin = dayBuckets[k].minutes;
+  }
+  maxMin = Math.ceil(maxMin / 30) * 30;
+
+  const svgW = 480;
+  const svgH = 140;
+  const barW = Math.max(12, Math.floor(svgW / (numDays * 2.2)));
+  const spacing = svgW / numDays;
+
+  let svgContent = '<svg class="insights-chart-svg" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+  svgContent += '<line x1="0" y1="20" x2="' + svgW + '" y2="20" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4"/>';
+  svgContent += '<line x1="0" y1="65" x2="' + svgW + '" y2="65" stroke="rgba(255,255,255,0.06)" stroke-dasharray="4"/>';
+  svgContent += '<line x1="0" y1="110" x2="' + svgW + '" y2="110" stroke="rgba(255,255,255,0.12)"/>';
+
+  for (let i = 0; i < dayBuckets.length; i++) {
+    const b = dayBuckets[i];
+    const x = i * spacing + (spacing - barW) / 2;
+    const barHeight = Math.max(4, Math.round((b.minutes / maxMin) * 90));
+    const y = 110 - barHeight;
+    const isToday = (i === dayBuckets.length - 1);
+    const barColor = isToday ? 'var(--accent-cyan, #00d2ff)' : 'rgba(0, 210, 255, 0.45)';
+
+    svgContent += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + barHeight + '" rx="3" fill="' + barColor + '"/>';
+    svgContent += '<text x="' + (x + barW / 2) + '" y="128" fill="rgba(255,255,255,0.4)" font-size="10" font-family="monospace" text-anchor="middle">' + b.label + '</text>';
+    if (b.minutes > 0) {
+      svgContent += '<text x="' + (x + barW / 2) + '" y="' + (y - 5) + '" fill="rgba(255,255,255,0.8)" font-size="9" font-family="monospace" text-anchor="middle">' + b.minutes + 'm</text>';
+    }
+  }
+
+  svgContent += '</svg>';
+  container.innerHTML = svgContent;
+}
+
+function renderInsightsCategoryDonut(catInsights) {
+  const donutContainer = document.getElementById('insightsDonutContainer');
+  const legendContainer = document.getElementById('insightsCategoryLegend');
+  if (!donutContainer || !legendContainer) return;
+
+  donutContainer.innerHTML = '';
+  legendContainer.innerHTML = '';
+
+  const cats = (catInsights && catInsights.length) ? catInsights : [];
+  let totalMin = 0;
+  for (let i = 0; i < cats.length; i++) {
+    totalMin += (cats[i].totalFocusMinutes || 0);
+  }
+
+  if (totalMin === 0 || cats.length === 0) {
+    donutContainer.innerHTML = '<svg width="100" height="100" viewBox="0 0 100 100">' +
+      '<circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12"/>' +
+    '</svg>';
+    legendContainer.innerHTML = '<span style="color:var(--text-muted);font-size:0.75rem;">No category data yet.</span>';
+    return;
+  }
+
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius;
+  let accumulatedOffset = 0;
+  let svgPaths = '<svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg);">';
+
+  cats.forEach(function(cat) {
+    const min = cat.totalFocusMinutes || 0;
+    const fraction = min / totalMin;
+    const strokeDash = fraction * circumference;
+    const strokeOffset = circumference - accumulatedOffset;
+    accumulatedOffset += strokeDash;
+
+    const hex = getCategoryHexColor(cat.category);
+    svgPaths += '<circle cx="50" cy="50" r="' + radius + '" fill="none" stroke="' + hex + '" stroke-width="12" ' +
+      'stroke-dasharray="' + strokeDash + ' ' + (circumference - strokeDash) + '" ' +
+      'stroke-dashoffset="' + strokeOffset + '"/>';
+
+    const pct = Math.round(fraction * 100);
+    const legendRow = document.createElement('div');
+    legendRow.className = 'legend-row';
+    legendRow.innerHTML = '<div class="legend-left">' +
+      '<span class="legend-dot" style="background:' + hex + ';"></span>' +
+      '<span class="legend-label">' + escapeHtml(cat.category) + '</span>' +
+    '</div>' +
+    '<span class="legend-pct">' + pct + '%</span>';
+    legendContainer.appendChild(legendRow);
+  });
+
+  svgPaths += '</svg>';
+  donutContainer.innerHTML = svgPaths;
+}
+
+function renderInsightsEstimationCoach(catInsights) {
+  const container = document.getElementById('insightsCoachList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const cats = (catInsights && catInsights.length) ? catInsights : [];
+  if (cats.length === 0) {
+    container.innerHTML = '<div class="coach-empty-state">Complete your first focus sessions to reveal your estimation coach.</div>';
+    return;
+  }
+
+  cats.forEach(function(c) {
+    const biasMin = c.avgEstimationBiasMin || 0;
+    const catName = escapeHtml(c.category || 'General');
+
+    let badgeClass = 'coach-badge-accurate';
+    let badgeText = 'Accurate';
+    if (biasMin > 0) {
+      badgeClass = 'coach-badge-slower';
+      badgeText = '+' + biasMin + 'm slower';
+    } else if (biasMin < 0) {
+      badgeClass = 'coach-badge-faster';
+      badgeText = Math.abs(biasMin) + 'm faster';
+    }
+
+    const item = document.createElement('div');
+    item.className = 'coach-item';
+    item.innerHTML = '<span class="coach-cat-name">' + catName + '</span>' +
+      '<span class="coach-badge ' + badgeClass + '">' + badgeText + '</span>';
+    container.appendChild(item);
+  });
+}
+
+window.openInsights = openInsights;
+window.closeInsights = closeInsights;
+window.renderInsightsModal = renderInsightsModal;
 
 function getCategoryColor(category) {
   const hex = getCategoryHexColor(category);
@@ -7748,12 +8052,15 @@ function setupNavigationAndModals() {
       closeSettings();
       closeCalendar();
       closeTodo();
+      closeInsights();
       calendarView.close();
       const navItemFullCalendar = document.getElementById('navItemFullCalendar');
       if (navItemFullCalendar) navItemFullCalendar.classList.remove('active');
       navItemTimer.classList.add('active');
       if (navItemCalendar) navItemCalendar.classList.remove('active');
       if (navItemTodo) navItemTodo.classList.remove('active');
+      const navItemInsights = document.getElementById('navItemInsights');
+      if (navItemInsights) navItemInsights.classList.remove('active');
       if (runtime && runtime.status === TimerStatus.IDLE) {
         runtime.initialTasks = taskStore.getTasks();
         runtime.recalculate();
@@ -7796,6 +8103,14 @@ function setupNavigationAndModals() {
     });
   }
 
+  const navItemInsights = document.getElementById('navItemInsights');
+  if (navItemInsights) {
+    navItemInsights.addEventListener('click', () => {
+      analytics.trackInteraction('tab_switch', 'insights');
+      openInsights();
+    });
+  }
+
   if (navItemSettings) {
     navItemSettings.addEventListener('click', () => {
       analytics.trackInteraction('tab_switch', 'settings');
@@ -7803,11 +8118,43 @@ function setupNavigationAndModals() {
     });
   }
 
+  // Insights modal
+  const btnCloseInsights = document.getElementById('btnCloseInsights');
+  if (btnCloseInsights) btnCloseInsights.addEventListener('click', closeInsights);
+  const insightsModalBackdrop = document.getElementById('insightsModalBackdrop');
+  if (insightsModalBackdrop) {
+    insightsModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === insightsModalBackdrop) closeInsights();
+    });
+  }
+
+  // Insights range segment buttons
+  const insightsSegmentBtns = document.querySelectorAll('.insights-segment-btn');
+  insightsSegmentBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      insightsSegmentBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const r = parseInt(btn.getAttribute('data-range'), 10) || 7;
+      renderInsightsModal(r);
+      mobileServices.hapticTap();
+    });
+  });
+
   // Settings modal
   if (btnCloseSettings) btnCloseSettings.addEventListener('click', closeSettings);
   if (settingsModalBackdrop) {
     settingsModalBackdrop.addEventListener('click', (e) => {
       if (e.target === settingsModalBackdrop) closeSettings();
+    });
+  }
+  const toggleTelemetryEnabled = document.getElementById('toggleTelemetryEnabled');
+  if (toggleTelemetryEnabled) {
+    toggleTelemetryEnabled.checked = taskStore.getTelemetryEnabled();
+    toggleTelemetryEnabled.addEventListener('change', () => {
+      const enabled = toggleTelemetryEnabled.checked;
+      taskStore.setTelemetryEnabled(enabled);
+      mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Anonymous telemetry enabled' : 'Anonymous telemetry disabled');
     });
   }
   if (toggleConfirmAdjust) {

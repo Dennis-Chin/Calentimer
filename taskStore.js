@@ -38,7 +38,9 @@ const STORAGE_KEYS = {
   MS_CALENTIMER_CAL_ID: 'calentimer_ms_calentimer_id_v1',
   CALENTIMER_CAL_COLORS: 'calentimer_cal_colors_v1',
   CATEGORY_CUSTOM_COLORS: 'calentimer_category_custom_colors_v1',
-  TIMER_SESSION: 'calentimer_timer_session_v1'
+  TIMER_SESSION: 'calentimer_timer_session_v1',
+  TELEMETRY_ENABLED: 'calentimer_telemetry_enabled_v1',
+  ANON_CLIENT_ID: 'calentimer_anon_client_id_v1'
 };
 
 const memoryStorage = {};
@@ -2221,6 +2223,38 @@ export class TaskStore {
       }
     } catch (_) {}
     delete memoryStorage[STORAGE_KEYS.TIMER_SESSION];
+  }
+
+  /**
+   * Checks if anonymous telemetry is enabled (default: true).
+   * @returns {boolean}
+   */
+  getTelemetryEnabled() {
+    const val = safeGetItem(STORAGE_KEYS.TELEMETRY_ENABLED);
+    return val !== 'false';
+  }
+
+  /**
+   * Enables or disables anonymous telemetry.
+   * @param {boolean} enabled
+   */
+  setTelemetryEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.TELEMETRY_ENABLED, enabled ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Retrieves or creates a persistent anonymous client UUID.
+   * Never contains any personally identifiable information.
+   * @returns {string}
+   */
+  getAnonymousClientId() {
+    let id = safeGetItem(STORAGE_KEYS.ANON_CLIENT_ID);
+    if (!id) {
+      id = 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+      safeSetItem(STORAGE_KEYS.ANON_CLIENT_ID, id);
+    }
+    return id;
   }
 }
 

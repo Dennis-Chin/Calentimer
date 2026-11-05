@@ -7080,5 +7080,311 @@ body {
   opacity: 0.82;
 }
 
+/* ==========================================================================
+   Insights & Analytics Modal (Phase 4)
+   ========================================================================== */
+.insights-modal {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translate3d(-50%, 0, 0);
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  background: var(--bg-surface-elevated, #131722);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-bottom: none;
+  border-radius: var(--radius-xl, 24px) var(--radius-xl, 24px) 0 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow: hidden;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+  animation: modalSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.insights-modal-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.insights-range-bar {
+  padding: 12px 20px 8px;
+  display: flex;
+  justify-content: center;
+  background: var(--bg-surface-elevated, #131722);
+  flex-shrink: 0;
+}
+
+.insights-segmented-control {
+  display: flex;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  padding: 3px;
+  width: 100%;
+  max-width: 360px;
+  gap: 4px;
+}
+
+.insights-segment-btn {
+  flex: 1;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.insights-segment-btn.active {
+  background: var(--accent-cyan, #00d2ff);
+  color: #0c0e14;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 210, 255, 0.3);
+}
+
+.insights-modal-body {
+  padding: 14px 20px 36px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* KPI Summary Cards Grid */
+.insights-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 540px) {
+  .insights-kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.insights-kpi-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.insights-kpi-title {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.insights-kpi-value {
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-main, #f8fafc);
+  letter-spacing: -0.5px;
+}
+
+.insights-kpi-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+/* Cards with conditional styling */
+.insights-card-hardstop .insights-kpi-value {
+  color: #10b981;
+}
+
+.insights-card-timebank .insights-kpi-value {
+  color: #f59e0b;
+}
+
+/* Section Card */
+.insights-section-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.insights-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.insights-card-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-main, #f8fafc);
+  letter-spacing: -0.2px;
+}
+
+.insights-card-meta {
+  font-size: 0.74rem;
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
+}
+
+/* Focus Trend Chart */
+.insights-chart-container {
+  width: 100%;
+  height: 160px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.insights-chart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Split Grid for Category + Coach */
+.insights-split-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 580px) {
+  .insights-split-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Category Donut & Legend */
+.insights-category-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.insights-donut-container {
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.insights-category-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 130px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+}
+
+.legend-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  color: var(--text-main, #f8fafc);
+  font-weight: 500;
+}
+
+.legend-pct {
+  color: var(--text-muted, #94a3b8);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+
+/* Estimation Coach List */
+.insights-coach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coach-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  gap: 8px;
+}
+
+.coach-cat-name {
+  font-weight: 600;
+  color: var(--text-main, #f8fafc);
+}
+
+.coach-badge {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+}
+
+.coach-badge-slower {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.coach-badge-faster {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.coach-badge-accurate {
+  background: rgba(0, 210, 255, 0.15);
+  color: var(--accent-cyan, #00d2ff);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+}
+
+.coach-empty-state {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.8rem;
+}
+
+
 
 

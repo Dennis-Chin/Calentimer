@@ -471,6 +471,15 @@
         </svg>
         <span class="nav-item-label">To-Do</span>
       </button>
+
+      <button class="nav-item" id="navItemInsights" title="Insights & Analytics">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+        <span class="nav-item-label">Insights</span>
+      </button>
     </nav>
 
     <div class="nav-drawer-footer">
@@ -546,6 +555,18 @@
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="toggleKeepScreenAwake">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Anonymous Telemetry -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Anonymous Telemetry</span>
+                <span class="setting-desc">Help improve Calentimer by sharing anonymous usage stats (Zero personal data).</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleTelemetryEnabled" checked>
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2063,6 +2084,96 @@
           <!-- Populated dynamically with platform instructions -->
         </div>
         <button type="button" class="btn-install-prompt-action" id="btnTriggerBrowserInstall">Install App</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Insights & Analytics Modal (Phase 4) -->
+  <div class="modal-backdrop hidden" id="insightsModalBackdrop">
+    <div class="insights-modal" id="insightsModal">
+      <!-- Short Drag Handle Bar to indicate swipe-down to minimise -->
+      <div class="cal-drag-handle-bar" aria-hidden="true"></div>
+
+      <div class="modal-header insights-modal-header">
+        <div class="modal-title-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span class="modal-title">Insights &amp; Analytics</span>
+        </div>
+        <button class="btn-close-modal" id="btnCloseInsights" title="Close insights">✕</button>
+      </div>
+
+      <!-- Time Range Segmented Control -->
+      <div class="insights-range-bar">
+        <div class="insights-segmented-control" id="insightsSegmentedControl">
+          <button type="button" class="insights-segment-btn active" id="btnInsightsRange7d" data-range="7">7 Days</button>
+          <button type="button" class="insights-segment-btn" id="btnInsightsRange30d" data-range="30">30 Days</button>
+          <button type="button" class="insights-segment-btn" id="btnInsightsRangeAll" data-range="90">All Time</button>
+        </div>
+      </div>
+
+      <div class="modal-body insights-modal-body" id="insightsModalBody">
+        <!-- KPI Summary Cards Grid -->
+        <div class="insights-kpi-grid" id="insightsKpiGrid">
+          <div class="insights-kpi-card">
+            <span class="insights-kpi-title">Focus Time</span>
+            <span class="insights-kpi-value" id="kpiFocusHours">0h</span>
+            <span class="insights-kpi-sub" id="kpiFocusAvg">0h / day avg</span>
+          </div>
+          <div class="insights-kpi-card">
+            <span class="insights-kpi-title">Tasks Completed</span>
+            <span class="insights-kpi-value" id="kpiTasksCompleted">0</span>
+            <span class="insights-kpi-sub" id="kpiTasksSub">0 finished early</span>
+          </div>
+          <div class="insights-kpi-card insights-card-hardstop" id="kpiHardStopCard">
+            <span class="insights-kpi-title">Hard Stop Rate</span>
+            <span class="insights-kpi-value" id="kpiHardStopRate">100%</span>
+            <span class="insights-kpi-sub">finished on time</span>
+          </div>
+          <div class="insights-kpi-card insights-card-timebank" id="kpiTimeBankCard">
+            <span class="insights-kpi-title">Time Bank Net</span>
+            <span class="insights-kpi-value" id="kpiTimeBankNet">0m</span>
+            <span class="insights-kpi-sub" id="kpiTimeBankSub">minutes saved</span>
+          </div>
+        </div>
+
+        <!-- Focus Activity Chart -->
+        <div class="insights-section-card">
+          <div class="insights-card-header">
+            <span class="insights-card-title">Daily Focus Trend</span>
+            <span class="insights-card-meta" id="insightsChartMeta">Past 7 days</span>
+          </div>
+          <div class="insights-chart-container" id="insightsChartContainer">
+            <!-- Rendered dynamically as responsive SVG -->
+          </div>
+        </div>
+
+        <!-- Category Breakdown & Estimation Accuracy -->
+        <div class="insights-split-grid">
+          <!-- Category Split -->
+          <div class="insights-section-card">
+            <div class="insights-card-header">
+              <span class="insights-card-title">Category Distribution</span>
+            </div>
+            <div class="insights-category-wrap" id="insightsCategoryWrap">
+              <div class="insights-donut-container" id="insightsDonutContainer"></div>
+              <div class="insights-category-legend" id="insightsCategoryLegend"></div>
+            </div>
+          </div>
+
+          <!-- Estimation Bias Coach -->
+          <div class="insights-section-card">
+            <div class="insights-card-header">
+              <span class="insights-card-title">Estimation Coach</span>
+            </div>
+            <div class="insights-coach-list" id="insightsCoachList">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
