@@ -121,6 +121,11 @@ if (typeof global.document === 'undefined') {
   taskStore.setTelemetryEnabled(true);
   assert(taskStore.getTelemetryEnabled() === true, 'taskStore.getTelemetryEnabled restored to true');
 
+  console.log('\n--- 5b. Testing App Exit / Disconnect Signal ---');
+  dispatchedPayloads = [];
+  telemetrySync.sendDisconnect();
+  assert(dispatchedPayloads.length === 1, 'sendDisconnect dispatched exit payload');
+
   console.log('\n--- 6. Testing Worker Stats Calculation & Auth Shield ---');
   const workerModule = await import('./server/worker.js');
   assert(typeof workerModule.default.fetch === 'function', 'Worker exports fetch handler');
@@ -138,7 +143,7 @@ if (typeof global.document === 'undefined') {
       return {
         bind: function() { return this; },
         first: async function() {
-          if (sql.indexOf('active_heartbeats') !== -1 && sql.indexOf('-5 minutes') !== -1) {
+          if (sql.indexOf('active_heartbeats') !== -1 && (sql.indexOf('-90 seconds') !== -1 || sql.indexOf('-5 minutes') !== -1)) {
             return { count: 12 };
           }
           if (sql.indexOf('DISTINCT client_id') !== -1) {

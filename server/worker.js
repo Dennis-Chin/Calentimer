@@ -87,6 +87,15 @@ async function handleTelemetryIngest(request, env) {
     });
   }
 
+  // Handle immediate app exit / minimize disconnect
+  if (body.eventType === 'app_exit') {
+    await db.prepare('DELETE FROM active_heartbeats WHERE client_id = ?1').bind(clientId).run();
+    return new Response(JSON.stringify({ success: true, status: 'disconnected' }), {
+      status: 200,
+      headers: Object.assign({}, CORS_HEADERS, { 'Content-Type': 'application/json' })
+    });
+  }
+
   // 1. Upsert active heartbeat
   const upsertSql = `
     INSERT INTO active_heartbeats (client_id, last_seen_at, device_type, is_pwa, active_category, is_timer_running)
@@ -151,17 +160,17 @@ async function handleStatsQuery(request, env, url) {
     });
   }
 
-  // 1. Active Users Right Now (seen in last 5 minutes)
+  // 1. Active Users Right Now (seen in last 90 seconds)
   const activeNowRes = await db.prepare(`
     SELECT COUNT(*) as count FROM active_heartbeats
-    WHERE last_seen_at >= datetime('now', '-5 minutes');
+    WHERE last_seen_at >= datetime('now', '-90 seconds');
   `).first();
   const activeNow = (activeNowRes && activeNowRes.count) ? activeNowRes.count : 0;
 
   // 2. Active Focus Timers Right Now
   const activeTimersRes = await db.prepare(`
     SELECT COUNT(*) as count FROM active_heartbeats
-    WHERE last_seen_at >= datetime('now', '-5 minutes') AND is_timer_running = 1;
+    WHERE last_seen_at >= datetime('now', '-90 seconds') AND is_timer_running = 1;
   `).first();
   const activeTimersRunning = (activeTimersRes && activeTimersRes.count) ? activeTimersRes.count : 0;
 
@@ -465,7 +474,7 @@ function serveDashboardHtml(request, env) {
         </div>
         <div class="live-count-wrap">
           <span class="live-count-num" id="liveUsersNum">0</span>
-          <span class="live-count-label">active in last 5 minutes</span>
+          <span class="live-count-label">currently active right now</span>
         </div>
       </div>
       <div class="live-sub-stats">

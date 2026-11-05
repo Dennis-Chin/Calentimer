@@ -16,8 +16,8 @@ import { taskStore } from './taskStore.js';
 class TelemetrySyncService {
   constructor() {
     this.endpoint = 'https://admin.calentimer.com/api/telemetry';
-    this.heartbeatIntervalMs = 2 * 60 * 1000; // 2 minutes while timer running
-    this.presenceIntervalMs = 2.5 * 60 * 1000; // 2.5 minutes background presence ping
+    this.heartbeatIntervalMs = 60 * 1000; // 60 seconds while timer running
+    this.presenceIntervalMs = 60 * 1000; // 60 seconds background presence ping
     this.heartbeatTimer = null;
     this.presenceTimer = null;
     this.lastHeartbeatTs = 0;
@@ -53,19 +53,39 @@ class TelemetrySyncService {
       }, this.presenceIntervalMs);
     }
 
-    // Flush heartbeat on page visibility changes (app minimize / exit / restore)
+    // Flush disconnect on app exit / minimize, resume presence on restore
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
       document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') {
-          self.sendHeartbeat(false, null);
+          self.sendDisconnect();
         } else if (document.visibilityState === 'visible') {
           self.sendHeartbeat(Boolean(self.isTimerRunningState), self.activeCategoryState || null);
         }
       });
       window.addEventListener('pagehide', function() {
-        self.sendHeartbeat(false, null);
+        self.sendDisconnect();
+      });
+      window.addEventListener('beforeunload', function() {
+        self.sendDisconnect();
       });
     }
+  }
+
+  /**
+   * Sends an immediate disconnect event when user closes or minimizes the app.
+   */
+  sendDisconnect() {
+    if (!taskStore.getTelemetryEnabled()) return;
+
+    const payload = {
+      clientId: taskStore.getAnonymousClientId(),
+      deviceType: this.getDeviceType(),
+      isPwa: this.isPwaMode(),
+      eventType: 'app_exit',
+      timestamp: Date.now()
+    };
+
+    this._dispatchPayload(payload);
   }
 
   /**
