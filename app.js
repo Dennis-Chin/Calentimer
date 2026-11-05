@@ -16,6 +16,7 @@ import { calendarSyncService } from './calendarSyncService.js';
 import { googleCalendarAdapter } from './googleCalendarAdapter.js';
 import { microsoftCalendarAdapter } from './microsoftCalendarAdapter.js';
 import { classifyEvent, getCategoryColor as classifierGetCategoryColor, getAllClassificationEmojis, PRESET_CATEGORY_COLORS } from './eventClassifier.js';
+import { telemetrySync } from './telemetrySyncService.js';
 
 // DOM Elements
 const hardStopPill = document.getElementById('hardStopPill');
@@ -251,6 +252,10 @@ function initApp() {
     setupNavigationAndModals();
     calendarView.init();
     setupScheduleConflictModal();
+
+    if (typeof telemetrySync !== 'undefined' && telemetrySync && typeof telemetrySync.init === 'function') {
+      telemetrySync.init();
+    }
 
     if (typeof taskStore !== 'undefined' && typeof taskStore.getKeepScreenAwake === 'function' && taskStore.getKeepScreenAwake()) {
       mobileServices.enableWakeLock();

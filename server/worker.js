@@ -451,7 +451,7 @@ function serveDashboardHtml(request, env) {
       <div class="controls">
         <input type="password" id="adminKeyInput" class="key-input" placeholder="Admin Key" title="Enter Admin Key">
         <button class="btn btn-primary" id="btnRefresh">Refresh</button>
-        <span class="refresh-status" id="refreshStatus">30s auto</span>
+        <span class="refresh-status" id="refreshStatus">Live (5s)</span>
       </div>
     </div>
 
@@ -562,9 +562,15 @@ function serveDashboardHtml(request, env) {
 
   <script>
     (function() {
-      var savedKey = localStorage.getItem('calentimer_admin_key') || '';
+      var urlParams = (typeof window !== 'undefined' && window.location && window.location.search) ? new URLSearchParams(window.location.search) : null;
+      var queryKey = urlParams ? (urlParams.get('key') || '') : '';
+      var storedKey = localStorage.getItem('calentimer_admin_key') || '';
+      var savedKey = queryKey || storedKey;
       var keyInput = document.getElementById('adminKeyInput');
-      if (savedKey) keyInput.value = savedKey;
+      if (savedKey) {
+        keyInput.value = savedKey;
+        localStorage.setItem('calentimer_admin_key', savedKey);
+      }
 
       function getKey() {
         var k = keyInput.value.trim();
@@ -671,8 +677,8 @@ function serveDashboardHtml(request, env) {
       // Initial fetch if key exists
       if (savedKey) fetchStats();
 
-      // 30s auto polling
-      setInterval(fetchStats, 30000);
+      // 5s fast live polling
+      setInterval(fetchStats, 5000);
     })();
   </script>
 </body>

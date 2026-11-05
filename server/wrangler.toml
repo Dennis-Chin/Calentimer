@@ -6,7 +6,7 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "calentimer-telemetry-db"
-database_id = "placeholder-replace-with-your-d1-id"
+database_id = "be38f1a9-1bb5-433a-b316-a66a5a6e186f"
 
 # Environment Variables (Admin Secret for Dashboard)
 # NOTE: In production, store secrets safely via: `npx wrangler secret put ADMIN_SECRET`

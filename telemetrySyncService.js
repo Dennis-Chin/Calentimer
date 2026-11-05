@@ -15,15 +15,20 @@ import { taskStore } from './taskStore.js';
 
 class TelemetrySyncService {
   constructor() {
-    this.endpoint = 'https://calentimer-telemetry.workers.dev/api/telemetry';
-    this.heartbeatIntervalMs = 4 * 60 * 1000; // 4 minutes
+    this.endpoint = 'https://calentimer-telemetry.ylchin.workers.dev/api/telemetry';
+    this.heartbeatIntervalMs = 2 * 60 * 1000; // 2 minutes while timer running
+    this.presenceIntervalMs = 2.5 * 60 * 1000; // 2.5 minutes background presence ping
     this.heartbeatTimer = null;
+    this.presenceTimer = null;
     this.lastHeartbeatTs = 0;
     this.isInitialized = false;
+    this.isTimerRunningState = false;
+    this.activeCategoryState = null;
   }
 
   /**
    * Initializes the telemetry service with optional custom endpoint.
+   * Dispatches an immediate presence ping upon app launch.
    * @param {object} [options]
    */
   init(options) {
@@ -33,12 +38,28 @@ class TelemetrySyncService {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    // Flush heartbeat on page visibility changes (app minimize / exit)
+    // Immediately dispatch an active presence heartbeat upon app open
+    this.sendHeartbeat(false, null);
+
+    const self = this;
+
+    // Continuous presence ping while the app tab is open in browser
+    if (typeof window !== 'undefined' && typeof window.setInterval === 'function') {
+      this.presenceTimer = setInterval(function() {
+        const isVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+        if (isVisible) {
+          self.sendHeartbeat(Boolean(self.isTimerRunningState), self.activeCategoryState || null);
+        }
+      }, this.presenceIntervalMs);
+    }
+
+    // Flush heartbeat on page visibility changes (app minimize / exit / restore)
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
-      const self = this;
       document.addEventListener('visibilitychange', function() {
         if (document.visibilityState === 'hidden') {
           self.sendHeartbeat(false, null);
+        } else if (document.visibilityState === 'visible') {
+          self.sendHeartbeat(Boolean(self.isTimerRunningState), self.activeCategoryState || null);
         }
       });
       window.addEventListener('pagehide', function() {
@@ -141,6 +162,8 @@ class TelemetrySyncService {
    */
   startActiveHeartbeats(category) {
     this.stopActiveHeartbeats();
+    this.isTimerRunningState = true;
+    this.activeCategoryState = category || null;
     this.sendHeartbeat(true, category);
 
     const self = this;
@@ -157,6 +180,8 @@ class TelemetrySyncService {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this.isTimerRunningState = false;
+    this.activeCategoryState = null;
     this.sendHeartbeat(false, null);
   }
 
