@@ -56,7 +56,8 @@ export default {
 async function handleTelemetryIngest(request, env) {
   let body = null;
   try {
-    body = await request.json();
+    const raw = await request.text();
+    body = JSON.parse(raw);
   } catch (_) {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
       status: 400,

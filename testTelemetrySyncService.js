@@ -72,6 +72,10 @@ if (typeof global.document === 'undefined') {
       return true;
     }
   };
+  global.fetch = async function(url, opts) {
+    dispatchedPayloads.push({ url: url, size: (opts && opts.body && opts.body.length) || 0 });
+    return { ok: true, status: 200, json: async () => ({ success: true }) };
+  };
   Object.defineProperty(globalThis, 'navigator', {
     value: mockNavigator,
     configurable: true,

@@ -186,41 +186,46 @@ class TelemetrySyncService {
   }
 
   /**
-   * Low-level dispatcher: uses navigator.sendBeacon with fallback to fetch.
+   * Low-level dispatcher: uses non-blocking keepalive fetch with fallback to workers.dev endpoint.
    * @private
    */
   _dispatchPayload(data) {
     const jsonStr = JSON.stringify(data);
     const targetUrl = this.endpoint;
 
-    // 1. Try navigator.sendBeacon (zero main thread impact, runs out of process)
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    // 1. Try modern keepalive fetch (immediate non-blocking background network egress)
+    if (typeof fetch === 'function') {
       try {
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-        const success = navigator.sendBeacon(targetUrl, blob);
-        if (success) return;
+        fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: jsonStr,
+          keepalive: true,
+          mode: 'cors'
+        }).catch(function() {
+          // If custom domain fails or DNS is not resolved on mobile ISP, fallback to reliable workers.dev
+          if (targetUrl.indexOf('workers.dev') === -1) {
+            try {
+              fetch('https://calentimer-telemetry.ylchin.workers.dev/api/telemetry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: jsonStr,
+                keepalive: true,
+                mode: 'cors'
+              }).catch(function() {});
+            } catch (_) {}
+          }
+        });
+        return;
       } catch (_) {}
     }
 
-    // 2. Fallback to requestIdleCallback + fetch with keepalive: true
-    const fireFetch = function() {
-      if (typeof fetch === 'function') {
-        try {
-          fetch(targetUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: jsonStr,
-            keepalive: true,
-            mode: 'cors'
-          }).catch(function() {});
-        } catch (_) {}
-      }
-    };
-
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(fireFetch, { timeout: 2000 });
-    } else {
-      setTimeout(fireFetch, 10);
+    // 2. Secondary fallback: navigator.sendBeacon
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      try {
+        const blob = new Blob([jsonStr], { type: 'text/plain' });
+        navigator.sendBeacon(targetUrl, blob);
+      } catch (_) {}
     }
   }
 }
