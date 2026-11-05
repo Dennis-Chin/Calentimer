@@ -15,7 +15,7 @@ import { taskStore } from './taskStore.js';
 
 class TelemetrySyncService {
   constructor() {
-    this.endpoint = 'https://calentimer-telemetry.ylchin.workers.dev/api/telemetry';
+    this.endpoint = 'https://admin.calentimer.com/api/telemetry';
     this.heartbeatIntervalMs = 2 * 60 * 1000; // 2 minutes while timer running
     this.presenceIntervalMs = 2.5 * 60 * 1000; // 2.5 minutes background presence ping
     this.heartbeatTimer = null;

@@ -3,7 +3,7 @@
  * Manages caching, offline reliability, and notification interactions for PWA.
  */
 
-const CACHE_NAME = 'calentimer-v3';
+const CACHE_NAME = 'calentimer-v4';
 const ASSETS = [
   '/',
   '/index.html',
@@ -15,6 +15,12 @@ const ASSETS = [
   '/audioManager.js',
   '/mobileServices.js',
   '/calendarView.js',
+  '/calendarSyncService.js',
+  '/googleCalendarAdapter.js',
+  '/microsoftCalendarAdapter.js',
+  '/eventClassifier.js',
+  '/cryptoPolyfill.js',
+  '/telemetrySyncService.js',
   '/analyticsDb.js',
   '/manifest.json',
   '/icon.png',
