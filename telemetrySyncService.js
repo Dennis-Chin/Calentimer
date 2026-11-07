@@ -118,6 +118,44 @@ class TelemetrySyncService {
   }
 
   /**
+   * Sanitizes task category for telemetry egress.
+   * Curated standard categories are preserved; all user-custom category names
+   * are strictly masked to 'Custom' to guarantee 100% user anonymity and zero PII.
+   * 
+   * @param {string} [rawCategory]
+   * @returns {string}
+   */
+  sanitizeCategory(rawCategory) {
+    if (!rawCategory || typeof rawCategory !== 'string') return 'General';
+    const clean = rawCategory.trim().toLowerCase();
+    const standardCategories = {
+      'study': 'Study',
+      'practice': 'Practice',
+      'admin': 'Admin',
+      'work': 'Work',
+      'general': 'General',
+      'break': 'Break',
+      'meeting': 'Meeting',
+      'coding': 'Coding',
+      'fitness': 'Fitness',
+      'health': 'Health',
+      'personal': 'Personal',
+      'social': 'Social',
+      'reading': 'Reading',
+      'travel': 'Travel',
+      'food': 'Food',
+      'finance': 'Finance',
+      'sleep': 'Sleep',
+      'chores': 'Chores',
+      'entertainment': 'Entertainment'
+    };
+    if (standardCategories[clean]) {
+      return standardCategories[clean];
+    }
+    return 'Custom';
+  }
+
+  /**
    * Sends an anonymous heartbeat to maintain active presence on Admin Dashboard.
    * 
    * @param {boolean} [isTimerRunning]
@@ -126,12 +164,14 @@ class TelemetrySyncService {
   sendHeartbeat(isTimerRunning, activeCategory) {
     if (!taskStore.getTelemetryEnabled()) return;
 
+    const safeCategory = activeCategory ? this.sanitizeCategory(activeCategory) : null;
+
     const payload = {
       clientId: taskStore.getAnonymousClientId(),
       deviceType: this.getDeviceType(),
       isPwa: this.isPwaMode(),
       isTimerRunning: Boolean(isTimerRunning),
-      activeCategory: activeCategory || null,
+      activeCategory: safeCategory,
       eventType: null, // heartbeat only
       timestamp: Date.now()
     };
@@ -149,12 +189,14 @@ class TelemetrySyncService {
     if (!taskStore.getTelemetryEnabled()) return;
     if (!sessionMetrics || typeof sessionMetrics !== 'object') return;
 
-    // Filter strictly to non-PII metrics
+    const safeCategory = this.sanitizeCategory(sessionMetrics.category || 'General');
+
+    // Filter strictly to non-PII metrics (custom categories masked to 'Custom')
     const dynamicPayload = {
       durationSec: typeof sessionMetrics.actualDurationSec === 'number'
         ? sessionMetrics.actualDurationSec
         : ((typeof sessionMetrics.plannedDuration === 'number') ? sessionMetrics.plannedDuration * 60 : 0),
-      category: sessionMetrics.category || 'General',
+      category: safeCategory,
       status: sessionMetrics.status || 'completed',
       hasHardStop: Boolean(taskStore.getHardStopEnabled()),
       usedTimeBank: Boolean(sessionMetrics.useTimeBank),
@@ -167,7 +209,7 @@ class TelemetrySyncService {
       deviceType: this.getDeviceType(),
       isPwa: this.isPwaMode(),
       isTimerRunning: false,
-      activeCategory: dynamicPayload.category,
+      activeCategory: safeCategory,
       eventType: 'session_completed',
       payload: dynamicPayload,
       timestamp: Date.now()
@@ -177,18 +219,19 @@ class TelemetrySyncService {
   }
 
   /**
-   * Starts periodic heartbeat timer (every 4 min) while timer is running.
+   * Starts periodic heartbeat timer (every 60s) while timer is running.
    * @param {string} [category]
    */
   startActiveHeartbeats(category) {
     this.stopActiveHeartbeats();
     this.isTimerRunningState = true;
-    this.activeCategoryState = category || null;
-    this.sendHeartbeat(true, category);
+    const safeCategory = category ? this.sanitizeCategory(category) : null;
+    this.activeCategoryState = safeCategory;
+    this.sendHeartbeat(true, safeCategory);
 
     const self = this;
     this.heartbeatTimer = setInterval(function() {
-      self.sendHeartbeat(true, category);
+      self.sendHeartbeat(true, safeCategory);
     }, this.heartbeatIntervalMs);
   }
 

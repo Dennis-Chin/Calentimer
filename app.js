@@ -8357,7 +8357,7 @@ function setupNavigationAndModals() {
       const enabled = toggleTelemetryEnabled.checked;
       taskStore.setTelemetryEnabled(enabled);
       mobileServices.hapticTap();
-      showToastNotification(enabled ? 'Anonymous telemetry enabled' : 'Anonymous telemetry disabled');
+      showToastNotification(enabled ? 'App analytics & diagnostics enabled' : 'App analytics & diagnostics disabled');
     });
   }
   if (toggleConfirmAdjust) {

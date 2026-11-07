@@ -50,6 +50,34 @@ export default {
   }
 };
 
+const STANDARD_CATEGORIES = {
+  'study': 'Study',
+  'practice': 'Practice',
+  'admin': 'Admin',
+  'work': 'Work',
+  'general': 'General',
+  'break': 'Break',
+  'meeting': 'Meeting',
+  'coding': 'Coding',
+  'fitness': 'Fitness',
+  'health': 'Health',
+  'personal': 'Personal',
+  'social': 'Social',
+  'reading': 'Reading',
+  'travel': 'Travel',
+  'food': 'Food',
+  'finance': 'Finance',
+  'sleep': 'Sleep',
+  'chores': 'Chores',
+  'entertainment': 'Entertainment'
+};
+
+function sanitizeCategory(raw) {
+  if (!raw || typeof raw !== 'string') return 'General';
+  const clean = raw.trim().toLowerCase();
+  return STANDARD_CATEGORIES[clean] || 'Custom';
+}
+
 /**
  * Ingests client heartbeat and session events into Cloudflare D1
  */
@@ -76,7 +104,7 @@ async function handleTelemetryIngest(request, env) {
   const deviceType = body.deviceType ? String(body.deviceType).substring(0, 32) : 'desktop';
   const isPwa = body.isPwa ? 1 : 0;
   const isTimerRunning = body.isTimerRunning ? 1 : 0;
-  const activeCategory = body.activeCategory ? String(body.activeCategory).substring(0, 32) : null;
+  const activeCategory = body.activeCategory ? sanitizeCategory(String(body.activeCategory).substring(0, 32)) : null;
 
   const db = env && env.DB;
   if (!db) {
@@ -112,7 +140,11 @@ async function handleTelemetryIngest(request, env) {
   // 2. If event payload is attached, insert into event stream
   if (body.eventType) {
     const eventType = String(body.eventType).substring(0, 64);
-    const payloadStr = JSON.stringify(body.payload || {});
+    const eventPayload = (body.payload && typeof body.payload === 'object') ? Object.assign({}, body.payload) : {};
+    if (eventPayload.category) {
+      eventPayload.category = sanitizeCategory(eventPayload.category);
+    }
+    const payloadStr = JSON.stringify(eventPayload);
     const insertEventSql = `
       INSERT INTO app_events (client_id, event_type, payload)
       VALUES (?1, ?2, ?3);
@@ -445,6 +477,7 @@ function serveDashboardHtml(request, env) {
     }
     .badge-study { background: rgba(0, 210, 255, 0.15); color: var(--accent-blue); }
     .badge-work { background: rgba(168, 85, 247, 0.15); color: var(--accent-purple); }
+    .badge-custom { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
     .badge-general { background: rgba(255, 255, 255, 0.1); color: #fff; }
 
     /* Auto Refresh Pill */
@@ -666,7 +699,7 @@ function serveDashboardHtml(request, env) {
           var clientShort = (ev.client_id || '').substring(0, 8);
           var dur = p.durationSec ? Math.round(p.durationSec / 60) + 'm' : '--';
           var cat = p.category || 'General';
-          var catBadgeClass = (cat.toLowerCase().indexOf('study') !== -1) ? 'badge-study' : ((cat.toLowerCase().indexOf('work') !== -1) ? 'badge-work' : 'badge-general');
+          var catBadgeClass = (cat.toLowerCase().indexOf('study') !== -1) ? 'badge-study' : ((cat.toLowerCase().indexOf('work') !== -1) ? 'badge-work' : ((cat.toLowerCase() === 'custom') ? 'badge-custom' : 'badge-general'));
           var hsStr = p.hasHardStop ? '✅ Yes' : '❌ Open';
 
           rowsHtml += '<tr>' +

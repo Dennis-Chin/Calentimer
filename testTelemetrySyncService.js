@@ -73,7 +73,7 @@ if (typeof global.document === 'undefined') {
     }
   };
   global.fetch = async function(url, opts) {
-    dispatchedPayloads.push({ url: url, size: (opts && opts.body && opts.body.length) || 0 });
+    dispatchedPayloads.push({ url: url, size: (opts && opts.body && opts.body.length) || 0, body: opts && opts.body });
     return { ok: true, status: 200, json: async () => ({ success: true }) };
   };
   Object.defineProperty(globalThis, 'navigator', {
@@ -107,6 +107,24 @@ if (typeof global.document === 'undefined') {
   });
 
   assert(dispatchedPayloads.length === 1, 'sendSessionSummary dispatched 1 beacon payload');
+
+  // Verify custom user category masking
+  assert(telemetrySync.sanitizeCategory('Study') === 'Study', 'Standard category "Study" is preserved');
+  assert(telemetrySync.sanitizeCategory('Work') === 'Work', 'Standard category "Work" is preserved');
+  assert(telemetrySync.sanitizeCategory('Private Therapy Session') === 'Custom', 'Custom user category is strictly masked to "Custom"');
+  assert(telemetrySync.sanitizeCategory('Secret Project X') === 'Custom', 'Proprietary project name is strictly masked to "Custom"');
+
+  dispatchedPayloads = [];
+  telemetrySync.sendSessionSummary({
+    id: 'custom-task-789',
+    title: 'Highly Confidential User Task',
+    category: 'My Secret Custom Category',
+    actualDurationSec: 900
+  });
+  assert(dispatchedPayloads.length === 1, 'sendSessionSummary with custom category dispatched payload');
+  const customPayloadObj = JSON.parse(dispatchedPayloads[0].body);
+  assert(customPayloadObj.payload.category === 'Custom', 'Payload category is strictly transmitted as "Custom"');
+  assert(customPayloadObj.payload.title === undefined, 'Task title is never included in payload (Zero PII)');
 
   console.log('\n--- 5. Testing Telemetry Opt-Out Compliance ---');
   taskStore.setTelemetryEnabled(false);
