@@ -214,88 +214,131 @@ export function getCategoryColor(category) {
 
 // Domain classification rules ordered by priority
 const CLASSIFICATION_RULES = [
-  // 1. Break / Rest
+  // 1. Break / Rest / Sleep
   {
     category: 'Break',
     defaultEmoji: '☕',
     keywords: [
-      { words: ['coffee', 'espresso', 'latte', 'cappuccino', 'tea'], emoji: '☕' },
-      { words: ['lunch', 'dinner', 'supper', 'buffet', 'meal'], emoji: '🍱' },
-      { words: ['breakfast', 'brunch', 'pancake', 'toast'], emoji: '🥞' },
-      { words: ['snack', 'sandwich', 'cookie'], emoji: '🥪' },
-      { words: ['nap', 'sleep', 'rest', 'relax', 'recharge', 'pause', 'downtime'], emoji: '😴' },
-      { words: ['break', 'intermission'], emoji: '☕' }
+      { words: ['coffee break', 'tea break', 'take a break', 'quick break', 'intermission', 'break'], emoji: '☕' },
+      { words: ['nap', 'power nap', 'sleep', 'rest', 'relax', 'recharge', 'pause', 'downtime', 'snooze', 'bedtime', 'wind down', 'lie down'], emoji: '😴' }
     ]
   },
 
-  // 2. Coding & Technical Development
+  // 2. Food & Dining (Comprehensive everyday meals, dishes & drinks)
+  {
+    category: 'Food',
+    defaultEmoji: '🍱',
+    keywords: [
+      // Breakfast / Brunch
+      { words: ['breakfast', 'brunch', 'pancake', 'pancakes', 'waffle', 'waffles', 'toast', 'cereal', 'oatmeal', 'oats', 'eggs', 'egg', 'bacon', 'omelette', 'croissant', 'bagel'], emoji: '🥞' },
+      // Lunch / Midday meals
+      { words: ['lunch', 'sandwich', 'sandwiches', 'bento', 'wrap', 'subway', 'panini'], emoji: '🥪' },
+      // Dinner / Evening meals
+      { words: ['dinner', 'supper', 'feast', 'banquet'], emoji: '🍽️' },
+      // Fast Food / American
+      { words: ['pizza', 'pizzeria'], emoji: '🍕' },
+      { words: ['burger', 'hamburgers', 'hamburger', 'cheeseburger', 'fast food', 'mcdonalds', 'kfc', 'burger king', 'wendys', 'fries'], emoji: '🍔' },
+      // Asian / Noodles / Sushi
+      { words: ['sushi', 'sashimi', 'nigiri', 'poke', 'poke bowl'], emoji: '🍣' },
+      { words: ['ramen', 'noodles', 'noodle', 'pho', 'pasta', 'spaghetti', 'mac and cheese', 'lasagna', 'udon'], emoji: '🍜' },
+      // Mexican
+      { words: ['taco', 'tacos', 'burrito', 'burritos', 'quesadilla', 'nachos', 'fajita', 'mexican'], emoji: '🌮' },
+      // Healthy / Salads
+      { words: ['salad', 'salads', 'greens', 'vegan', 'vegetarian'], emoji: '🥗' },
+      // Soups / Stews
+      { words: ['soup', 'stew', 'curry', 'hotpot', 'chili', 'chowder'], emoji: '🍲' },
+      // Meat / Grill / BBQ
+      { words: ['bbq', 'barbecue', 'barbeque', 'steak', 'grill', 'ribs', 'roast', 'meat'], emoji: '🥩' },
+      // Cooking / Kitchen
+      { words: ['cook', 'cooking', 'baking', 'bake', 'chef', 'recipe', 'kitchen', 'meal prep', 'fry', 'saute'], emoji: '🍳' },
+      // Desserts & Sweets
+      { words: ['cake', 'cupcake', 'dessert', 'bakery', 'pastry', 'donut', 'doughnut', 'muffin', 'brownie'], emoji: '🍰' },
+      { words: ['ice cream', 'gelato', 'sorbet', 'froyo', 'sundae'], emoji: '🍦' },
+      { words: ['snack', 'snacks', 'chips', 'crisps', 'cookie', 'cookies', 'biscuit', 'biscuits', 'popcorn', 'chocolate', 'candy'], emoji: '🍪' },
+      // Fruit
+      { words: ['fruit', 'fruits', 'apple', 'banana', 'orange', 'berries', 'strawberries', 'watermelon', 'smoothie'], emoji: '🍎' },
+      // Beverages: Coffee, Tea & Water
+      { words: ['coffee', 'espresso', 'latte', 'cappuccino', 'mocha', 'americano', 'flat white', 'iced coffee', 'cold brew', 'starbucks', 'cafe'], emoji: '☕' },
+      { words: ['tea', 'green tea', 'herbal tea', 'matcha', 'boba', 'bubble tea'], emoji: '🧋' },
+      { words: ['water', 'hydrate', 'hydration', 'drink water'], emoji: '💧' },
+      // Alcoholic Drinks & Nightlife
+      { words: ['beer', 'pub', 'bar', 'brewery', 'pint', 'ale', 'cider', 'drinks', 'cheers'], emoji: '🍻' },
+      { words: ['wine', 'champagne', 'prosecco', 'chardonnay', 'merlot'], emoji: '🍷' },
+      { words: ['cocktail', 'cocktails', 'margarita', 'liquor', 'whiskey', 'gin', 'vodka', 'rum'], emoji: '🍸' },
+      { words: ['juice', 'soda', 'coke'], emoji: '🧃' }
+    ]
+  },
+
+  // 3. Coding & Technical Development
   {
     category: 'Coding',
     defaultEmoji: '💻',
     keywords: [
       { words: ['bug', 'debug', 'debugging', 'fix issue', 'hotfix'], emoji: '🐛' },
-      { words: ['deploy', 'deployment', 'release', 'launch', 'ci/cd'], emoji: '🚀' },
-      { words: ['database', 'sql', 'postgres', 'mongo', 'query', 'schema'], emoji: '🗄️' },
-      { words: ['pr', 'pull request', 'code review', 'git', 'github', 'gitlab'], emoji: '🔀' },
-      { words: ['coding', 'programming', 'software', 'dev', 'developer', 'frontend', 'backend', 'fullstack', 'api', 'refactor', 'hackathon', 'script', 'javascript', 'typescript', 'python', 'react', 'html', 'css', 'algorithm'], emoji: '💻' }
+      { words: ['deploy', 'deployment', 'release', 'launch', 'ci/cd', 'build'], emoji: '🚀' },
+      { words: ['database', 'sql', 'postgres', 'mongo', 'query', 'schema', 'redis'], emoji: '🗄️' },
+      { words: ['pr', 'pull request', 'code review', 'git', 'github', 'gitlab', 'commit', 'branch', 'merge'], emoji: '🔀' },
+      { words: ['coding', 'code', 'programming', 'software', 'dev', 'developer', 'frontend', 'backend', 'fullstack', 'api', 'refactor', 'hackathon', 'script', 'javascript', 'typescript', 'python', 'react', 'html', 'css', 'algorithm', 'terminal', 'bash'], emoji: '💻' }
     ]
   },
 
-  // 3. Fitness, Sports & Medical Health
+  // 4. Fitness, Sports & Active Lifestyle
   {
     category: 'Fitness',
     defaultEmoji: '🏋️',
     keywords: [
-      { words: ['run', 'running', 'jog', 'jogging', 'sprint', 'marathon', '5k', '10k'], emoji: '🏃' },
-      { words: ['swim', 'swimming', 'pool'], emoji: '🏊' },
-      { words: ['cycling', 'bike', 'biking', 'bicycle', 'peloton'], emoji: '🚴' },
-      { words: ['yoga', 'pilates', 'meditation', 'mindfulness', 'stretch', 'stretching'], emoji: '🧘' },
-      { words: ['walk', 'walking', 'hike', 'hiking', 'trek', 'trekking'], emoji: '🥾' },
-      { words: ['tennis', 'badminton', 'squash', 'padel'], emoji: '🎾' },
+      { words: ['run', 'running', 'jog', 'jogging', 'sprint', 'marathon', '5k', '10k', 'treadmill'], emoji: '🏃' },
+      { words: ['swim', 'swimming', 'pool', 'laps'], emoji: '🏊' },
+      { words: ['cycling', 'bike', 'biking', 'bicycle', 'peloton', 'ride bike', 'spin class'], emoji: '🚴' },
+      { words: ['yoga', 'pilates', 'meditation', 'meditate', 'mindfulness', 'stretch', 'stretching', 'breathe', 'breathwork'], emoji: '🧘' },
+      { words: ['walk', 'walking', 'hike', 'hiking', 'trek', 'trekking', 'stroll'], emoji: '🚶' },
+      { words: ['tennis', 'badminton', 'squash', 'padel', 'pickleball', 'table tennis', 'ping pong'], emoji: '🎾' },
       { words: ['football', 'soccer'], emoji: '⚽' },
       { words: ['basketball'], emoji: '🏀' },
-      { words: ['boxing', 'sparring', 'mma', 'martial arts'], emoji: '🥊' },
-      { words: ['gym', 'workout', 'fitness', 'exercise', 'cardio', 'weights', 'lifting', 'crossfit', 'climb', 'climbing', 'training'], emoji: '🏋️' }
+      { words: ['boxing', 'sparring', 'mma', 'martial arts', 'kickboxing'], emoji: '🥊' },
+      { words: ['climb', 'climbing', 'bouldering'], emoji: '🧗' },
+      { words: ['gym', 'workout', 'fitness', 'exercise', 'cardio', 'weights', 'lifting', 'crossfit', 'training', 'pushups', 'pullups', 'squats', 'calisthenics', 'abs'], emoji: '🏋️' }
     ]
   },
 
-  // 4. Medical / Health Appointments
+  // 5. Medical, Health & Wellness
   {
     category: 'Health',
     defaultEmoji: '🩺',
     keywords: [
-      { words: ['doctor', 'gp appointment', 'physician', 'hospital', 'clinic', 'checkup', 'check-up', 'optician', 'dentist', 'dental', 'orthodontist', 'physio', 'physiotherapy', 'therapy', 'counseling', 'medication', 'vaccine', 'blood test', 'prescription'], emoji: '🩺' }
+      { words: ['doctor', 'gp appointment', 'gp', 'physician', 'hospital', 'clinic', 'checkup', 'check-up', 'optician', 'dentist', 'dental', 'orthodontist', 'physio', 'physiotherapy', 'therapy', 'counseling', 'psychologist', 'blood test', 'vaccine'], emoji: '🩺' },
+      { words: ['medication', 'medicine', 'pills', 'pill', 'prescription', 'vitamins', 'pharmacy', 'chemist'], emoji: '💊' }
     ]
   },
 
-  // 5. Academic & Study
+  // 6. Academic, Study & Education
   {
     category: 'Study',
     defaultEmoji: '📚',
     keywords: [
-      { words: ['exam', 'examination', 'test', 'quiz', 'midterm', 'finals', 'assessment'], emoji: '📝' },
+      { words: ['exam', 'examination', 'test', 'quiz', 'midterm', 'finals', 'assessment', 'mock'], emoji: '📝' },
       { words: ['lab', 'laboratory', 'experiment', 'chemistry', 'biology', 'physics'], emoji: '🔬' },
       { words: ['math', 'mathematics', 'algebra', 'calculus', 'geometry', 'statistics', 'stats'], emoji: '📐' },
       { words: ['library', 'archive'], emoji: '🏛️' },
-      { words: ['lecture', 'seminar', 'tutorial', 'class', 'course', 'curriculum', 'syllabus', 'module'], emoji: '🎓' },
+      { words: ['lecture', 'seminar', 'tutorial', 'class', 'course', 'curriculum', 'syllabus', 'module', 'university', 'college', 'school', 'degree', 'grad school'], emoji: '🎓' },
       { words: ['thesis', 'dissertation', 'essay', 'paper', 'report'], emoji: '📄' },
-      { words: ['study', 'studying', 'revision', 'revise', 'homework', 'assignment', 'coursework', 'workshop', 'university', 'college', 'school', 'history', 'geography', 'literature', 'economics', 'psychology', 'philosophy', 'sociology'], emoji: '📚' }
+      { words: ['study', 'studying', 'revision', 'revise', 'homework', 'assignment', 'coursework', 'workshop', 'history', 'geography', 'literature', 'economics', 'psychology', 'philosophy', 'sociology'], emoji: '📚' }
     ]
   },
 
-  // 6. Meetings & Collaborative Syncs
+  // 7. Meetings & Collaborative Syncs
   {
     category: 'Meeting',
     defaultEmoji: '👥',
     keywords: [
-      { words: ['1:1', 'one-on-one', '1-on-1', 'sync', 'standup', 'scrum', 'huddle', 'catchup', 'catch-up', 'check-in', 'checkin', 'meeting', 'roundtable'], emoji: '👥' },
+      { words: ['1:1', 'one-on-one', '1-on-1', 'sync', 'standup', 'scrum', 'huddle', 'catchup', 'catch-up', 'check-in', 'checkin', 'meeting', 'roundtable', 'debrief'], emoji: '👥' },
       { words: ['presentation', 'pitch', 'demo', 'slides', 'showcase'], emoji: '📊' },
       { words: ['interview', 'candidate', 'hiring'], emoji: '🤝' },
-      { words: ['zoom', 'teams', 'google meet', 'call', 'teleconference', 'webinar'], emoji: '📞' }
+      { words: ['zoom', 'teams', 'google meet', 'call', 'phone call', 'ring', 'teleconference', 'webinar', 'facetime'], emoji: '📞' }
     ]
   },
 
-  // 7. Work & Professional
+  // 8. Work & Professional Projects
   {
     category: 'Work',
     defaultEmoji: '💼',
@@ -304,31 +347,32 @@ const CLASSIFICATION_RULES = [
     ]
   },
 
-  // 8. Reading
+  // 9. Reading
   {
     category: 'Reading',
     defaultEmoji: '📖',
     keywords: [
-      { words: ['reading', 'read', 'book', 'novel', 'article', 'newsletter', 'audiobook'], emoji: '📖' }
+      { words: ['reading', 'read', 'book', 'novel', 'article', 'newsletter', 'audiobook', 'chapter'], emoji: '📖' }
     ]
   },
 
-  // 9. Social & Entertainment
+  // 10. Social, Entertainment & Celebrations
   {
     category: 'Social',
     defaultEmoji: '🎉',
     keywords: [
-      { words: ['beer', 'pub', 'bar', 'drinks', 'cocktail', 'brewery'], emoji: '🍻' },
-      { words: ['movie', 'cinema', 'film', 'theater', 'theatre', 'show'], emoji: '🎬' },
-      { words: ['game', 'gaming', 'playstation', 'xbox', 'nintendo', 'board game'], emoji: '🎮' },
-      { words: ['concert', 'festival', 'gig', 'live music', 'band'], emoji: '🎵' },
-      { words: ['birthday', 'bday', 'anniversary', 'celebration', 'party'], emoji: '🎂' },
-      { words: ['date', 'dinner date', 'romantic'], emoji: '❤️' },
+      { words: ['movie', 'cinema', 'film', 'theater', 'theatre', 'show', 'netflix', 'watch series', 'tv'], emoji: '🎬' },
+      { words: ['game', 'gaming', 'playstation', 'xbox', 'nintendo', 'board game', 'video game'], emoji: '🎮' },
+      { words: ['concert', 'festival', 'gig', 'live music', 'band', 'music'], emoji: '🎵' },
+      { words: ['birthday', 'bday', 'anniversary', 'celebration', 'party', 'celebrate'], emoji: '🎂' },
+      { words: ['date', 'dinner date', 'romantic', 'valentine'], emoji: '❤️' },
+      { words: ['gift', 'gifts', 'present', 'presents'], emoji: '🎁' },
+      { words: ['email', 'inbox', 'message', 'text', 'chat', 'reply', 'whatsapp', 'slack', 'discord'], emoji: '✉️' },
       { words: ['hangout', 'hang out', 'friends', 'family', 'social', 'gathering'], emoji: '🎉' }
     ]
   },
 
-  // 10. Travel & Transit
+  // 11. Travel, Transport & Transit
   {
     category: 'Travel',
     defaultEmoji: '✈️',
@@ -336,43 +380,56 @@ const CLASSIFICATION_RULES = [
       { words: ['flight', 'fly', 'flying', 'airport', 'airline', 'terminal'], emoji: '✈️' },
       { words: ['train', 'rail', 'railway', 'subway', 'metro', 'tube'], emoji: '🚆' },
       { words: ['bus', 'coach'], emoji: '🚌' },
-      { words: ['drive', 'driving', 'road trip', 'commute'], emoji: '🚗' },
+      { words: ['drive', 'driving', 'road trip', 'commute', 'car', 'wash car', 'gas station', 'petrol'], emoji: '🚗' },
       { words: ['hotel', 'motel', 'airbnb', 'hostel', 'resort', 'check-in hotel'], emoji: '🏨' },
-      { words: ['vacation', 'holiday', 'trip', 'travel', 'luggage', 'passport'], emoji: '🧳' }
+      { words: ['vacation', 'holiday', 'trip', 'travel', 'luggage', 'passport', 'pack', 'packing', 'suitcase'], emoji: '🧳' }
     ]
   },
 
-  // 11. Food & Dining
-  {
-    category: 'Food',
-    defaultEmoji: '🍱',
-    keywords: [
-      { words: ['restaurant', 'dining', 'dine', 'cook', 'cooking', 'baking', 'chef', 'pizza', 'burger', 'sushi', 'tacos', 'pasta', 'bbq', 'barbecue'], emoji: '🍽️' }
-    ]
-  },
-
-  // 12. Personal Chores & Home
+  // 12. Personal Chores, Housework & Daily Routines (Crucial for To-Do)
   {
     category: 'Personal',
     defaultEmoji: '🌿',
     keywords: [
-      { words: ['grocery', 'groceries', 'supermarket', 'shopping', 'target', 'walmart', 'trader joe', 'tesco', 'sainsbury'], emoji: '🛒' },
-      { words: ['laundry', 'dry clean', 'dry cleaning', 'washing'], emoji: '🧺' },
-      { words: ['clean', 'cleaning', 'vacuum', 'tidy', 'dishes', 'trash', 'rubbish', 'bins', 'chores'], emoji: '🧹' },
-      { words: ['haircut', 'barber', 'salon', 'hairdresser'], emoji: '✂️' },
-      { words: ['package', 'parcel', 'delivery', 'fedex', 'ups', 'post office', 'mail'], emoji: '📦' },
-      { words: ['pet', 'dog', 'cat', 'vet', 'veterinary', 'walk dog'], emoji: '🐾' },
-      { words: ['garden', 'gardening', 'plants', 'watering', 'mow'], emoji: '🌱' },
+      // Grocery shopping
+      { words: ['grocery', 'groceries', 'supermarket', 'trader joe', 'tesco', 'sainsbury', 'costco', 'aldi', 'lidl', 'food shopping', 'buy groceries', 'market'], emoji: '🛒' },
+      // General shopping & buying
+      { words: ['shopping', 'shop', 'buy', 'purchase', 'store', 'mall', 'order', 'amazon', 'order online', 'return item'], emoji: '🛍️' },
+      // Laundry & Clothing care
+      { words: ['laundry', 'wash clothes', 'dry clean', 'dry cleaning', 'washing', 'ironing', 'iron clothes', 'fold clothes', 'wardrobe'], emoji: '🧺' },
+      // Cleaning & Tidying
+      { words: ['clean', 'cleaning', 'clean room', 'vacuum', 'vacuuming', 'tidy', 'tidying', 'tidy up', 'dust', 'dusting', 'mop', 'mopping', 'sweep', 'sweeping', 'scrub', 'chores', 'housework', 'declutter'], emoji: '🧹' },
+      // Washing dishes
+      { words: ['dishes', 'wash dishes', 'dishwasher', 'wash up', 'washing up', 'empty dishwasher'], emoji: '🧼' },
+      // Trash & Waste
+      { words: ['trash', 'rubbish', 'bins', 'bin', 'recycle', 'recycling', 'take out trash', 'garbage', 'take out bins'], emoji: '🗑️' },
+      // Bedding
+      { words: ['bed', 'make bed', 'sheets', 'change sheets', 'duvet'], emoji: '🛏️' },
+      // Personal Grooming & Hygiene
+      { words: ['shower', 'bath', 'bathe', 'skincare', 'wash face', 'brush teeth', 'teeth', 'floss', 'shave', 'grooming'], emoji: '🚿' },
+      { words: ['haircut', 'barber', 'salon', 'hairdresser', 'hair', 'trim hair'], emoji: '✂️' },
+      { words: ['nails', 'manicure', 'pedicure', 'spa', 'massage', 'facial'], emoji: '💅' },
+      // Home DIY & Maintenance
+      { words: ['fix', 'repair', 'diy', 'assemble', 'furniture', 'ikea', 'tool', 'drill', 'plumber', 'electrician'], emoji: '🔧' },
+      // Packages & Deliveries
+      { words: ['package', 'parcel', 'delivery', 'fedex', 'ups', 'dhl', 'post office', 'mail', 'pick up package'], emoji: '📦' },
+      // Pets
+      { words: ['pet', 'dog', 'cat', 'puppy', 'kitten', 'vet', 'veterinary', 'walk dog', 'dog walk', 'feed cat', 'feed dog'], emoji: '🐾' },
+      // Gardening & Houseplants
+      { words: ['garden', 'gardening', 'plants', 'plant', 'watering', 'water plants', 'mow', 'lawn'], emoji: '🌱' },
+      // Writing & Journaling
+      { words: ['write', 'writing', 'draft', 'journal', 'journaling', 'diary', 'notes', 'memo'], emoji: '✍️' },
+      // General Personal & Errands
       { words: ['errand', 'errands', 'personal', 'home', 'house', 'maintenance'], emoji: '🌿' }
     ]
   },
 
-  // 13. Finance & Administration
+  // 13. Finance, Admin & Bills
   {
     category: 'Finance',
     defaultEmoji: '💰',
     keywords: [
-      { words: ['tax', 'taxes', 'tax return', 'hmrc', 'irs', 'bill', 'bills', 'rent', 'mortgage', 'invoice', 'budget', 'accounting', 'payroll', 'insurance', 'bank', 'banking'], emoji: '💰' }
+      { words: ['tax', 'taxes', 'tax return', 'hmrc', 'irs', 'bill', 'bills', 'rent', 'mortgage', 'invoice', 'budget', 'accounting', 'payroll', 'insurance', 'bank', 'banking', 'pay', 'payment', 'salary', 'money', 'transfer', 'utilities', 'electric bill'], emoji: '💰' }
     ]
   }
 ];
@@ -420,14 +477,16 @@ function containsKeyword(haystack, needle) {
 }
 
 /**
- * Classifies an event based on its title and description.
+ * Classifies an event based on its title, optional description, and optional time-of-day.
  * 
  * @param {string} title - The event title or summary
  * @param {string} [description] - Optional event description or notes
  * @param {string} [existingColor] - Optional existing color (e.g. from Google Calendar colorId)
+ * @param {string} [eventDate] - Optional event date (YYYY-MM-DD)
+ * @param {string} [eventStartTime] - Optional event start time (HH:MM)
  * @returns {{ category: string, emoji: string, color: string }}
  */
-export function classifyEvent(title, description, existingColor) {
+export function classifyEvent(title, description, existingColor, eventDate, eventStartTime) {
   const cleanTitle = (title ? String(title).trim() : '');
   const combinedText = normalizeText(cleanTitle + ' ' + (description ? String(description) : ''));
 
@@ -437,6 +496,58 @@ export function classifyEvent(title, description, existingColor) {
       category: 'General',
       emoji: '📌',
       color: existingColor || CATEGORY_DEFINITIONS.General.color
+    };
+  }
+
+  // Determine current/event hour for time-of-day sensitive predictions (e.g. food/eating)
+  let currentHour = -1;
+  if (eventStartTime && typeof eventStartTime === 'string') {
+    const parts = eventStartTime.split(':');
+    const h = parseInt(parts[0], 10);
+    if (!isNaN(h) && h >= 0 && h <= 23) {
+      currentHour = h;
+    }
+  }
+  if (currentHour < 0) {
+    currentHour = new Date().getHours();
+  }
+
+  // Contextual time cues in text
+  const hasMorningWord = containsKeyword(combinedText, 'morning') || containsKeyword(combinedText, 'am');
+  const hasNoonWord = containsKeyword(combinedText, 'lunch') || containsKeyword(combinedText, 'noon') || containsKeyword(combinedText, 'midday') || containsKeyword(combinedText, 'afternoon');
+  const hasNightWord = containsKeyword(combinedText, 'dinner') || containsKeyword(combinedText, 'evening') || containsKeyword(combinedText, 'supper') || containsKeyword(combinedText, 'tonight') || containsKeyword(combinedText, 'night') || containsKeyword(combinedText, 'pm');
+
+  // Generic food & meal words: dynamically adapt emoji based on contextual words or time of day
+  const isGenericFood = containsKeyword(combinedText, 'food') ||
+    containsKeyword(combinedText, 'eat') ||
+    containsKeyword(combinedText, 'eating') ||
+    containsKeyword(combinedText, 'meal') ||
+    containsKeyword(combinedText, 'meals') ||
+    containsKeyword(combinedText, 'hungry') ||
+    containsKeyword(combinedText, 'dine') ||
+    containsKeyword(combinedText, 'dining') ||
+    containsKeyword(combinedText, 'takeout') ||
+    containsKeyword(combinedText, 'takeaway') ||
+    containsKeyword(combinedText, 'bite');
+
+  if (isGenericFood) {
+    const isMorning = hasMorningWord || (!hasNoonWord && !hasNightWord && currentHour >= 5 && currentHour < 11);
+    const isMidday = hasNoonWord || (!hasMorningWord && !hasNightWord && currentHour >= 11 && currentHour < 16);
+    const isEvening = hasNightWord || (!hasMorningWord && !hasNoonWord && (currentHour >= 16 || currentHour < 5));
+
+    let foodEmoji = '🍱';
+    if (isMorning) {
+      foodEmoji = '🥞';
+    } else if (isMidday) {
+      foodEmoji = '🥪';
+    } else if (isEvening) {
+      foodEmoji = '🍽️';
+    }
+
+    return {
+      category: 'Food',
+      emoji: foodEmoji,
+      color: existingColor || CATEGORY_DEFINITIONS.Food.color
     };
   }
 

@@ -2357,7 +2357,8 @@ body {
 
 .drag-handle-compact:active,
 .drag-handle-compact.is-holding,
-.calendar-block-left.is-holding .drag-handle-compact {
+.calendar-block-left.is-holding .drag-handle-compact,
+.todo-block-left.is-holding .drag-handle-compact {
   opacity: 1 !important;
   color: var(--primary) !important;
   cursor: grabbing;
@@ -2946,20 +2947,23 @@ body {
   background: transparent;
 }
 
-.calendar-item-wrapper.is-live-dragging {
+.calendar-item-wrapper.is-live-dragging,
+.todo-item-wrapper.is-live-dragging {
   position: relative !important;
   z-index: 9999 !important;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.8), 0 0 0 2.5px var(--primary), 0 0 24px rgba(16, 185, 129, 0.45) !important;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.8), 0 0 0 2.5px var(--accent-cyan, #00e5ff), 0 0 24px rgba(0, 229, 255, 0.45) !important;
   opacity: 1 !important;
 }
 
-.calendar-item-wrapper.is-live-dragging .calendar-block {
-  border-color: var(--primary) !important;
-  box-shadow: inset 0 0 12px rgba(16, 185, 129, 0.25) !important;
+.calendar-item-wrapper.is-live-dragging .calendar-block,
+.todo-item-wrapper.is-live-dragging .todo-block {
+  border-color: var(--accent-cyan, #00e5ff) !important;
+  box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.25) !important;
   background: #1e2638 !important;
 }
 
-.calendar-item-wrapper.is-drag-sibling {
+.calendar-item-wrapper.is-drag-sibling,
+.todo-item-wrapper.is-drag-sibling {
   transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1) !important;
   will-change: transform;
 }
@@ -6012,12 +6016,18 @@ body {
 }
 
 .modal-full-calendar.will-minimise .cal-close-icon-x,
-.calendar-modal.will-minimise .cal-close-icon-x {
+.calendar-modal.will-minimise .cal-close-icon-x,
+.insights-modal.will-minimise .cal-close-icon-x,
+.settings-modal.will-minimise .cal-close-icon-x,
+.todo-modal.will-minimise .cal-close-icon-x {
   display: none !important;
 }
 
 .modal-full-calendar.will-minimise .cal-close-icon-arrow,
-.calendar-modal.will-minimise .cal-close-icon-arrow {
+.calendar-modal.will-minimise .cal-close-icon-arrow,
+.insights-modal.will-minimise .cal-close-icon-arrow,
+.settings-modal.will-minimise .cal-close-icon-arrow,
+.todo-modal.will-minimise .cal-close-icon-arrow {
   display: inline-flex !important;
   color: var(--accent-cyan);
   transform: translateY(1px);
@@ -7101,6 +7111,8 @@ body {
   overflow: hidden;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
   animation: modalSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: pan-y;
+  will-change: transform;
 }
 
 .insights-modal-header {

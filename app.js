@@ -2879,7 +2879,7 @@ function setupModalPullToDismiss(modal, onDismiss) {
     const visibleScroll = allScrolls.find(el => el.offsetParent !== null) || modal;
     const activeScroll = e.target.closest('.modal-body') || visibleScroll;
     const isAtTop = !activeScroll || activeScroll.scrollTop <= 0;
-    const isHeaderOrFooterTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header, .edit-modal-footer, .btn-close-modal, .edit-task-emoji-badge'));
+    const isHeaderOrFooterTouch = Boolean(e.target.closest('.modal-header, .cal-drag-handle-bar, .calendar-modal-header, .settings-sub-header, .edit-modal-footer, .btn-close-modal, .edit-task-emoji-badge, .insights-modal-header, .insights-range-bar'));
 
     if (!isHeaderOrFooterTouch && !isAtTop && !isPullingDown) {
       touchStartY = currentY;
@@ -2900,6 +2900,8 @@ function setupModalPullToDismiss(modal, onDismiss) {
       return;
     }
 
+    const isCenteredX = modal.classList.contains('insights-modal');
+
     if (deltaY > 10 && deltaY > Math.abs(deltaX) * 1.3) {
       if (isAtTop || isHeaderOrFooterTouch || Boolean(chipsList)) {
         if (!isPullingDown && document.activeElement && modal.contains(document.activeElement) && typeof document.activeElement.blur === 'function') {
@@ -2910,7 +2912,9 @@ function setupModalPullToDismiss(modal, onDismiss) {
         if (e.cancelable) e.preventDefault();
         const rubberbandY = Math.min(deltaY * 0.28, 140);
         modal.style.transition = 'none';
-        modal.style.transform = 'translate3d(0, ' + rubberbandY + 'px, 0)';
+        modal.style.transform = isCenteredX
+          ? 'translate3d(-50%, ' + rubberbandY + 'px, 0)'
+          : 'translate3d(0, ' + rubberbandY + 'px, 0)';
 
         if (deltaY >= 65) {
           modal.classList.add('will-minimise');
@@ -2950,9 +2954,13 @@ function setupModalPullToDismiss(modal, onDismiss) {
     touchStartY = 0;
     touchStartX = 0;
 
+    const isCenteredX = modal.classList.contains('insights-modal');
+
     if (willMinimise) {
       modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-      modal.style.transform = 'translate3d(0, 100vh, 0)';
+      modal.style.transform = isCenteredX
+        ? 'translate3d(-50%, 100vh, 0)'
+        : 'translate3d(0, 100vh, 0)';
       mobileServices.hapticBuzz();
       setTimeout(() => {
         modal.style.removeProperty('transform');
@@ -2963,7 +2971,9 @@ function setupModalPullToDismiss(modal, onDismiss) {
       }, 270);
     } else {
       modal.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
-      modal.style.transform = 'translate3d(0, 0, 0)';
+      modal.style.transform = isCenteredX
+        ? 'translate3d(-50%, 0, 0)'
+        : 'translate3d(0, 0, 0)';
       setTimeout(() => {
         modal.style.removeProperty('transform');
         modal.style.removeProperty('transition');
@@ -4642,14 +4652,17 @@ const CURATED_EMOJIS = [
   '📚', '📖', '📝', '💻', '🔬', '🧪', '📐', '🧠', '🎯', '⚡', '☕', '🏃',
   '🏋️', '🎨', '💼', '📊', '🎧', '⏰', '✨', '🔥', '📌', '🧹', '🥗', '🛌',
   '👥', '🎓', '🩺', '🌿', '🎉', '✈️', '🍱', '💰', '🥞', '🥪', '😴', '🐛',
-  '🚀', '🗄️', '🔀', '🏊', '🚴', '🧘', '🥾', '🎾', '⚽', '🏀', '🥊', '🏛️',
-  '📄', '🤝', '📞', '🍻', '🎬', '🎮', '🎵', '🎂', '❤️', '🚆', '🚌', '🚗',
-  '🏨', '🧳', '🍽️', '🍕', '🛒', '🧺', '✂️', '📦', '🐾', '🌱', '⭐', '🗓️', '💡',
-  '🕒'
+  '🚀', '🗄️', '🔀', '🏊', '🚴', '🧘', '🥾', '🎾', '⚽', '🏀', '🥊', '🧗',
+  '🏛️', '📄', '🤝', '📞', '🍻', '🎬', '🎮', '🎵', '🎂', '❤️', '🚆', '🚌',
+  '🚗', '🏨', '🧳', '🍽️', '🍕', '🍔', '🍣', '🍜', '🌮', '🍲', '🥩', '🍳',
+  '🍰', '🍦', '🍪', '🍎', '🧋', '💧', '🍷', '🍸', '🧃', '🛒', '🛍️', '🧺',
+  '🧼', '🗑️', '🛏️', '🚿', '✂️', '💅', '🔧', '📦', '🐾', '🌱', '✍️', '✉️',
+  '💊', '🎁', '🚶', '⭐', '🗓️', '💡', '🕒'
 ];
 let currentEmojiTaskId = null;
 let currentAddTaskEmoji = '📚';
 let currentTodoEmoji = '📌';
+let isTodoManualEmoji = false;
 let currentEditEmoji = null;
 let selectedEmojiInPicker = null;
 
@@ -4663,6 +4676,7 @@ function applyEmojiSelection(emoji) {
     mobileServices.hapticTap();
   } else if (currentEmojiTaskId === 'NEW_TODO') {
     currentTodoEmoji = emoji;
+    isTodoManualEmoji = true;
     const addTodoEmoji = document.getElementById('addTodoHeaderEmoji');
     if (addTodoEmoji) addTodoEmoji.textContent = emoji;
     closeEmojiPicker(false);
@@ -6599,6 +6613,19 @@ function renderTodoList() {
       });
     }
 
+    // Partitioned gestures: Touching left zone closes any open swipe delete buttons
+    const leftZone = item.querySelector('.todo-block-left');
+    if (leftZone) {
+      const resetSwiped = () => {
+        container.querySelectorAll('.has-swiped-open, .swiped-open').forEach(el => {
+          el.classList.remove('has-swiped-open', 'swiped-open');
+          if (el.style.transform) el.style.removeProperty('transform');
+        });
+      };
+      leftZone.addEventListener('pointerdown', resetSwiped);
+      leftZone.addEventListener('touchstart', resetSwiped, { passive: true });
+    }
+
     // Swipe & Hold gestures (identical to calendar delete mechanic)
     let touchStartX = 0;
     let touchStartY = 0;
@@ -6608,6 +6635,16 @@ function renderTodoList() {
     let currentShiftPct = 0;
 
     item.addEventListener('touchstart', (e) => {
+      // Ignore interactions originating directly from the drag handle, left zone, or emoji/checkbox buttons
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"]')) {
+        return;
+      }
+      const rect = item.getBoundingClientRect();
+      const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      if (clientX - rect.left <= 48) {
+        return; // Left zone before/at 3x2 dots: reserved for press-hold reordering, NOT delete!
+      }
+
       touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
       touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
       isSwiping = false;
@@ -6625,10 +6662,22 @@ function renderTodoList() {
     }, { passive: true });
 
     item.addEventListener('touchmove', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact') || e.target.closest('[data-action="pick-todo-emoji"]')) {
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"]')) {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
         return;
       }
+      const rect = item.getBoundingClientRect();
       const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      if (clientX - rect.left <= 48) {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        return;
+      }
       const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
       const diffX = clientX - touchStartX;
       const diffY = clientY - touchStartY;
@@ -6726,6 +6775,7 @@ function renderTodoList() {
     wrapper.appendChild(item);
     container.appendChild(wrapper);
   });
+  setupInteractiveTodoDrag(container);
 }
 window.renderTodoList = renderTodoList;
 
@@ -6735,17 +6785,31 @@ function setupInteractiveTodoDrag(container) {
 
   container.addEventListener('pointerdown', (e) => {
     if (e.button !== undefined && e.button !== 0) return;
-    const handle = e.target.closest('[data-action="drag-handle"]');
-    if (!handle) return;
+    // Do not initiate drag if tapping emoji picker or toggle checkbox
+    if (e.target.closest('.todo-emoji-btn, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-checkbox-btn')) {
+      return;
+    }
 
+    let handle = e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left');
     const card = e.target.closest('.todo-item-wrapper');
     if (!card) return;
+
+    if (!handle) {
+      const cardEl = card.querySelector('.todo-block') || card;
+      const rect = cardEl.getBoundingClientRect();
+      if (e.clientX - rect.left <= 48) {
+        handle = card.querySelector('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left');
+      }
+    }
+    if (!handle) return;
 
     const allCards = Array.from(container.children).filter(c => c.matches('.todo-item-wrapper'));
     const fromIndex = allCards.indexOf(card);
     if (fromIndex === -1) return;
 
     const activePointerId = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
     let holdTimer = null;
     let isDragActive = false;
     let currentSlotIndex = fromIndex;
@@ -6758,8 +6822,12 @@ function setupInteractiveTodoDrag(container) {
     holdTimer = setTimeout(() => {
       holdTimer = null;
       isDragActive = true;
+      if (handle) handle.classList.add('is-holding');
+      const dotsEl = draggedCard.querySelector('[data-action="drag-handle"], .drag-handle-compact');
+      if (dotsEl) dotsEl.classList.add('is-holding');
+
       try {
-        handle.setPointerCapture(activePointerId);
+        (handle || draggedCard).setPointerCapture(activePointerId);
       } catch (_) {}
 
       const draggedRect = draggedCard.getBoundingClientRect();
@@ -6773,11 +6841,14 @@ function setupInteractiveTodoDrag(container) {
 
       allCards.forEach(c => {
         if (c !== draggedCard) {
+          c.classList.add('is-drag-sibling');
           c.style.transition = 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)';
         }
       });
 
       draggedCard.classList.add('is-live-dragging');
+      const innerBlock = draggedCard.querySelector('.todo-block');
+      if (innerBlock) innerBlock.classList.add('is-live-dragging');
       draggedCard.style.zIndex = '999';
       mobileServices.hapticBuzz();
     }, 180);
@@ -6785,9 +6856,11 @@ function setupInteractiveTodoDrag(container) {
     const onPointerMove = (moveEv) => {
       if (moveEv.pointerId !== activePointerId) return;
       if (!isDragActive) {
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
+        if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
         }
         return;
       }
@@ -6843,12 +6916,18 @@ function setupInteractiveTodoDrag(container) {
       if (!isDragActive) return;
       isDragActive = false;
 
+      if (handle) handle.classList.remove('is-holding');
+      draggedCard.querySelectorAll('.is-holding').forEach(el => el.classList.remove('is-holding'));
+
       try {
-        handle.releasePointerCapture(activePointerId);
+        (handle || draggedCard).releasePointerCapture(activePointerId);
       } catch (_) {}
 
       allCards.forEach(c => {
         c.classList.remove('is-live-dragging');
+        c.classList.remove('is-drag-sibling');
+        const innerBlock = c.querySelector('.todo-block');
+        if (innerBlock) innerBlock.classList.remove('is-live-dragging');
         c.style.transform = '';
         c.style.zIndex = '';
         c.style.transition = '';
@@ -8873,6 +8952,17 @@ function setupNavigationAndModals() {
   if (elTodoModal) {
     setupModalPullToDismiss(elTodoModal, closeTodo);
   }
+  const elAddTodoModal = document.getElementById('addTodoModal');
+  if (elAddTodoModal) {
+    setupModalPullToDismiss(elAddTodoModal, () => {
+      const addTodoModalBackdrop = document.getElementById('addTodoModalBackdrop');
+      if (addTodoModalBackdrop) addTodoModalBackdrop.classList.add('hidden');
+    });
+  }
+  const elInsightsModal = document.getElementById('insightsModal');
+  if (elInsightsModal) {
+    setupModalPullToDismiss(elInsightsModal, closeInsights);
+  }
   const elCalEventModal = document.getElementById('calendarEventModal');
   if (elCalEventModal) {
     setupModalPullToDismiss(elCalEventModal, () => {
@@ -9062,8 +9152,36 @@ function setupNavigationAndModals() {
     });
   }
 
+  let addTodoTitleDebounceTimer = null;
+  if (addTodoTitle) {
+    addTodoTitle.addEventListener('input', () => {
+      if (addTodoTitleDebounceTimer) {
+        clearTimeout(addTodoTitleDebounceTimer);
+      }
+      addTodoTitleDebounceTimer = setTimeout(() => {
+        const text = (addTodoTitle ? addTodoTitle.value : '').trim();
+        const emojiSpan = document.getElementById('addTodoHeaderEmoji');
+        if (!text || text.length < 2) {
+          if (!isTodoManualEmoji && text.length === 0) {
+            currentTodoEmoji = '📌';
+            if (emojiSpan) emojiSpan.textContent = '📌';
+          }
+          return;
+        }
+        if (!isTodoManualEmoji) {
+          const cl = classifyEvent(text);
+          if (cl && cl.emoji) {
+            currentTodoEmoji = cl.emoji;
+            if (emojiSpan) emojiSpan.textContent = cl.emoji;
+          }
+        }
+      }, 150);
+    });
+  }
+
   if (btnOpenAddTodoModal) {
     btnOpenAddTodoModal.addEventListener('click', () => {
+      isTodoManualEmoji = false;
       currentTodoEmoji = '📌';
       const emojiSpan = document.getElementById('addTodoHeaderEmoji');
       if (emojiSpan) emojiSpan.textContent = '📌';
@@ -9487,6 +9605,14 @@ function setupNavigationAndModals() {
     const todoModalBackdrop = document.getElementById('todoModalBackdrop');
     if (todoModalBackdrop && !todoModalBackdrop.classList.contains('hidden')) {
       closeTodo();
+      mobileServices.hapticTap();
+      return;
+    }
+
+    // 6b. Insights Tab -> close and return to Timer screen
+    const insightsModalBackdrop = document.getElementById('insightsModalBackdrop');
+    if (insightsModalBackdrop && !insightsModalBackdrop.classList.contains('hidden')) {
+      closeInsights();
       mobileServices.hapticTap();
       return;
     }

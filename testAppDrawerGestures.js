@@ -314,7 +314,8 @@ const seedHiddenModals = [
   'categoryColorPaletteModalBackdrop',
   'installAppModalBackdrop',
   'calendarConnectModalBackdrop',
-  'confirmSyncNowModalBackdrop'
+  'confirmSyncNowModalBackdrop',
+  'insightsModalBackdrop'
 ];
 seedHiddenModals.forEach(id => {
   getOrCreateMockElement(id).className = 'modal-backdrop hidden';
