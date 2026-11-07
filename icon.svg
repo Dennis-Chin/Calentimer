@@ -24,47 +24,47 @@
   <!-- Solid Black Background with perimeter gap -->
   <rect width="512" height="512" fill="#08090d"/>
 
-  <!-- Mild green-to-blue shimmer inner circle fill (smaller center gap) -->
-  <circle cx="256" cy="256" r="117" fill="url(#innerShimmer)"/>
+  <!-- Mild green-to-blue shimmer inner circle fill -->
+  <circle cx="256" cy="256" r="123" fill="url(#innerShimmer)"/>
 
   <!-- Outer Bezel Ring -->
   <circle cx="256" cy="256" r="198" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="2.5"/>
 
-  <!-- 24 Tick Marks: 8 Neon Cyan (#00f0ff) and 16 Grey (rgba(255,255,255,0.45)) -->
+  <!-- 24 Tick Marks: 8 Neon Cyan (#00f0ff, 12px) and 16 Grey (rgba(255,255,255,0.45), 8px) -->
   <g id="iconTicks">
-    <line x1="256.00" y1="88.00" x2="256.00" y2="58.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="301.55" y1="86.00" x2="306.73" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="344.00" y1="103.58" x2="354.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="374.79" y1="137.21" x2="396.01" y2="115.99" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="408.42" y1="168.00" x2="425.74" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="426.00" y1="210.45" x2="445.32" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="424.00" y1="256.00" x2="454.00" y2="256.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="426.00" y1="301.55" x2="445.32" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="408.42" y1="344.00" x2="425.74" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="374.79" y1="374.79" x2="396.01" y2="396.01" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="344.00" y1="408.42" x2="354.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="301.55" y1="426.00" x2="306.73" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="256.00" y1="424.00" x2="256.00" y2="454.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="210.45" y1="426.00" x2="205.27" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="168.00" y1="408.42" x2="158.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="137.21" y1="374.79" x2="115.99" y2="396.01" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="103.58" y1="344.00" x2="86.26" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="86.00" y1="301.55" x2="66.68" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="88.00" y1="256.00" x2="58.00" y2="256.00" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="86.00" y1="210.45" x2="66.68" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="103.58" y1="168.00" x2="86.26" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="137.21" y1="137.21" x2="115.99" y2="115.99" stroke="#00f0ff" stroke-width="8.5" stroke-linecap="round" filter="url(#cyanGlow)"/>
-    <line x1="168.00" y1="103.58" x2="158.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
-    <line x1="210.45" y1="86.00" x2="205.27" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="5.5" stroke-linecap="round"/>
+    <line x1="256.00" y1="88.00" x2="256.00" y2="58.00" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="301.55" y1="86.00" x2="306.73" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="344.00" y1="103.58" x2="354.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="374.79" y1="137.21" x2="396.01" y2="115.99" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="408.42" y1="168.00" x2="425.74" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="426.00" y1="210.45" x2="445.32" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="424.00" y1="256.00" x2="454.00" y2="256.00" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="426.00" y1="301.55" x2="445.32" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="408.42" y1="344.00" x2="425.74" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="374.79" y1="374.79" x2="396.01" y2="396.01" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="344.00" y1="408.42" x2="354.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="301.55" y1="426.00" x2="306.73" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="256.00" y1="424.00" x2="256.00" y2="454.00" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="210.45" y1="426.00" x2="205.27" y2="445.32" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="168.00" y1="408.42" x2="158.00" y2="425.74" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="137.21" y1="374.79" x2="115.99" y2="396.01" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="103.58" y1="344.00" x2="86.26" y2="354.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="86.00" y1="301.55" x2="66.68" y2="306.73" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="88.00" y1="256.00" x2="58.00" y2="256.00" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="86.00" y1="210.45" x2="66.68" y2="205.27" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="103.58" y1="168.00" x2="86.26" y2="158.00" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="137.21" y1="137.21" x2="115.99" y2="115.99" stroke="#00f0ff" stroke-width="12" stroke-linecap="round" filter="url(#cyanGlow)"/>
+    <line x1="168.00" y1="103.58" x2="158.00" y2="86.26" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
+    <line x1="210.45" y1="86.00" x2="205.27" y2="66.68" stroke="rgba(255, 255, 255, 0.45)" stroke-width="8" stroke-linecap="round"/>
   </g>
 
-  <!-- Stationary Progress Track -->
-  <circle cx="256" cy="256" r="135" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="36"/>
+  <!-- Stationary Progress Track (slightly thinner: 24px) -->
+  <circle cx="256" cy="256" r="135" fill="none" stroke="rgba(255, 255, 255, 0.08)" stroke-width="24"/>
 
-  <!-- Centre thick green line dragged 0 to 360 degrees (100% finished, vivid electric neon green #00ff88) -->
-  <circle cx="256" cy="256" r="135" fill="none" stroke="#00ff88" stroke-width="36" filter="url(#greenGlow)"/>
+  <!-- Centre green line dragged 0 to 360 degrees (100% finished, vivid electric neon green #00ff88, slightly thinner: 24px) -->
+  <circle cx="256" cy="256" r="135" fill="none" stroke="#00ff88" stroke-width="24" filter="url(#greenGlow)"/>
 
-  <!-- Dragging green circle (the bead) at 0/360 degrees (top: cx=256, cy=121) -->
-  <circle cx="256" cy="121" r="32" fill="url(#beadGlow)"/>
-  <circle cx="256" cy="121" r="16" fill="#00ff88" stroke="#ffffff" stroke-width="5" filter="url(#greenGlow)"/>
+  <!-- Dragging green circle (the bead) at 0/360 degrees (top: cx=256, cy=121, slightly bigger: r=21) -->
+  <circle cx="256" cy="121" r="38" fill="url(#beadGlow)"/>
+  <circle cx="256" cy="121" r="21" fill="#00ff88" stroke="#ffffff" stroke-width="5" filter="url(#greenGlow)"/>
 </svg>

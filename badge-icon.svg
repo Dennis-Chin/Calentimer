@@ -2,31 +2,31 @@
   <!-- Transparent background for Android status bar monochrome stencil mask -->
   <circle cx="48" cy="48" r="38" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.5"/>
   <g>
-    <line x1="48.00" y1="16.00" x2="48.00" y2="10.00" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="56.80" y1="15.16" x2="57.84" y2="11.29" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="65.00" y1="18.56" x2="67.00" y2="15.09" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="70.63" y1="25.37" x2="74.87" y2="21.13" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="77.44" y1="31.00" x2="80.91" y2="29.00" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="80.84" y1="39.20" x2="84.71" y2="38.16" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="80.00" y1="48.00" x2="86.00" y2="48.00" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="80.84" y1="56.80" x2="84.71" y2="57.84" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="77.44" y1="65.00" x2="80.91" y2="67.00" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="70.63" y1="70.63" x2="74.87" y2="74.87" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="65.00" y1="77.44" x2="67.00" y2="80.91" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="56.80" y1="80.84" x2="57.84" y2="84.71" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="48.00" y1="80.00" x2="48.00" y2="86.00" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="39.20" y1="80.84" x2="38.16" y2="84.71" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="31.00" y1="77.44" x2="29.00" y2="80.91" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="25.37" y1="70.63" x2="21.13" y2="74.87" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="18.56" y1="65.00" x2="15.09" y2="67.00" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="15.16" y1="56.80" x2="11.29" y2="57.84" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="16.00" y1="48.00" x2="10.00" y2="48.00" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="15.16" y1="39.20" x2="11.29" y2="38.16" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="18.56" y1="31.00" x2="15.09" y2="29.00" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="25.37" y1="25.37" x2="21.13" y2="21.13" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>
-    <line x1="31.00" y1="18.56" x2="29.00" y2="15.09" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-    <line x1="39.20" y1="15.16" x2="38.16" y2="11.29" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="48.00" y1="16.00" x2="48.00" y2="10.00" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="56.80" y1="15.16" x2="57.84" y2="11.29" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="65.00" y1="18.56" x2="67.00" y2="15.09" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="70.63" y1="25.37" x2="74.87" y2="21.13" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="77.44" y1="31.00" x2="80.91" y2="29.00" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="80.84" y1="39.20" x2="84.71" y2="38.16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="80.00" y1="48.00" x2="86.00" y2="48.00" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="80.84" y1="56.80" x2="84.71" y2="57.84" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="77.44" y1="65.00" x2="80.91" y2="67.00" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="70.63" y1="70.63" x2="74.87" y2="74.87" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="65.00" y1="77.44" x2="67.00" y2="80.91" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="56.80" y1="80.84" x2="57.84" y2="84.71" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="48.00" y1="80.00" x2="48.00" y2="86.00" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="39.20" y1="80.84" x2="38.16" y2="84.71" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="31.00" y1="77.44" x2="29.00" y2="80.91" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="25.37" y1="70.63" x2="21.13" y2="74.87" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="18.56" y1="65.00" x2="15.09" y2="67.00" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="15.16" y1="56.80" x2="11.29" y2="57.84" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="16.00" y1="48.00" x2="10.00" y2="48.00" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="15.16" y1="39.20" x2="11.29" y2="38.16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="18.56" y1="31.00" x2="15.09" y2="29.00" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="25.37" y1="25.37" x2="21.13" y2="21.13" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round"/>
+    <line x1="31.00" y1="18.56" x2="29.00" y2="15.09" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+    <line x1="39.20" y1="15.16" x2="38.16" y2="11.29" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   </g>
-  <circle cx="48" cy="48" r="25" fill="none" stroke="#ffffff" stroke-width="6.5"/>
-  <circle cx="48" cy="23" r="4.5" fill="#ffffff"/>
+  <circle cx="48" cy="48" r="25" fill="none" stroke="#ffffff" stroke-width="4.5"/>
+  <circle cx="48" cy="23" r="5.8" fill="#ffffff"/>
 </svg>
