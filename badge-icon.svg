@@ -27,6 +27,6 @@
     <line x1="31.00" y1="18.56" x2="29.00" y2="15.09" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
     <line x1="39.20" y1="15.16" x2="38.16" y2="11.29" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   </g>
-  <circle cx="48" cy="48" r="25" fill="none" stroke="#ffffff" stroke-width="4.5"/>
-  <circle cx="48" cy="23" r="5.8" fill="#ffffff"/>
+  <circle cx="48" cy="48" r="25" fill="none" stroke="#ffffff" stroke-width="5.5"/>
+  <circle cx="48" cy="23" r="4.3" fill="#ffffff"/>
 </svg>
