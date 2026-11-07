@@ -2765,12 +2765,18 @@ function setupCalendarModalPullToDismiss() {
 
         if (deltaY >= 110) {
           modal.classList.add('will-minimise');
+          const closeBtn = modal.querySelector('.btn-close-modal');
+          if (closeBtn) closeBtn.classList.add('will-minimise');
         } else {
           modal.classList.remove('will-minimise');
+          const closeBtn = modal.querySelector('.btn-close-modal');
+          if (closeBtn) closeBtn.classList.remove('will-minimise');
         }
       }
     } else if (deltaY <= 0 && isPullingDown) {
       modal.classList.remove('will-minimise');
+      const closeBtn = modal.querySelector('.btn-close-modal');
+      if (closeBtn) closeBtn.classList.remove('will-minimise');
     }
   };
 
@@ -2793,11 +2799,15 @@ function setupCalendarModalPullToDismiss() {
       touchStartX = 0;
       didPullDown = false;
       modal.classList.remove('will-minimise');
+      const closeBtn = modal.querySelector('.btn-close-modal');
+      if (closeBtn) closeBtn.classList.remove('will-minimise');
       return;
     }
     isPullingDown = false;
     const willMinimise = modal.classList.contains('will-minimise');
     modal.classList.remove('will-minimise');
+    const closeBtn = modal.querySelector('.btn-close-modal');
+    if (closeBtn) closeBtn.classList.remove('will-minimise');
 
     touchStartY = 0;
     touchStartX = 0;
@@ -2806,7 +2816,25 @@ function setupCalendarModalPullToDismiss() {
       modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
       modal.style.transform = 'translate3d(0, 100vh, 0)';
       mobileServices.hapticBuzz();
+
+      // Immediately un-highlight Calendar and return active highlight to Timer
+      const navItemTimer = document.getElementById('navItemTimer');
+      const navItemCalendar = document.getElementById('navItemCalendar');
+      const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+      if (navItemCalendar) {
+        navItemCalendar.classList.remove('active');
+        if (typeof navItemCalendar.blur === 'function') navItemCalendar.blur();
+      }
+      if (navItemFullCalendar) {
+        navItemFullCalendar.classList.remove('active');
+        if (typeof navItemFullCalendar.blur === 'function') navItemFullCalendar.blur();
+      }
+      if (navItemTimer) navItemTimer.classList.add('active');
+
       setTimeout(() => {
+        modal.classList.remove('will-minimise');
+        const closeBtn = modal.querySelector('.btn-close-modal');
+        if (closeBtn) closeBtn.classList.remove('will-minimise');
         modal.style.removeProperty('transform');
         modal.style.removeProperty('transition');
         closeCalendar();
@@ -2918,12 +2946,18 @@ function setupModalPullToDismiss(modal, onDismiss) {
 
         if (deltaY >= 65) {
           modal.classList.add('will-minimise');
+          const closeBtn = modal.querySelector('.btn-close-modal');
+          if (closeBtn) closeBtn.classList.add('will-minimise');
         } else {
           modal.classList.remove('will-minimise');
+          const closeBtn = modal.querySelector('.btn-close-modal');
+          if (closeBtn) closeBtn.classList.remove('will-minimise');
         }
       }
     } else if (deltaY <= 0 && isPullingDown) {
       modal.classList.remove('will-minimise');
+      const closeBtn = modal.querySelector('.btn-close-modal');
+      if (closeBtn) closeBtn.classList.remove('will-minimise');
     }
   };
 
@@ -2945,11 +2979,15 @@ function setupModalPullToDismiss(modal, onDismiss) {
       touchStartX = 0;
       didPullDown = false;
       modal.classList.remove('will-minimise');
+      const closeBtn = modal.querySelector('.btn-close-modal');
+      if (closeBtn) closeBtn.classList.remove('will-minimise');
       return;
     }
     isPullingDown = false;
     const willMinimise = modal.classList.contains('will-minimise');
     modal.classList.remove('will-minimise');
+    const closeBtn = modal.querySelector('.btn-close-modal');
+    if (closeBtn) closeBtn.classList.remove('will-minimise');
 
     touchStartY = 0;
     touchStartX = 0;
@@ -2962,7 +3000,40 @@ function setupModalPullToDismiss(modal, onDismiss) {
         ? 'translate3d(-50%, 100vh, 0)'
         : 'translate3d(0, 100vh, 0)';
       mobileServices.hapticBuzz();
+
+      // Immediately restore active tab in drawer to Timer
+      const navItemTimer = document.getElementById('navItemTimer');
+      const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+      const navItemCalendar = document.getElementById('navItemCalendar');
+      const navItemTodo = document.getElementById('navItemTodo');
+      const navItemInsights = document.getElementById('navItemInsights');
+      const navItemSettings = document.getElementById('navItemSettings');
+      if (navItemFullCalendar) {
+        navItemFullCalendar.classList.remove('active');
+        if (typeof navItemFullCalendar.blur === 'function') navItemFullCalendar.blur();
+      }
+      if (navItemCalendar) {
+        navItemCalendar.classList.remove('active');
+        if (typeof navItemCalendar.blur === 'function') navItemCalendar.blur();
+      }
+      if (navItemTodo) {
+        navItemTodo.classList.remove('active');
+        if (typeof navItemTodo.blur === 'function') navItemTodo.blur();
+      }
+      if (navItemInsights) {
+        navItemInsights.classList.remove('active');
+        if (typeof navItemInsights.blur === 'function') navItemInsights.blur();
+      }
+      if (navItemSettings) {
+        navItemSettings.classList.remove('active');
+        if (typeof navItemSettings.blur === 'function') navItemSettings.blur();
+      }
+      if (navItemTimer) navItemTimer.classList.add('active');
+
       setTimeout(() => {
+        modal.classList.remove('will-minimise');
+        const closeBtn = modal.querySelector('.btn-close-modal');
+        if (closeBtn) closeBtn.classList.remove('will-minimise');
         modal.style.removeProperty('transform');
         modal.style.removeProperty('transition');
         if (typeof onDismiss === 'function') {
@@ -5488,9 +5559,54 @@ function ensureHistoryBuffer() {
 }
 window.ensureHistoryBuffer = ensureHistoryBuffer;
 
+function syncNavActiveState() {
+  const isFullCalOpen = typeof calendarView !== 'undefined' && calendarView && typeof calendarView.isOpen === 'function' && calendarView.isOpen();
+  const calendarModalBackdrop = document.getElementById('calendarModalBackdrop');
+  const todoModalBackdrop = document.getElementById('todoModalBackdrop');
+  const insightsModalBackdrop = document.getElementById('insightsModalBackdrop');
+  const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+
+  const isTodayCalOpen = Boolean(calendarModalBackdrop && !calendarModalBackdrop.classList.contains('hidden'));
+  const isTodoOpen = Boolean(todoModalBackdrop && !todoModalBackdrop.classList.contains('hidden'));
+  const isInsightsOpen = Boolean(insightsModalBackdrop && !insightsModalBackdrop.classList.contains('hidden'));
+  const isSettingsOpen = Boolean(settingsModalBackdrop && !settingsModalBackdrop.classList.contains('hidden'));
+
+  const navItemTimer = document.getElementById('navItemTimer');
+  const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+  const navItemCalendar = document.getElementById('navItemCalendar');
+  const navItemTodo = document.getElementById('navItemTodo');
+  const navItemInsights = document.getElementById('navItemInsights');
+  const navItemSettings = document.getElementById('navItemSettings');
+
+  const allItems = [navItemTimer, navItemFullCalendar, navItemCalendar, navItemTodo, navItemInsights, navItemSettings];
+  for (let i = 0; i < allItems.length; i++) {
+    const item = allItems[i];
+    if (item) {
+      item.classList.remove('active');
+      if (typeof item.blur === 'function') item.blur();
+    }
+  }
+
+  if (isFullCalOpen) {
+    if (navItemFullCalendar) navItemFullCalendar.classList.add('active');
+  } else if (isTodayCalOpen) {
+    if (navItemCalendar) navItemCalendar.classList.add('active');
+  } else if (isTodoOpen) {
+    if (navItemTodo) navItemTodo.classList.add('active');
+  } else if (isInsightsOpen) {
+    if (navItemInsights) navItemInsights.classList.add('active');
+  } else if (isSettingsOpen) {
+    if (navItemSettings) navItemSettings.classList.add('active');
+  } else {
+    if (navItemTimer) navItemTimer.classList.add('active');
+  }
+}
+window.syncNavActiveState = syncNavActiveState;
+
 function openDrawer() {
   if (navDrawer && navDrawerBackdrop) {
     ensureHistoryBuffer();
+    syncNavActiveState();
     navDrawer.style.removeProperty('transform');
     navDrawer.style.removeProperty('transition');
     navDrawer.style.removeProperty('visibility');
@@ -8066,6 +8182,9 @@ function setupNavigationAndModals() {
       // This strictly prevents steep upward swipes or dial thumb gestures from opening the menu
       const maxAllowedVertical = diffY < 0 ? (diffX / 1.85) : (diffX / 1.5);
       if (diffX > 22 && Math.abs(diffY) <= maxAllowedVertical) {
+        if (!isNavSwiping) {
+          syncNavActiveState();
+        }
         isNavSwiping = true;
         navDrawer.style.transition = 'none';
         navDrawer.style.visibility = 'visible';

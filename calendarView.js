@@ -633,12 +633,15 @@ export class CalendarView {
           // If swiped back up, it turns back into X
           if (deltaY >= 110) {
             modal.classList.add('will-minimise');
+            if (this.elements && this.elements.btnClose) this.elements.btnClose.classList.add('will-minimise');
           } else {
             modal.classList.remove('will-minimise');
+            if (this.elements && this.elements.btnClose) this.elements.btnClose.classList.remove('will-minimise');
           }
         }
       } else if (deltaY <= 0 && isPullingDown) {
         modal.classList.remove('will-minimise');
+        if (this.elements && this.elements.btnClose) this.elements.btnClose.classList.remove('will-minimise');
       }
     };
 
@@ -660,11 +663,13 @@ export class CalendarView {
         touchStartX = 0;
         didPullDown = false;
         modal.classList.remove('will-minimise');
+        if (this.elements && this.elements.btnClose) this.elements.btnClose.classList.remove('will-minimise');
         return;
       }
       isPullingDown = false;
       const willMinimise = modal.classList.contains('will-minimise');
       modal.classList.remove('will-minimise');
+      if (this.elements && this.elements.btnClose) this.elements.btnClose.classList.remove('will-minimise');
 
       touchStartY = 0;
       touchStartX = 0;
@@ -674,6 +679,21 @@ export class CalendarView {
         modal.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
         modal.style.transform = 'translate3d(0, 100vh, 0)';
         mobileServices.hapticBuzz();
+
+        // Immediately un-highlight Calendar tab in drawer and return active state to Timer
+        const navItemTimer = document.getElementById('navItemTimer');
+        const navItemFullCalendar = document.getElementById('navItemFullCalendar');
+        const navItemCalendar = document.getElementById('navItemCalendar');
+        if (navItemFullCalendar) {
+          navItemFullCalendar.classList.remove('active');
+          if (typeof navItemFullCalendar.blur === 'function') navItemFullCalendar.blur();
+        }
+        if (navItemCalendar) {
+          navItemCalendar.classList.remove('active');
+          if (typeof navItemCalendar.blur === 'function') navItemCalendar.blur();
+        }
+        if (navItemTimer) navItemTimer.classList.add('active');
+
         setTimeout(() => {
           modal.style.removeProperty('transform');
           modal.style.removeProperty('transition');

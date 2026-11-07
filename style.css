@@ -1934,7 +1934,7 @@ body {
   padding: 12px 16px;
   border-radius: var(--radius-md);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
   font-size: 0.95rem;
   font-weight: 600;
@@ -1942,17 +1942,29 @@ body {
   transition: all 0.18s ease;
   width: 100%;
   text-align: left;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.nav-item:hover, .nav-item:active {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-main);
+.nav-item:focus {
+  outline: none;
+}
+
+@media (hover: hover) {
+  .nav-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+  }
+}
+
+.nav-item:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .nav-item.active {
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--primary);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: var(--primary) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
 }
 
 .nav-drawer-footer {
@@ -6005,7 +6017,7 @@ body {
   transition: none !important;
 }
 
-/* Pull Down to Minimise Indicator for Full Calendar Modal & Today's Schedule Modal */
+/* Pull Down to Minimise Indicator for Full Calendar, Today's Schedule, Insights, To-Do & Settings Modals */
 .cal-close-icon-arrow {
   display: none;
 }
@@ -6015,19 +6027,29 @@ body {
   line-height: 1;
 }
 
+.will-minimise .cal-close-icon-x,
 .modal-full-calendar.will-minimise .cal-close-icon-x,
+.full-calendar-modal.will-minimise .cal-close-icon-x,
 .calendar-modal.will-minimise .cal-close-icon-x,
 .insights-modal.will-minimise .cal-close-icon-x,
 .settings-modal.will-minimise .cal-close-icon-x,
-.todo-modal.will-minimise .cal-close-icon-x {
+.todo-modal.will-minimise .cal-close-icon-x,
+.btn-close-modal.will-minimise .cal-close-icon-x,
+#insightsModal.will-minimise .cal-close-icon-x,
+#btnCloseInsights.will-minimise .cal-close-icon-x {
   display: none !important;
 }
 
+.will-minimise .cal-close-icon-arrow,
 .modal-full-calendar.will-minimise .cal-close-icon-arrow,
+.full-calendar-modal.will-minimise .cal-close-icon-arrow,
 .calendar-modal.will-minimise .cal-close-icon-arrow,
 .insights-modal.will-minimise .cal-close-icon-arrow,
 .settings-modal.will-minimise .cal-close-icon-arrow,
-.todo-modal.will-minimise .cal-close-icon-arrow {
+.todo-modal.will-minimise .cal-close-icon-arrow,
+.btn-close-modal.will-minimise .cal-close-icon-arrow,
+#insightsModal.will-minimise .cal-close-icon-arrow,
+#btnCloseInsights.will-minimise .cal-close-icon-arrow {
   display: inline-flex !important;
   color: var(--accent-cyan);
   transform: translateY(1px);
