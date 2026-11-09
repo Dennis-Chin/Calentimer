@@ -9605,7 +9605,9 @@ function setupNavigationAndModals() {
     const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
       ? taskStore.getAppMode()
       : 'advanced';
-    const currentSession = runtime.exportSessionState();
+    const currentSession = (runtime && typeof runtime.exportSessionState === 'function')
+      ? runtime.exportSessionState()
+      : null;
     if (currentMode === 'simple') {
       if (typeof taskStore.saveSimpleTimerSession === 'function') {
         taskStore.saveSimpleTimerSession(currentSession);

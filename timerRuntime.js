@@ -1075,22 +1075,19 @@ export class TimerRuntime {
   }
 
   /**
-   * Saves active timer session state to taskStore for seamless persistence across app close/reopen.
+   * Exports active timer session state snapshot without directly saving to taskStore.
+   * @returns {object|null}
    */
-  saveSessionState() {
-    if (typeof taskStore === 'undefined' || typeof taskStore.saveTimerSession !== 'function') return;
+  exportSessionState() {
     const activeTask = this.getActiveTask();
     if (!activeTask || this.status === TimerStatus.COMPLETED) {
-      if (typeof taskStore.clearTimerSession === 'function') {
-        taskStore.clearTimerSession();
-      }
-      return;
+      return null;
     }
-    const todayStr = (typeof taskStore.getTodayDateString === 'function')
+    const todayStr = (typeof taskStore !== 'undefined' && typeof taskStore.getTodayDateString === 'function')
       ? taskStore.getTodayDateString()
       : new Date().toISOString().split('T')[0];
 
-    taskStore.saveTimerSession({
+    return {
       activeTaskId: activeTask.id,
       activeTaskIndex: this.activeTaskIndex,
       status: this.status,
@@ -1104,7 +1101,22 @@ export class TimerRuntime {
       overrunPausedElapsedMs: this.overrunPausedElapsedMs,
       sessionSavedAt: Date.now(),
       sessionDate: todayStr
-    });
+    };
+  }
+
+  /**
+   * Saves active timer session state to taskStore for seamless persistence across app close/reopen.
+   */
+  saveSessionState() {
+    if (typeof taskStore === 'undefined' || typeof taskStore.saveTimerSession !== 'function') return;
+    const session = this.exportSessionState();
+    if (!session) {
+      if (typeof taskStore.clearTimerSession === 'function') {
+        taskStore.clearTimerSession();
+      }
+      return;
+    }
+    taskStore.saveTimerSession(session);
   }
 
   /**
