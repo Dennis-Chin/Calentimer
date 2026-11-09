@@ -28,9 +28,15 @@ class MobileServices {
     if ('serviceWorker' in navigator) {
       try {
         this.swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+        if (this.swRegistration && typeof this.swRegistration.update === 'function') {
+          this.swRegistration.update();
+        }
       } catch (err) {
         try {
           this.swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+          if (this.swRegistration && typeof this.swRegistration.update === 'function') {
+            this.swRegistration.update();
+          }
         } catch (fallbackErr) {
           console.warn('Service worker registration failed:', fallbackErr);
         }
