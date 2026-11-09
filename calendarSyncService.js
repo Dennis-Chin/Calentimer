@@ -1045,6 +1045,29 @@ export class CalendarSyncService {
       if (typeof data.timespansEnabled === 'boolean' && typeof taskStore.setTimespansEnabled === 'function') {
         taskStore.setTimespansEnabled(data.timespansEnabled);
       }
+
+      // 6. App Mode & Simple Mode Preferences
+      if (typeof data.appMode === 'string' && (data.appMode === 'simple' || data.appMode === 'advanced') && typeof taskStore.setAppMode === 'function') {
+        taskStore.setAppMode(data.appMode);
+      }
+      if (typeof data.simpleConfigured === 'boolean' && typeof taskStore.setSimpleConfigured === 'function') {
+        taskStore.setSimpleConfigured(data.simpleConfigured);
+      }
+      if (typeof data.simplePreset === 'string' && typeof taskStore.setSimplePreset === 'function') {
+        taskStore.setSimplePreset(data.simplePreset);
+      }
+      if (typeof data.simpleLoop === 'boolean' && typeof taskStore.setSimpleLoopEnabled === 'function') {
+        taskStore.setSimpleLoopEnabled(data.simpleLoop);
+      }
+      if (data.simpleCustomConfig && typeof taskStore.setSimpleCustomConfig === 'function') {
+        taskStore.setSimpleCustomConfig(data.simpleCustomConfig);
+      }
+      if (Array.isArray(data.simpleTasks) && data.simpleTasks.length > 0 && typeof taskStore.saveSimpleTasks === 'function') {
+        const curSimple = (typeof taskStore.getSimpleTasks === 'function') ? taskStore.getSimpleTasks() : [];
+        if (curSimple.length === 0) {
+          taskStore.saveSimpleTasks(data.simpleTasks);
+        }
+      }
     } catch (err) {
       console.warn('Failed restoring Calentimer cloud profile:', err);
     }
@@ -1067,7 +1090,13 @@ export class CalendarSyncService {
       timeBankSeconds: (typeof taskStore.getTimeBankBalance === 'function') ? taskStore.getTimeBankBalance() : 0,
       hardStop: (typeof taskStore.getHardStop === 'function') ? taskStore.getHardStop() : '18:00',
       hardStopEnabled: (typeof taskStore.getHardStopEnabled === 'function') ? taskStore.getHardStopEnabled() : true,
-      timespansEnabled: (typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true
+      timespansEnabled: (typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true,
+      appMode: (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced',
+      simpleConfigured: (typeof taskStore.getSimpleConfigured === 'function') ? taskStore.getSimpleConfigured() : false,
+      simplePreset: (typeof taskStore.getSimplePreset === 'function') ? taskStore.getSimplePreset() : 'pomodoro',
+      simpleLoop: (typeof taskStore.getSimpleLoopEnabled === 'function') ? taskStore.getSimpleLoopEnabled() : false,
+      simpleCustomConfig: (typeof taskStore.getSimpleCustomConfig === 'function') ? taskStore.getSimpleCustomConfig() : null,
+      simpleTasks: (typeof taskStore.getSimpleTasks === 'function') ? taskStore.getSimpleTasks() : []
     };
 
     const payloadStr = JSON.stringify(profile);

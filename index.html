@@ -147,6 +147,14 @@
         <span class="app-brand">Calentimer</span>
       </div>
       <div class="header-right">
+        <!-- Dynamic Single-Name Mode Slider Toggle (Advanced ⇄ Simple) -->
+        <div class="mode-slider-wrap" id="modeSliderWrap" title="Switch between Advanced and Simple mode" role="button" tabindex="0" aria-label="Toggle between Advanced and Simple mode">
+          <div class="mode-slider-track" id="modeSliderTrack">
+            <div class="mode-slider-thumb" id="modeSliderThumb">
+              <span class="mode-slider-label" id="modeSliderLabel">Advanced</span>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -393,23 +401,39 @@
       </div>
 
       <div class="drawer-footer">
-        <button type="button" class="btn-calendar-add-task btn-calendar-add-todo" id="btnDrawerAddTodo" title="Add To-Do Task to today's schedule">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 11 12 14 22 4"></polyline>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-          </svg>
-          <span>Add To-Do</span>
-        </button>
-        <button type="button" class="btn-calendar-add-task" id="btnDrawerAddTask" title="Add task to today's schedule">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          <span>Add Task</span>
-        </button>
-        <button type="button" class="btn-calendar-add-break" id="btnDrawerAddBreak" title="Add break to today's schedule">
-          <span>☕ Add Break</span>
-        </button>
+        <!-- Advanced Mode Actions -->
+        <div class="drawer-footer-row advanced-footer-actions" id="drawerAdvancedActions">
+          <button type="button" class="btn-calendar-add-task btn-calendar-add-todo" id="btnDrawerAddTodo" title="Add To-Do Task to today's schedule">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <span>Add To-Do</span>
+          </button>
+          <button type="button" class="btn-calendar-add-task" id="btnDrawerAddTask" title="Add task to today's schedule">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add Task</span>
+          </button>
+          <button type="button" class="btn-calendar-add-break" id="btnDrawerAddBreak" title="Add break to today's schedule">
+            <span>☕ Add Break</span>
+          </button>
+        </div>
+
+        <!-- Simple Mode Actions -->
+        <div class="drawer-footer-row simple-footer-actions hidden" id="drawerSimpleActions">
+          <button type="button" class="btn-calendar-add-break btn-simple-presets-btn" id="btnDrawerSimplePresets" title="Change focus preset">
+            <span>⚙️ Preset</span>
+          </button>
+          <button type="button" class="btn-calendar-add-break" id="btnDrawerSimpleAddRest" title="Add rest block">
+            <span>☕ + Rest</span>
+          </button>
+          <button type="button" class="btn-calendar-add-task btn-simple-focus-btn" id="btnDrawerSimpleAddFocus" title="Add focus block">
+            <span>🎯 + Focus</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -893,23 +917,39 @@
       </div>
 
       <div class="calendar-modal-footer">
-        <button type="button" class="btn-calendar-add-task btn-calendar-add-todo" id="btnCalendarAddTodo" title="Add To-Do Task to today's schedule">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 11 12 14 22 4"></polyline>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-          </svg>
-          <span>Add To-Do</span>
-        </button>
-        <button type="button" class="btn-calendar-add-task" id="btnCalendarAddTask" title="Add task to today's schedule">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          <span>Add Task</span>
-        </button>
-        <button type="button" class="btn-calendar-add-break" id="btnCalendarAddBreak" title="Add break to today's schedule">
-          <span>☕ Add Break</span>
-        </button>
+        <!-- Advanced Mode Actions -->
+        <div class="drawer-footer-row advanced-footer-actions" id="calendarAdvancedActions">
+          <button type="button" class="btn-calendar-add-task btn-calendar-add-todo" id="btnCalendarAddTodo" title="Add To-Do Task to today's schedule">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 11 12 14 22 4"></polyline>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            <span>Add To-Do</span>
+          </button>
+          <button type="button" class="btn-calendar-add-task" id="btnCalendarAddTask" title="Add task to today's schedule">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add Task</span>
+          </button>
+          <button type="button" class="btn-calendar-add-break" id="btnCalendarAddBreak" title="Add break to today's schedule">
+            <span>☕ Add Break</span>
+          </button>
+        </div>
+
+        <!-- Simple Mode Actions -->
+        <div class="drawer-footer-row simple-footer-actions hidden" id="calendarSimpleActions">
+          <button type="button" class="btn-calendar-add-break btn-simple-presets-btn" id="btnCalendarSimplePresets" title="Change focus preset">
+            <span>⚙️ Preset</span>
+          </button>
+          <button type="button" class="btn-calendar-add-break" id="btnCalendarSimpleAddRest" title="Add rest block">
+            <span>☕ + Rest</span>
+          </button>
+          <button type="button" class="btn-calendar-add-task btn-simple-focus-btn" id="btnCalendarSimpleAddFocus" title="Add focus block">
+            <span>🎯 + Focus</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2191,6 +2231,128 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Mode Switch Modal -->
+  <div class="modal-backdrop hidden" id="confirmModeSwitchModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon" id="confirmModeSwitchIcon">⚡</div>
+      <div class="confirm-modal-title" id="confirmModeSwitchTitle">Switch to Simple Mode?</div>
+      <div class="confirm-modal-desc" id="confirmModeSwitchDesc">Your Advanced schedule and settings will be safely saved. Switch to Simple focus mode?</div>
+      <div class="confirm-modal-actions" style="margin-top: 10px;">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelModeSwitch">Cancel</button>
+        <button type="button" class="btn-confirm-primary" id="btnConfirmModeSwitch">Switch Mode</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simple Mode Setup / Presets Modal -->
+  <div class="modal-backdrop hidden" id="simpleModeModalBackdrop">
+    <div class="settings-modal simple-mode-modal" id="simpleModeModal">
+      <div class="cal-drag-handle-bar" aria-hidden="true"></div>
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span style="font-size: 1.3rem;">⚡</span>
+          <span class="modal-title" id="simpleModeModalHeading">Simple Focus Presets</span>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseSimpleModeModal" title="Close">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding-bottom: 24px;">
+        <div class="simple-modal-subtitle">Pick a focus preset to start immediately without planning:</div>
+
+        <div class="simple-presets-grid" id="simplePresetsGrid">
+          <div class="simple-preset-card" data-preset="pure_focus">
+            <div class="simple-preset-icon">🎯</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">Pure Focus (No Breaks)</div>
+              <div class="simple-preset-desc">Continuous focus block (50 mins)</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+
+          <div class="simple-preset-card" data-preset="focus_break">
+            <div class="simple-preset-icon">☕</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">Focus + Break (Single Pair)</div>
+              <div class="simple-preset-desc">25m Focus • 5m Rest</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+
+          <div class="simple-preset-card active" data-preset="pomodoro">
+            <div class="simple-preset-icon">🍅</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">Pomodoro</div>
+              <div class="simple-preset-desc">25m Focus • 5m Rest (4 cycles)</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+
+          <div class="simple-preset-card" data-preset="one_hour">
+            <div class="simple-preset-icon">⏱️</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">1-Hour Blocks</div>
+              <div class="simple-preset-desc">60m Focus • 10m Rest (3 cycles)</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+
+          <div class="simple-preset-card" data-preset="short_sprints">
+            <div class="simple-preset-icon">⚡</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">Short Sprints</div>
+              <div class="simple-preset-desc">15m Focus • 3m Rest (4 cycles)</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+
+          <div class="simple-preset-card" data-preset="custom">
+            <div class="simple-preset-icon">⚙️</div>
+            <div class="simple-preset-info">
+              <div class="simple-preset-name">Custom Flow</div>
+              <div class="simple-preset-desc">Define custom focus &amp; break durations</div>
+            </div>
+            <div class="simple-preset-radio"></div>
+          </div>
+        </div>
+
+        <div class="simple-custom-params hidden" id="simpleCustomParams">
+          <div class="edit-task-row">
+            <div class="edit-task-form-group" style="flex: 1;">
+              <label class="edit-task-label">Focus (min)</label>
+              <input type="number" id="simpleCustomFocusMin" class="edit-task-input" value="30" min="1" max="180">
+            </div>
+            <div class="edit-task-form-group" style="flex: 1;">
+              <label class="edit-task-label">Rest (min)</label>
+              <input type="number" id="simpleCustomRestMin" class="edit-task-input" value="5" min="0" max="60">
+            </div>
+            <div class="edit-task-form-group" style="flex: 1;">
+              <label class="edit-task-label">Cycles</label>
+              <input type="number" id="simpleCustomCycles" class="edit-task-input" value="3" min="1" max="24">
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-row" style="margin-top: 14px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="simple-loop-icon" style="font-size: 1.15rem;">🔁</span>
+              <span class="setting-label">Loop Continuously</span>
+            </div>
+            <span class="setting-desc">After the final block finishes, loop back to the start</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggleSimpleLoop" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="padding: 14px 18px;">
+        <button type="button" class="btn-confirm-primary" id="btnStartSimpleMode" style="width: 100%; padding: 12px; font-weight: 700; border-radius: var(--radius-md);">Start Simple Mode</button>
       </div>
     </div>
   </div>

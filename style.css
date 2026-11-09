@@ -7419,6 +7419,213 @@ body {
   font-size: 0.8rem;
 }
 
+/* ==========================================================================
+   Simple Mode vs Advanced Mode Toggle & Presets
+   ========================================================================== */
+
+.mode-slider-wrap {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.mode-slider-track {
+  width: 96px;
+  height: 32px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.mode-slider-thumb {
+  height: 26px;
+  min-width: 66px;
+  padding: 0 10px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 2px;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.mode-slider-label {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-main);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: color 0.22s ease;
+}
+
+/* Simple Mode state: slides knob to the right and glows neon */
+.mode-slider-track.is-simple {
+  border-color: rgba(0, 255, 136, 0.35);
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.mode-slider-track.is-simple .mode-slider-thumb {
+  transform: translateX(24px);
+  background: #0d1a14;
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.35);
+}
+
+.mode-slider-track.is-simple .mode-slider-label {
+  color: var(--primary);
+}
+
+[data-theme="light"] .mode-slider-track {
+  background: #e2e8f0;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .mode-slider-thumb {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .mode-slider-track.is-simple {
+  background: rgba(5, 150, 105, 0.12);
+  border-color: #059669;
+}
+
+[data-theme="light"] .mode-slider-track.is-simple .mode-slider-thumb {
+  background: #ffffff;
+  border-color: #059669;
+  box-shadow: 0 0 8px rgba(5, 150, 105, 0.25);
+}
+
+[data-theme="light"] .mode-slider-track.is-simple .mode-slider-label {
+  color: #065f46;
+}
+
+/* Simple Mode Setup & Presets Modal */
+.simple-modal-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.simple-presets-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.simple-preset-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.simple-preset-card:active {
+  transform: scale(0.98);
+}
+
+.simple-preset-card.active {
+  border-color: var(--primary);
+  background: rgba(0, 255, 136, 0.08);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.15);
+}
+
+.simple-preset-icon {
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.simple-preset-info {
+  flex: 1;
+}
+
+.simple-preset-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.simple-preset-desc {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.simple-preset-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.simple-preset-card.active .simple-preset-radio {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 3px var(--bg-surface);
+}
+
+.simple-custom-params {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed var(--border-subtle);
+}
+
+/* Visibility toggling when Simple Mode is active */
+body.simple-mode-active #scheduleModeSegment,
+body.simple-mode-active #calendarScheduleModeSegment,
+body.simple-mode-active #todayFinishLine,
+body.simple-mode-active #calendarFinishLine,
+body.simple-mode-active #addTaskSyncGroup,
+body.simple-mode-active #editTaskSyncGroup,
+body.simple-mode-active .time-span-row,
+body.simple-mode-active #btnDrawerAddTodo,
+body.simple-mode-active #btnCalendarAddTodo,
+body.simple-mode-active #drawerAdvancedActions,
+body.simple-mode-active #calendarAdvancedActions {
+  display: none !important;
+}
+
+body.simple-mode-active #drawerSimpleActions,
+body.simple-mode-active #calendarSimpleActions {
+  display: flex !important;
+}
+
+.drawer-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+
 
 
 

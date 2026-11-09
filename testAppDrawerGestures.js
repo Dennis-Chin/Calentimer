@@ -315,6 +315,8 @@ const seedHiddenModals = [
   'installAppModalBackdrop',
   'calendarConnectModalBackdrop',
   'confirmSyncNowModalBackdrop',
+  'confirmModeSwitchModalBackdrop',
+  'simpleModeModalBackdrop',
   'insightsModalBackdrop'
 ];
 seedHiddenModals.forEach(id => {

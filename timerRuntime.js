@@ -32,6 +32,7 @@ export class TimerRuntime {
   constructor(config = {}) {
     this.hardStop = config.hardStop || null;
     this.isHardStopEnabled = config.isHardStopEnabled !== undefined ? Boolean(config.isHardStopEnabled) : true;
+    this.isLoopEnabled = config.isLoopEnabled !== undefined ? Boolean(config.isLoopEnabled) : false;
     this.initialTasks = config.tasks ? JSON.parse(JSON.stringify(config.tasks)) : [];
     this.sortBy = config.sortBy || null;
     this.options = config.options || {};
@@ -101,6 +102,14 @@ export class TimerRuntime {
         }
       }
     }
+  }
+
+  /**
+   * Sets whether the timer continuously loops through its schedule.
+   * @param {boolean} enabled
+   */
+  setLoopEnabled(enabled) {
+    this.isLoopEnabled = Boolean(enabled);
   }
 
   // ==========================================
@@ -927,6 +936,34 @@ export class TimerRuntime {
       this.activeTaskIndex++;
     }
     if (this.activeTaskIndex >= tasks.length) {
+      if (this.isLoopEnabled && tasks.length > 0) {
+        // Continuous Loop: reset task completion flags and loop back to the start
+        this.activeTaskIndex = 0;
+        this.initialTasks.forEach(function(t) {
+          if (t) {
+            t.isCompleted = false;
+            t.manualCompleted = false;
+            if (typeof taskStore !== 'undefined' && typeof taskStore.updateTask === 'function') {
+              taskStore.updateTask(t.id, { isCompleted: false, manualCompleted: false });
+            }
+          }
+        });
+        tasks.forEach(function(t) {
+          if (t) {
+            t.isCompleted = false;
+            t.manualCompleted = false;
+          }
+        });
+        this.recalculate();
+        this._emit('loopRestarted', { schedule: this.currentSchedule });
+        if (this.status === TimerStatus.RUNNING) {
+          this._startTask(0);
+        } else {
+          this._setStatus(TimerStatus.IDLE);
+        }
+        return;
+      }
+
       this._stopTicker();
       this._setStatus(TimerStatus.COMPLETED);
       this._emit('allTasksCompleted', {});

@@ -223,6 +223,18 @@ window.refreshAppScheduleFromStore = refreshAppScheduleFromStore;
 
 function initApp() {
   try {
+    const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
+      ? taskStore.getAppMode()
+      : 'advanced';
+    const isSimpleMode = currentMode === 'simple';
+    if (document.body) {
+      document.body.classList.toggle('simple-mode-active', isSimpleMode);
+    }
+    const modeSliderTrack = document.getElementById('modeSliderTrack');
+    const modeSliderLabel = document.getElementById('modeSliderLabel');
+    if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimpleMode);
+    if (modeSliderLabel) modeSliderLabel.textContent = isSimpleMode ? 'Simple' : 'Advanced';
+
     taskStore.syncScheduleAndCalendar();
 
     const savedHardStop = taskStore.getHardStop();
@@ -237,11 +249,12 @@ function initApp() {
 
     runtime = new TimerRuntime({
       hardStop: savedHardStop,
-      tasks: tasks
+      tasks: tasks,
+      isLoopEnabled: isSimpleMode && typeof taskStore.getSimpleLoopEnabled === 'function' ? taskStore.getSimpleLoopEnabled() : false
     });
     window.runtime = runtime;
-    runtime.setHardStopEnabled(isHardStopEnabled);
-    updateHardStopPillsUI(isHardStopEnabled);
+    runtime.setHardStopEnabled(isSimpleMode ? false : isHardStopEnabled);
+    updateHardStopPillsUI(isSimpleMode ? false : isHardStopEnabled);
 
     initTheme();
     renderDialTicks();
@@ -647,6 +660,18 @@ function setupRuntimeEvents() {
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
       calendarView.render();
     }
+  });
+
+  runtime.on('loopRestarted', (data) => {
+    updateActiveTaskDisplay();
+    updateTotalMinutesDisplay();
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
+    audioManager.playChime();
+    mobileServices.hapticTap();
+    showToastNotification('🔁 Simple Mode schedule looped to start');
   });
 
   runtime.on('scheduleUpdate', (schedule) => {
@@ -5307,6 +5332,10 @@ function openAddTaskModal(defaultType = 'work', prefillData = null) {
     if (inputTitle) inputTitle.value = '';
   }
 
+  if (prefillData && prefillData.category) {
+    if (inputCat) inputCat.value = prefillData.category;
+  }
+
   if (prefillData && prefillData.emoji) {
     currentAddTaskEmoji = prefillData.emoji;
   } else {
@@ -9558,6 +9587,428 @@ function setupNavigationAndModals() {
   setupPWAInstallHandlers();
 
   // ==========================================
+  // Simple Mode & Header Slider Controller
+  // ==========================================
+  function updateSliderDisplay(mode) {
+    const isSimple = mode === 'simple';
+    const modeSliderTrack = document.getElementById('modeSliderTrack');
+    const modeSliderLabel = document.getElementById('modeSliderLabel');
+    if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimple);
+    if (modeSliderLabel) modeSliderLabel.textContent = isSimple ? 'Simple' : 'Advanced';
+  }
+  window.updateSliderDisplay = updateSliderDisplay;
+
+  function switchAppMode(targetMode) {
+    if (!runtime) return;
+
+    // 1. Snapshot current mode's active timer session
+    const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
+      ? taskStore.getAppMode()
+      : 'advanced';
+    const currentSession = runtime.exportSessionState();
+    if (currentMode === 'simple') {
+      if (typeof taskStore.saveSimpleTimerSession === 'function') {
+        taskStore.saveSimpleTimerSession(currentSession);
+      }
+    } else {
+      if (typeof taskStore.saveAdvancedTimerSession === 'function') {
+        taskStore.saveAdvancedTimerSession(currentSession);
+      }
+    }
+
+    // 2. Stop running wheel animation and alarms for outgoing mode
+    stopContinuousWheelAnimation();
+
+    // 3. Update store mode
+    if (typeof taskStore.setAppMode === 'function') {
+      taskStore.setAppMode(targetMode);
+    }
+    const isSimple = targetMode === 'simple';
+
+    // 4. Update body class and header slider
+    if (document.body) {
+      document.body.classList.toggle('simple-mode-active', isSimple);
+    }
+    updateSliderDisplay(targetMode);
+
+    // 5. Update runtime mode-specific configurations
+    if (isSimple) {
+      const loopEnabled = (typeof taskStore.getSimpleLoopEnabled === 'function')
+        ? taskStore.getSimpleLoopEnabled()
+        : true;
+      runtime.setLoopEnabled(loopEnabled);
+      runtime.setHardStopEnabled(false);
+      updateHardStopPillsUI(false);
+    } else {
+      runtime.setLoopEnabled(false);
+      const advHardStop = (typeof taskStore.getHardStopEnabled === 'function')
+        ? taskStore.getHardStopEnabled()
+        : true;
+      runtime.setHardStopEnabled(advHardStop);
+      updateHardStopPillsUI(advHardStop);
+    }
+
+    // 6. Reset runtime and load new mode's tasks
+    const newTasks = taskStore.getTasks();
+    runtime.initialTasks = newTasks;
+    runtime.reset();
+
+    // 7. Check if target mode has a saved active session to restore
+    const savedTargetSession = (typeof taskStore.getTimerSession === 'function')
+      ? taskStore.getTimerSession()
+      : null;
+    let restored = false;
+    if (savedTargetSession) {
+      restored = runtime.restoreSessionState(savedTargetSession);
+    }
+
+    // 8. Recalculate schedule & refresh all UI elements
+    runtime.recalculate();
+    updateScheduleUI(runtime.currentSchedule);
+    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || newTasks);
+    renderCalendarModal();
+    updateActiveTaskDisplay();
+    updateTotalMinutesDisplay();
+    updateResetButtonUI();
+    if (typeof updateTimespansButtonUI === 'function') updateTimespansButtonUI();
+
+    const activeTask = runtime.getActiveTask();
+    const durSec = (restored && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED))
+      ? runtime.getRemainingSeconds()
+      : (((activeTask ? (activeTask.allocatedDuration || activeTask.plannedDuration) : 0) || 25) * 60);
+
+    renderClockTime(durSec);
+    const progress = (restored && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED))
+      ? runtime.getProgress()
+      : 0;
+    updateWheelProgress(progress);
+    updateFinishEarlyButtonText(durSec);
+
+    if (restored && runtime.status === TimerStatus.RUNNING) {
+      iconPlay.classList.add('hidden');
+      iconPause.classList.remove('hidden');
+      startContinuousWheelAnimation();
+    } else {
+      iconPlay.classList.remove('hidden');
+      iconPause.classList.add('hidden');
+      stopContinuousWheelAnimation();
+    }
+
+    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
+      calendarView.render();
+    }
+
+    // 9. Sync profile to cloud if connected
+    if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.saveCloudProfile === 'function') {
+      calendarSyncService.saveCloudProfile().catch(() => {});
+    }
+
+    mobileServices.hapticTap();
+    showToastNotification(isSimple ? '⚡ Switched to Simple Mode' : '🚀 Switched to Advanced Mode');
+  }
+  window.switchAppMode = switchAppMode;
+
+  function setupSimpleModeAndSlider() {
+    const modeSliderWrap = document.getElementById('modeSliderWrap');
+
+    const confirmModeSwitchModalBackdrop = document.getElementById('confirmModeSwitchModalBackdrop');
+    const confirmModeSwitchIcon = document.getElementById('confirmModeSwitchIcon');
+    const confirmModeSwitchTitle = document.getElementById('confirmModeSwitchTitle');
+    const confirmModeSwitchDesc = document.getElementById('confirmModeSwitchDesc');
+    const btnCancelModeSwitch = document.getElementById('btnCancelModeSwitch');
+    const btnConfirmModeSwitch = document.getElementById('btnConfirmModeSwitch');
+
+    const simpleModeModalBackdrop = document.getElementById('simpleModeModalBackdrop');
+    const btnCloseSimpleModeModal = document.getElementById('btnCloseSimpleModeModal');
+    const btnStartSimpleMode = document.getElementById('btnStartSimpleMode');
+    const simplePresetsGrid = document.getElementById('simplePresetsGrid');
+    const simpleCustomParams = document.getElementById('simpleCustomParams');
+    const toggleSimpleLoop = document.getElementById('toggleSimpleLoop');
+
+    let pendingTargetMode = null;
+    let selectedPresetKey = (typeof taskStore.getSimplePreset === 'function')
+      ? taskStore.getSimplePreset()
+      : 'pomodoro';
+
+    function promptModeSwitch(targetMode) {
+      pendingTargetMode = targetMode;
+      const isTargetSimple = targetMode === 'simple';
+      const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+
+      if (confirmModeSwitchIcon) {
+        confirmModeSwitchIcon.textContent = isTargetSimple ? '⚡' : '🚀';
+      }
+      if (confirmModeSwitchTitle) {
+        confirmModeSwitchTitle.textContent = isTargetSimple ? 'Switch to Simple Mode?' : 'Switch to Advanced Mode?';
+      }
+      if (confirmModeSwitchDesc) {
+        if (isRunning) {
+          confirmModeSwitchDesc.textContent = isTargetSimple
+            ? 'Your active timer will pause and be preserved for Advanced Mode. Switch to Simple focus mode?'
+            : 'Your active timer will pause and be preserved for Simple Mode. Switch to Advanced Mode?';
+        } else {
+          confirmModeSwitchDesc.textContent = isTargetSimple
+            ? 'Switch to Simple Mode? Your schedule, calendar events, and settings will remain safely saved in Advanced Mode.'
+            : 'Switch back to Advanced Mode? Your full daily schedule and calendar settings will be restored.';
+        }
+      }
+
+      ensureHistoryBuffer();
+      if (confirmModeSwitchModalBackdrop) {
+        confirmModeSwitchModalBackdrop.classList.remove('hidden');
+      }
+      mobileServices.hapticTap();
+    }
+
+    function openSimplePresetsModal() {
+      ensureHistoryBuffer();
+      selectedPresetKey = (typeof taskStore.getSimplePreset === 'function')
+        ? taskStore.getSimplePreset()
+        : 'pomodoro';
+
+      if (simplePresetsGrid) {
+        const cards = simplePresetsGrid.querySelectorAll('.simple-preset-card');
+        cards.forEach(c => {
+          const key = c.getAttribute('data-preset');
+          c.classList.toggle('active', key === selectedPresetKey);
+        });
+      }
+      if (simpleCustomParams) {
+        simpleCustomParams.classList.toggle('hidden', selectedPresetKey !== 'custom');
+        const customCfg = (typeof taskStore.getSimpleCustomConfig === 'function')
+          ? taskStore.getSimpleCustomConfig()
+          : { focusMinutes: 30, restMinutes: 5, cycles: 3 };
+        const inFocus = document.getElementById('simpleCustomFocusMin');
+        const inRest = document.getElementById('simpleCustomRestMin');
+        const inCycles = document.getElementById('simpleCustomCycles');
+        if (inFocus) inFocus.value = customCfg.focusMinutes;
+        if (inRest) inRest.value = customCfg.restMinutes;
+        if (inCycles) inCycles.value = customCfg.cycles;
+      }
+      if (toggleSimpleLoop && typeof taskStore.getSimpleLoopEnabled === 'function') {
+        toggleSimpleLoop.checked = taskStore.getSimpleLoopEnabled();
+      }
+      if (simpleModeModalBackdrop) {
+        simpleModeModalBackdrop.classList.remove('hidden');
+      }
+      mobileServices.hapticTap();
+    }
+
+    function closeSimplePresetsModal() {
+      if (simpleModeModalBackdrop) {
+        simpleModeModalBackdrop.classList.add('hidden');
+      }
+    }
+
+    function closeConfirmModeSwitchModal() {
+      if (confirmModeSwitchModalBackdrop) {
+        confirmModeSwitchModalBackdrop.classList.add('hidden');
+      }
+      pendingTargetMode = null;
+    }
+
+    // Preset Card Clicks
+    if (simplePresetsGrid) {
+      const cards = simplePresetsGrid.querySelectorAll('.simple-preset-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => c.classList.remove('active'));
+          card.classList.add('active');
+          selectedPresetKey = card.getAttribute('data-preset');
+          if (simpleCustomParams) {
+            simpleCustomParams.classList.toggle('hidden', selectedPresetKey !== 'custom');
+          }
+          mobileServices.hapticTap();
+        });
+      });
+    }
+
+    // Start Simple Mode / Apply Preset Button
+    if (btnStartSimpleMode) {
+      btnStartSimpleMode.addEventListener('click', () => {
+        const loopVal = toggleSimpleLoop ? Boolean(toggleSimpleLoop.checked) : true;
+        if (typeof taskStore.setSimpleLoopEnabled === 'function') {
+          taskStore.setSimpleLoopEnabled(loopVal);
+        }
+        if (typeof taskStore.setSimplePreset === 'function') {
+          taskStore.setSimplePreset(selectedPresetKey);
+        }
+
+        let customCfg = null;
+        if (selectedPresetKey === 'custom') {
+          const inFocus = document.getElementById('simpleCustomFocusMin');
+          const inRest = document.getElementById('simpleCustomRestMin');
+          const inCycles = document.getElementById('simpleCustomCycles');
+          customCfg = {
+            focusMinutes: inFocus ? Math.max(1, parseInt(inFocus.value, 10) || 30) : 30,
+            restMinutes: inRest ? Math.max(0, parseInt(inRest.value, 10) || 5) : 5,
+            cycles: inCycles ? Math.max(1, Math.min(24, parseInt(inCycles.value, 10) || 3)) : 3
+          };
+          if (typeof taskStore.setSimpleCustomConfig === 'function') {
+            taskStore.setSimpleCustomConfig(customCfg);
+          }
+        }
+
+        const generated = (typeof taskStore.generatePresetTasks === 'function')
+          ? taskStore.generatePresetTasks(selectedPresetKey, customCfg)
+          : [];
+        if (typeof taskStore.saveSimpleTasks === 'function') {
+          taskStore.saveSimpleTasks(generated);
+        }
+        if (typeof taskStore.setSimpleConfigured === 'function') {
+          taskStore.setSimpleConfigured(true);
+        }
+
+        closeSimplePresetsModal();
+
+        const curMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
+        if (curMode === 'simple') {
+          if (runtime) {
+            runtime.initialTasks = taskStore.getTasks();
+            runtime.reset();
+            runtime.setLoopEnabled(loopVal);
+            runtime.recalculate();
+            updateActiveTaskDisplay();
+            renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || generated);
+            renderCalendarModal();
+            updateScheduleUI(runtime.currentSchedule);
+            renderClockTime(runtime.getRemainingSeconds());
+            updateWheelProgress(0);
+            updateFinishEarlyButtonText(runtime.getRemainingSeconds());
+          }
+          mobileServices.hapticTap();
+          showToastNotification('✓ Applied Simple Focus Preset');
+        } else {
+          switchAppMode('simple');
+        }
+
+        if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.saveCloudProfile === 'function') {
+          calendarSyncService.saveCloudProfile().catch(() => {});
+        }
+      });
+    }
+
+    if (btnCloseSimpleModeModal) {
+      btnCloseSimpleModeModal.addEventListener('click', closeSimplePresetsModal);
+    }
+    if (simpleModeModalBackdrop) {
+      simpleModeModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === simpleModeModalBackdrop) closeSimplePresetsModal();
+      });
+    }
+
+    const simpleModalCard = document.getElementById('simpleModeModal');
+    if (simpleModalCard && typeof setupModalPullToDismiss === 'function') {
+      setupModalPullToDismiss(simpleModalCard, closeSimplePresetsModal);
+    }
+
+    // Confirm Modal Actions
+    if (btnCancelModeSwitch) {
+      btnCancelModeSwitch.addEventListener('click', closeConfirmModeSwitchModal);
+    }
+    if (confirmModeSwitchModalBackdrop) {
+      confirmModeSwitchModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === confirmModeSwitchModalBackdrop) closeConfirmModeSwitchModal();
+      });
+    }
+    if (btnConfirmModeSwitch) {
+      btnConfirmModeSwitch.addEventListener('click', () => {
+        const target = pendingTargetMode;
+        closeConfirmModeSwitchModal();
+        if (!target) return;
+
+        const isConfigured = (typeof taskStore.getSimpleConfigured === 'function')
+          ? taskStore.getSimpleConfigured()
+          : false;
+
+        if (target === 'simple' && !isConfigured) {
+          openSimplePresetsModal();
+        } else {
+          switchAppMode(target);
+        }
+      });
+    }
+
+    // Slider Toggle Interactions (Tap or Swipe)
+    if (modeSliderWrap) {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let isSliderSwiping = false;
+
+      modeSliderWrap.addEventListener('touchstart', (e) => {
+        if (!e.touches || e.touches.length !== 1) return;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        isSliderSwiping = false;
+      }, { passive: true });
+
+      modeSliderWrap.addEventListener('touchmove', (e) => {
+        if (!e.touches || e.touches.length !== 1) return;
+        const diffX = e.touches[0].clientX - touchStartX;
+        const diffY = e.touches[0].clientY - touchStartY;
+        if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY)) {
+          isSliderSwiping = true;
+        }
+      }, { passive: true });
+
+      modeSliderWrap.addEventListener('touchend', (e) => {
+        const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
+        const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
+        if (isSliderSwiping) {
+          promptModeSwitch(targetMode);
+          isSliderSwiping = false;
+          e.preventDefault();
+        }
+      });
+
+      modeSliderWrap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
+        const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
+        promptModeSwitch(targetMode);
+      });
+
+      modeSliderWrap.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
+          const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
+          promptModeSwitch(targetMode);
+        }
+      });
+    }
+
+    // Simple Mode Quick Action Footer Buttons in Task Drawer & Today's Schedule Modal
+    const wireSimpleAction = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fn();
+      });
+    };
+
+    wireSimpleAction('btnDrawerSimpleAddFocus', () => {
+      openAddTaskModal('work', { title: 'Focus', category: 'Focus', emoji: '🎯' });
+    });
+    wireSimpleAction('btnCalendarSimpleAddFocus', () => {
+      openAddTaskModal('work', { title: 'Focus', category: 'Focus', emoji: '🎯' });
+    });
+    wireSimpleAction('btnDrawerSimpleAddRest', () => {
+      openAddTaskModal('break', { title: 'Rest', category: 'Rest', emoji: '☕' });
+    });
+    wireSimpleAction('btnCalendarSimpleAddRest', () => {
+      openAddTaskModal('break', { title: 'Rest', category: 'Rest', emoji: '☕' });
+    });
+    wireSimpleAction('btnDrawerSimplePresets', openSimplePresetsModal);
+    wireSimpleAction('btnCalendarSimplePresets', openSimplePresetsModal);
+
+    window.openSimplePresetsModal = openSimplePresetsModal;
+    window.setupSimpleModeAndSlider = setupSimpleModeAndSlider;
+  }
+  window.setupSimpleModeAndSlider = setupSimpleModeAndSlider;
+  setupSimpleModeAndSlider();
+
+  // ==========================================
   // Confirm Exit App Modal & Mobile Back Button
   // ==========================================
   const confirmExitAppModalBackdrop = document.getElementById('confirmExitAppModalBackdrop');
@@ -9643,6 +10094,8 @@ function setupNavigationAndModals() {
 
     // 2. Innermost Dialogs & Pickers (close the child modal first before closing any parent tab)
     const subModals = [
+      'confirmModeSwitchModalBackdrop',
+      'simpleModeModalBackdrop',
       'calendarConnectModalBackdrop',
       'confirmSyncNowModalBackdrop',
       'categoryColorPaletteModalBackdrop',
@@ -9663,7 +10116,7 @@ function setupNavigationAndModals() {
     for (let s = 0; s < subModals.length; s++) {
       const el = document.getElementById(subModals[s]);
       if (el && !el.classList.contains('hidden')) {
-        const closeBtn = el.querySelector('.btn-close-modal, .btn-confirm-cancel, .btn-modal-cancel-danger, #btnCloseCalendarConnectModal, #btnSkipConnect, #btnDismissSyncNow, #btnCloseCalEventModal, #btnCloseTaskEdit, #btnCloseAddTaskModal, #btnCloseAddTodoModal');
+        const closeBtn = el.querySelector('.btn-close-modal, .btn-confirm-cancel, .btn-modal-cancel-danger, #btnCloseSimpleModeModal, #btnCancelModeSwitch, #btnCloseCalendarConnectModal, #btnSkipConnect, #btnDismissSyncNow, #btnCloseCalEventModal, #btnCloseTaskEdit, #btnCloseAddTaskModal, #btnCloseAddTodoModal');
         if (closeBtn) {
           closeBtn.click();
         } else {

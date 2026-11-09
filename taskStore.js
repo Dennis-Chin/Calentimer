@@ -40,7 +40,15 @@ const STORAGE_KEYS = {
   CATEGORY_CUSTOM_COLORS: 'calentimer_category_custom_colors_v1',
   TIMER_SESSION: 'calentimer_timer_session_v1',
   TELEMETRY_ENABLED: 'calentimer_telemetry_enabled_v1',
-  ANON_CLIENT_ID: 'calentimer_anon_client_id_v1'
+  ANON_CLIENT_ID: 'calentimer_anon_client_id_v1',
+  APP_MODE: 'calentimer_app_mode_v1',
+  SIMPLE_TASKS: 'calentimer_simple_tasks_v1',
+  SIMPLE_SESSION: 'calentimer_simple_session_v1',
+  SIMPLE_CONFIGURED: 'calentimer_simple_configured_v1',
+  SIMPLE_PRESET: 'calentimer_simple_preset_v1',
+  SIMPLE_LOOP: 'calentimer_simple_loop_v1',
+  SIMPLE_CUSTOM_CFG: 'calentimer_simple_custom_cfg_v1',
+  CLOUD_PROFILE: 'calentimer_cloud_profile_v1'
 };
 
 const memoryStorage = {};
@@ -219,10 +227,231 @@ export class TaskStore {
   }
 
   /**
-   * Retrieves tasks from localStorage, or defaults.
+   * Retrieves active application mode ('advanced' or 'simple').
+   * Default is 'advanced'.
+   * @returns {string}
+   */
+  getAppMode() {
+    try {
+      const mode = safeGetItem(STORAGE_KEYS.APP_MODE);
+      return mode === 'simple' ? 'simple' : 'advanced';
+    } catch (_) {
+      return 'advanced';
+    }
+  }
+
+  /**
+   * Sets active application mode ('advanced' or 'simple').
+   * @param {string} mode
+   */
+  setAppMode(mode) {
+    const cleanMode = mode === 'simple' ? 'simple' : 'advanced';
+    safeSetItem(STORAGE_KEYS.APP_MODE, cleanMode);
+    this._notify();
+  }
+
+  /**
+   * Checks whether the user has previously configured Simple Mode.
+   * If false, opening Simple Mode prompts the preset setup modal.
+   * @returns {boolean}
+   */
+  getSimpleConfigured() {
+    try {
+      return safeGetItem(STORAGE_KEYS.SIMPLE_CONFIGURED) === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Sets whether Simple Mode has been configured.
+   * @param {boolean} configured
+   */
+  setSimpleConfigured(configured) {
+    safeSetItem(STORAGE_KEYS.SIMPLE_CONFIGURED, configured ? 'true' : 'false');
+  }
+
+  /**
+   * Retrieves current active simple preset key.
+   * @returns {string} ('pomodoro', 'one_hour', 'pure_focus', 'focus_break', 'short_sprints', 'custom')
+   */
+  getSimplePreset() {
+    try {
+      const p = safeGetItem(STORAGE_KEYS.SIMPLE_PRESET);
+      return p ? p : 'pomodoro';
+    } catch (_) {
+      return 'pomodoro';
+    }
+  }
+
+  /**
+   * Sets active simple preset key.
+   * @param {string} presetKey
+   */
+  setSimplePreset(presetKey) {
+    safeSetItem(STORAGE_KEYS.SIMPLE_PRESET, presetKey ? String(presetKey).trim() : 'pomodoro');
+  }
+
+  /**
+   * Retrieves whether Simple Mode loops continuously back to the start.
+   * Default is true.
+   * @returns {boolean}
+   */
+  getSimpleLoopEnabled() {
+    try {
+      return safeGetItem(STORAGE_KEYS.SIMPLE_LOOP) !== 'false';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /**
+   * Sets whether Simple Mode loops continuously.
+   * @param {boolean} enabled
+   */
+  setSimpleLoopEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.SIMPLE_LOOP, enabled ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Retrieves custom preset configuration.
+   * @returns {object}
+   */
+  getSimpleCustomConfig() {
+    try {
+      const raw = safeGetItem(STORAGE_KEYS.SIMPLE_CUSTOM_CFG);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return { focusDuration: 30, restDuration: 5, cycles: 3 };
+  }
+
+  /**
+   * Persists custom preset configuration.
+   * @param {object} cfg
+   */
+  setSimpleCustomConfig(cfg) {
+    try {
+      const clean = (cfg && typeof cfg === 'object') ? cfg : { focusDuration: 30, restDuration: 5, cycles: 3 };
+      safeSetItem(STORAGE_KEYS.SIMPLE_CUSTOM_CFG, JSON.stringify(clean));
+    } catch (_) {}
+  }
+
+  /**
+   * Generates a clean sequence of Focus and Rest task blocks from a preset.
+   * @param {string} presetKey
+   * @param {object} [customCfg]
    * @returns {Array<object>}
    */
-  getTasks() {
+  generatePresetTasks(presetKey, customCfg) {
+    const key = presetKey || 'pomodoro';
+    let focusMin = 25;
+    let restMin = 5;
+    let cycles = 4;
+    let hasBreaks = true;
+
+    if (key === 'pure_focus') {
+      focusMin = (customCfg && customCfg.focusDuration) ? Math.max(1, parseInt(customCfg.focusDuration, 10)) : 50;
+      restMin = 0;
+      cycles = (customCfg && customCfg.cycles) ? Math.max(1, parseInt(customCfg.cycles, 10)) : 1;
+      hasBreaks = false;
+    } else if (key === 'focus_break') {
+      focusMin = (customCfg && customCfg.focusDuration) ? Math.max(1, parseInt(customCfg.focusDuration, 10)) : 25;
+      restMin = (customCfg && typeof customCfg.restDuration !== 'undefined') ? Math.max(1, parseInt(customCfg.restDuration, 10)) : 5;
+      cycles = 1;
+      hasBreaks = true;
+    } else if (key === 'pomodoro') {
+      focusMin = 25;
+      restMin = 5;
+      cycles = 4;
+      hasBreaks = true;
+    } else if (key === 'one_hour') {
+      focusMin = 60;
+      restMin = 10;
+      cycles = 3;
+      hasBreaks = true;
+    } else if (key === 'short_sprints') {
+      focusMin = 15;
+      restMin = 3;
+      cycles = 4;
+      hasBreaks = true;
+    } else if (key === 'custom') {
+      const cfg = customCfg || this.getSimpleCustomConfig();
+      const rawFocus = (cfg && (typeof cfg.focusMinutes !== 'undefined' ? cfg.focusMinutes : cfg.focusDuration));
+      const rawRest = (cfg && (typeof cfg.restMinutes !== 'undefined' ? cfg.restMinutes : cfg.restDuration));
+      focusMin = rawFocus ? Math.max(1, parseInt(rawFocus, 10)) : 30;
+      restMin = (typeof rawRest !== 'undefined' && rawRest !== null) ? Math.max(0, parseInt(rawRest, 10)) : 5;
+      cycles = (cfg && cfg.cycles) ? Math.max(1, parseInt(cfg.cycles, 10)) : 3;
+      hasBreaks = restMin > 0;
+    }
+
+    const tasks = [];
+    for (let c = 1; c <= cycles; c++) {
+      const focusTitle = cycles > 1 ? ('Focus ' + c) : 'Focus';
+      tasks.push({
+        id: 'simple-focus-' + c + '-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+        title: focusTitle,
+        plannedDuration: focusMin,
+        isLocked: false,
+        useTimeBank: false,
+        category: 'Focus',
+        emoji: '🎯'
+      });
+      if (hasBreaks && restMin > 0) {
+        const restTitle = cycles > 1 ? ('Rest ' + c) : 'Rest';
+        tasks.push({
+          id: 'simple-rest-' + c + '-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
+          title: restTitle,
+          plannedDuration: restMin,
+          isLocked: false,
+          useTimeBank: false,
+          category: 'Rest',
+          emoji: '☕'
+        });
+      }
+    }
+    return tasks;
+  }
+
+  /**
+   * Retrieves Simple Mode tasks.
+   * If none saved yet, creates defaults from active preset.
+   * @returns {Array<object>}
+   */
+  getSimpleTasks() {
+    try {
+      const data = safeGetItem(STORAGE_KEYS.SIMPLE_TASKS);
+      if (data !== null) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return this.generatePresetTasks(this.getSimplePreset(), this.getSimpleCustomConfig());
+  }
+
+  /**
+   * Persists Simple Mode tasks.
+   * @param {Array<object>} tasks
+   */
+  saveSimpleTasks(tasks) {
+    try {
+      safeSetItem(STORAGE_KEYS.SIMPLE_TASKS, JSON.stringify(tasks));
+      this._notify();
+    } catch (e) {
+      console.error('Could not save simple tasks:', e);
+    }
+  }
+
+  /**
+   * Retrieves Advanced Mode tasks.
+   * @returns {Array<object>}
+   */
+  getAdvancedTasks() {
     try {
       const data = safeGetItem(STORAGE_KEYS.TASKS);
       if (data !== null) {
@@ -238,16 +467,39 @@ export class TaskStore {
   }
 
   /**
-   * Persists task list.
-   * @param {Array<object>} tasks 
+   * Persists Advanced Mode tasks.
+   * @param {Array<object>} tasks
    */
-  saveTasks(tasks) {
+  saveAdvancedTasks(tasks) {
     try {
       safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
       this._notify();
     } catch (e) {
-      console.error('Could not save tasks to localStorage:', e);
+      console.error('Could not save advanced tasks to localStorage:', e);
     }
+  }
+
+  /**
+   * Retrieves tasks for the currently active mode ('advanced' or 'simple').
+   * Fully isolates the tasks between modes.
+   * @returns {Array<object>}
+   */
+  getTasks() {
+    if (this.getAppMode() === 'simple') {
+      return this.getSimpleTasks();
+    }
+    return this.getAdvancedTasks();
+  }
+
+  /**
+   * Persists tasks for the currently active mode ('advanced' or 'simple').
+   * @param {Array<object>} tasks 
+   */
+  saveTasks(tasks) {
+    if (this.getAppMode() === 'simple') {
+      return this.saveSimpleTasks(tasks);
+    }
+    return this.saveAdvancedTasks(tasks);
   }
 
   /**
@@ -2189,22 +2441,23 @@ export class TaskStore {
   }
 
   /**
-   * Persists active timer session (active task, status, elapsed milliseconds, task duration).
+   * Persists active timer session for the currently active mode.
    * @param {object} session
    */
   saveTimerSession(session) {
-    if (session && typeof session === 'object') {
-      safeSetItem(STORAGE_KEYS.TIMER_SESSION, JSON.stringify(session));
-    }
+    if (!session || typeof session !== 'object') return;
+    const key = this.getAppMode() === 'simple' ? STORAGE_KEYS.SIMPLE_SESSION : STORAGE_KEYS.TIMER_SESSION;
+    safeSetItem(key, JSON.stringify(session));
   }
 
   /**
-   * Retrieves active timer session from storage.
+   * Retrieves active timer session from storage for the currently active mode.
    * @returns {object|null}
    */
   getTimerSession() {
     try {
-      const val = safeGetItem(STORAGE_KEYS.TIMER_SESSION);
+      const key = this.getAppMode() === 'simple' ? STORAGE_KEYS.SIMPLE_SESSION : STORAGE_KEYS.TIMER_SESSION;
+      const val = safeGetItem(key);
       if (!val) return null;
       const parsed = JSON.parse(val);
       return (parsed && typeof parsed === 'object') ? parsed : null;
@@ -2214,15 +2467,61 @@ export class TaskStore {
   }
 
   /**
-   * Clears saved timer session from storage.
+   * Clears saved timer session from storage for the currently active mode.
    */
   clearTimerSession() {
+    const key = this.getAppMode() === 'simple' ? STORAGE_KEYS.SIMPLE_SESSION : STORAGE_KEYS.TIMER_SESSION;
     try {
       if (typeof localStorage !== 'undefined' && localStorage !== null) {
-        localStorage.removeItem(STORAGE_KEYS.TIMER_SESSION);
+        localStorage.removeItem(key);
       }
     } catch (_) {}
-    delete memoryStorage[STORAGE_KEYS.TIMER_SESSION];
+    delete memoryStorage[key];
+  }
+
+  /**
+   * Specifically saves an Advanced mode timer session regardless of active mode.
+   * @param {object} session
+   */
+  saveAdvancedTimerSession(session) {
+    if (session && typeof session === 'object') {
+      safeSetItem(STORAGE_KEYS.TIMER_SESSION, JSON.stringify(session));
+    }
+  }
+
+  /**
+   * Specifically saves a Simple mode timer session regardless of active mode.
+   * @param {object} session
+   */
+  saveSimpleTimerSession(session) {
+    if (session && typeof session === 'object') {
+      safeSetItem(STORAGE_KEYS.SIMPLE_SESSION, JSON.stringify(session));
+    }
+  }
+
+  /**
+   * Retrieves the cloud profile containing cross-device preferences.
+   * @returns {object|null}
+   */
+  getCloudProfile() {
+    try {
+      const val = safeGetItem(STORAGE_KEYS.CLOUD_PROFILE);
+      if (!val) return null;
+      const parsed = JSON.parse(val);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Persists cloud profile metadata for cross-device sync.
+   * @param {object} profile
+   */
+  saveCloudProfile(profile) {
+    if (profile && typeof profile === 'object') {
+      safeSetItem(STORAGE_KEYS.CLOUD_PROFILE, JSON.stringify(profile));
+    }
   }
 
   /**
