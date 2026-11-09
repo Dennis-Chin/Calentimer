@@ -1642,17 +1642,18 @@ export class CalendarView {
   _applyEventCardLayout(card, heightPx) {
     card.style.height = `${heightPx}px`;
 
-    // When squashed or short duration (height < 38px), always use single-row layout
-    // In this compact mode, category is hidden and timespan+duration are pinned on far right before padlock
-    if (heightPx < 38) {
-      card.classList.add('is-single-row');
+    // When ultra squashed (height < 22px), use ultra-compact single row without emoji or category
+    if (heightPx < 22) {
+      card.classList.add('is-single-row', 'is-ultra-compact');
       card.classList.remove('is-compact-two-line');
+    } else if (heightPx < 38) {
+      card.classList.add('is-single-row');
+      card.classList.remove('is-ultra-compact', 'is-compact-two-line');
     } else if (heightPx < 54) {
-      card.classList.remove('is-single-row');
+      card.classList.remove('is-single-row', 'is-ultra-compact');
       card.classList.add('is-compact-two-line');
     } else {
-      card.classList.remove('is-single-row');
-      card.classList.remove('is-compact-two-line');
+      card.classList.remove('is-single-row', 'is-ultra-compact', 'is-compact-two-line');
     }
   }
 
@@ -1685,7 +1686,7 @@ export class CalendarView {
           if (dur <= 0) dur = 60;
         }
         const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
-        const heightPx = Math.max(24, (dur / 60) * hourHeight);
+        const heightPx = Math.max(10, Math.round(((dur / 60) * hourHeight) - 1));
         card.style.top = `${topPx}px`;
         this._applyEventCardLayout(card, heightPx);
       }
@@ -2253,7 +2254,7 @@ export class CalendarView {
       }
 
       const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
-      const heightPx = Math.max(26, (dur / 60) * hourHeight);
+      const heightPx = Math.max(10, Math.round(((dur / 60) * hourHeight) - 1));
 
       const isLaterOverlap = hasOverlap[j] && (eventCols[j] === 1);
       const isEarlierOverlap = hasOverlap[j] && (eventCols[j] === 0);
@@ -2512,9 +2513,9 @@ export class CalendarView {
         const cardEndHour = endMin / 60;
 
         if (cardEndHour > startHour && cardStartHour < endHour) {
-          const durationMin = Math.max(10, endMin - startMin);
+          const durationMin = Math.max(5, endMin - startMin);
           const top = Math.max(0, (cardStartHour - startHour) * hourHeight) + 1;
-          const height = Math.max(14, ((durationMin / 60) * hourHeight) - 2);
+          const height = Math.max(10, Math.round(((durationMin / 60) * hourHeight) - 2));
 
           const isLaterOverlap = weekHasOverlap[j] && (weekEventCols[j] === 1);
           const isEarlierOverlap = weekHasOverlap[j] && (weekEventCols[j] === 0);
@@ -3327,7 +3328,7 @@ export class CalendarView {
         const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
         const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
         const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
-        const durHeight = Math.max(26, (durMin / 60) * hourHeight);
+        const durHeight = Math.max(10, Math.round(((durMin / 60) * hourHeight) - 1));
 
         if (silhouette.parentNode !== newBody) {
           newBody.appendChild(silhouette);
@@ -3354,6 +3355,9 @@ export class CalendarView {
       if (e.cancelable) e.preventDefault();
       lastClientX = e.touches[0].clientX;
       lastClientY = e.touches[0].clientY;
+      if (Math.hypot(lastClientX - startX, lastClientY - startY) > 8) {
+        hasMoved = true;
+      }
       updateDayDragPosition(lastClientX, lastClientY);
     };
 
@@ -3522,7 +3526,17 @@ export class CalendarView {
       card.style.removeProperty('pointer-events');
       card.style.removeProperty('transition');
 
-      if (!hasMoved) {
+      const hourHeight = this.dayHourHeight || 56;
+      let contRect = container ? container.getBoundingClientRect() : { top: 0 };
+      let cardTopY = (lastClientY - grabOffsetY) - contRect.top + (container ? container.scrollTop : 0) - 14;
+      const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
+      const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+      const targetDateStr = this._formatDateISO(this.selectedDate || this.currentDate);
+      const initialStartMin = this._parseTimeToMinutes(ev.startTime);
+      const movedDist = Math.hypot(lastClientX - startX, lastClientY - startY);
+      const isHoldStill = (!hasMoved && movedDist <= 8 && newStartMin === initialStartMin && targetDateStr === ev.date);
+
+      if (isHoldStill) {
         this.isDraggingEvent = false;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
@@ -3549,12 +3563,6 @@ export class CalendarView {
         silhouette = null;
       }
 
-      const hourHeight = this.dayHourHeight || 56;
-      let contRect = container ? container.getBoundingClientRect() : { top: 0 };
-      let cardTopY = (lastClientY - grabOffsetY) - contRect.top + (container ? container.scrollTop : 0) - 14;
-      const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
-      const newStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
-
       const newStartH = Math.floor(newStartMin / 60);
       const newStartM = newStartMin % 60;
       const newEndTotal = newStartMin + durMin;
@@ -3563,7 +3571,6 @@ export class CalendarView {
 
       const newStartTime = `${String(newStartH).padStart(2, '0')}:${String(newStartM).padStart(2, '0')}`;
       const newEndTime = `${String(newEndH).padStart(2, '0')}:${String(newEndM).padStart(2, '0')}`;
-      const targetDateStr = this._formatDateISO(this.selectedDate || this.currentDate);
 
       const updatedEv = taskStore.updateCalendarEvent(ev.id, {
         date: targetDateStr,
@@ -3910,6 +3917,9 @@ export class CalendarView {
       if (e.cancelable) e.preventDefault();
       lastClientX = e.touches[0].clientX;
       lastClientY = e.touches[0].clientY;
+      if (Math.hypot(lastClientX - startX, lastClientY - startY) > 8) {
+        hasMoved = true;
+      }
       updateWeekDragPosition(lastClientX, lastClientY);
     };
 
@@ -4156,7 +4166,10 @@ export class CalendarView {
       }
       currentOverCol = null;
 
-      if (!hasMoved) {
+      const movedDist = Math.hypot(lastClientX - startX, lastClientY - startY);
+      const isHoldStill = (!hasMoved && movedDist <= 8 && (!dropTarget || (dropTarget.startTime === ev.startTime && (dropTarget.targetDateStr || ev.date) === ev.date)));
+
+      if (isHoldStill) {
         this.isDraggingEvent = false;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);

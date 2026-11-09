@@ -2010,6 +2010,10 @@ body {
   z-index: 2500 !important;
 }
 
+#categoryColorPaletteModalBackdrop {
+  z-index: 2600 !important;
+}
+
 .settings-modal, .calendar-modal {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
@@ -5498,6 +5502,55 @@ body {
   padding: 2px;
 }
 
+/* Squeeze styles for 5-minute / ultra squashed cards (Ultra-Compact Single Row) */
+.day-event-card.is-ultra-compact {
+  padding: 0 4px !important;
+  gap: 3px !important;
+  border-radius: 3px !important;
+  min-height: 0 !important;
+  border-left-width: 3px !important;
+}
+
+.day-event-card.is-ultra-compact .day-event-emoji {
+  display: none !important;
+}
+
+.day-event-card.is-ultra-compact .day-event-content {
+  gap: 3px !important;
+}
+
+.day-event-card.is-ultra-compact .day-event-title {
+  font-size: 0.64rem !important;
+  line-height: 1 !important;
+}
+
+.day-event-card.is-ultra-compact .day-event-meta-line {
+  font-size: 0.58rem !important;
+  line-height: 1 !important;
+  gap: 2px !important;
+}
+
+.day-event-card.is-ultra-compact .event-time-range {
+  font-size: 0.58rem !important;
+}
+
+.day-event-card.is-ultra-compact .event-duration-pill {
+  font-size: 0.56rem !important;
+}
+
+.day-event-card.is-ultra-compact .event-cat-pill {
+  display: none !important;
+}
+
+.day-event-card.is-ultra-compact .cal-event-lock-btn {
+  padding: 0 !important;
+}
+
+.day-event-card.is-ultra-compact .cal-event-lock-btn svg {
+  width: 9px !important;
+  height: 9px !important;
+}
+
 /* Squeeze styles for 30-minute cards (Compact Two-Line Layout with No Top/Bottom Truncation) */
 .day-event-card.is-compact-two-line {
   padding: 2px 6px;
@@ -6978,11 +7031,12 @@ body {
    Category Color Palette Modal & Swatches
    ========================================================================== */
 .category-color-palette-card {
-  max-width: 360px;
-  width: 90%;
-  padding: 18px 20px 22px;
+  max-width: 350px;
+  width: 92%;
+  padding: 18px 18px 22px;
   text-align: left;
   align-items: stretch;
+  box-sizing: border-box;
 }
 
 .palette-header {
@@ -7005,7 +7059,7 @@ body {
   height: 14px;
   border-radius: 50%;
   display: inline-block;
-  box-shadow: 0 0 8px currentColor;
+  box-shadow: 0 0 10px currentColor;
   flex-shrink: 0;
 }
 
@@ -7032,25 +7086,26 @@ body {
 
 .category-color-swatches-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px 8px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px 6px;
   width: 100%;
   justify-items: center;
-  padding: 4px 0;
+  padding: 6px 0;
+  box-sizing: border-box;
 }
 
 @media (max-width: 380px) {
   .category-color-swatches-grid {
-    grid-template-columns: repeat(5, 1fr);
-    gap: 8px 6px;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px 4px;
   }
 }
 
 .color-swatch-btn {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  border: 2.5px solid rgba(255, 255, 255, 0.22);
+  border: 2px solid rgba(255, 255, 255, 0.35);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -7061,11 +7116,12 @@ body {
   -webkit-tap-highlight-color: transparent;
   padding: 0;
   box-sizing: border-box;
+  box-shadow: 0 0 8px currentColor;
 }
 
 .color-swatch-btn:hover {
   transform: scale(1.15);
-  box-shadow: 0 0 12px currentColor;
+  box-shadow: 0 0 16px currentColor;
   border-color: #ffffff;
 }
 
@@ -7076,7 +7132,7 @@ body {
 .color-swatch-btn.is-active-color {
   border-color: #ffffff !important;
   transform: scale(1.18);
-  box-shadow: 0 0 14px currentColor, 0 0 0 3px rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 0 18px currentColor, 0 0 0 3px rgba(255, 255, 255, 0.5) !important;
 }
 
 .color-swatch-btn.is-active-color::after {

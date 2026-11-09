@@ -19,96 +19,95 @@ import { taskStore } from './taskStore.js';
 export const CATEGORY_DEFINITIONS = {
   Break: {
     name: 'Break',
-    color: '#f59e0b', // Warm Amber (strictly reserved for breaks)
+    color: '#ff9500', // Neon Warm Amber (strictly reserved for breaks)
     defaultEmoji: '☕'
   },
   Rest: {
     name: 'Rest',
-    color: '#f59e0b', // Warm Amber (strictly reserved for breaks / rest)
+    color: '#ff9500', // Neon Warm Amber (strictly reserved for breaks / rest)
     defaultEmoji: '☕'
   },
   Study: {
     name: 'Study',
-    color: '#8b5cf6', // Vibrant Purple / Iris
+    color: '#bf00ff', // Bright Neon Purple
     defaultEmoji: '📚'
   },
   Work: {
     name: 'Work',
-    color: '#3b82f6', // Vibrant Electric Blue
+    color: '#00b4ff', // Vibrant Neon Blue
     defaultEmoji: '💼'
   },
   Meeting: {
     name: 'Meeting',
-    color: '#d946ef', // Vivid Fuchsia / Magenta
+    color: '#ff00cc', // Vivid Neon Magenta
     defaultEmoji: '👥'
   },
   Coding: {
     name: 'Coding',
-    color: '#6366f1', // Royal Indigo / Tech
+    color: '#4d4dff', // Neon Electric Indigo
     defaultEmoji: '💻'
   },
   Fitness: {
     name: 'Fitness',
-    color: '#f43f5e', // Bright Rose
+    color: '#ff2d87', // Bright Neon Rose Pink
     defaultEmoji: '🏋️'
   },
   Health: {
     name: 'Health',
-    color: '#e11d48', // Vibrant Crimson / Rose Red (strictly distinct from cyan/light blue active status)
+    color: '#ff1744', // Vibrant Neon Crimson
     defaultEmoji: '🩺'
   },
   Personal: {
     name: 'Personal',
-    color: '#ea580c', // Warm Terracotta / Sunset Orange (strictly distinct from completed green status)
+    color: '#ff5e00', // Neon Sunset Tangerine
     defaultEmoji: '🌿'
   },
   Social: {
     name: 'Social',
-    color: '#ec4899', // Hot Pink
+    color: '#ff2d87', // Neon Hot Pink
     defaultEmoji: '🎉'
   },
   Reading: {
     name: 'Reading',
-    color: '#0284c7', // Sky Blue
+    color: '#00b4ff', // Neon Sky Blue
     defaultEmoji: '📖'
   },
   Travel: {
     name: 'Travel',
-    color: '#a855f7', // Bright Orchid / Purple
+    color: '#7928ca', // Neon Violet
     defaultEmoji: '✈️'
   },
   Food: {
     name: 'Food',
-    color: '#f97316', // Warm Coral Orange
+    color: '#ff5e00', // Neon Coral Orange
     defaultEmoji: '🍱'
   },
   Finance: {
     name: 'Finance',
-    color: '#0d9488', // Deep Teal
+    color: '#00f5d4', // Neon Aqua Teal
     defaultEmoji: '💰'
   },
   General: {
     name: 'General',
-    color: '#6366f1', // Royal Indigo
+    color: '#4d4dff', // Neon Electric Indigo
     defaultEmoji: '📌'
   }
 };
 
-// Curated, high-contrast preset palette for user category color customization
-// Strictly excludes light green (reserved for completed tasks) and light cyan/blue (reserved for active task)
+// Curated, vibrant, high-contrast neon palette for user category color customization (2 rows of 6 equal columns)
 export const PRESET_CATEGORY_COLORS = [
-  '#3b82f6', // Electric Royal Blue
-  '#0284c7', // Sky Blue
-  '#0d9488', // Deep Teal
-  '#f59e0b', // Warm Amber / Gold
-  '#ea580c', // Sunset Orange
-  '#f97316', // Coral Orange
-  '#ef4444', // Red
-  '#f43f5e', // Bright Rose
-  '#ec4899', // Hot Pink
-  '#d946ef', // Vivid Magenta
-  '#8b5cf6', // Vivid Purple
-  '#6366f1'  // Royal Indigo
+  '#00b4ff', // Neon Electric Sky Blue
+  '#00f5d4', // Neon Aqua Teal
+  '#ffe600', // Neon Bright Yellow
+  '#ff9500', // Neon Amber / Orange
+  '#ff5e00', // Neon Electric Tangerine
+  '#ff1744', // Neon Crimson Red
+  '#ff2d87', // Neon Hot Pink
+  '#ff00cc', // Neon Vivid Magenta
+  '#bf00ff', // Neon Electric Purple
+  '#7928ca', // Neon Royal Violet
+  '#4d4dff', // Neon Electric Indigo
+  '#00d4aa'  // Neon Bright Mint
 ];
 
 /**
@@ -123,6 +122,13 @@ export const PRESET_CATEGORY_COLORS = [
 export function sanitizeCategoryColor(hex) {
   if (!hex || typeof hex !== 'string') return CATEGORY_DEFINITIONS.General.color;
   const cleanHex = hex.trim().toLowerCase();
+
+  // Allow preset colors directly
+  for (let p = 0; p < PRESET_CATEGORY_COLORS.length; p++) {
+    if (PRESET_CATEGORY_COLORS[p].toLowerCase() === cleanHex) {
+      return PRESET_CATEGORY_COLORS[p];
+    }
+  }
 
   // Disallowed greys/slates (user removed grey option)
   const greyTones = ['#64748b', '#475569', '#94a3b8', '#334155', '#6b7280', '#9ca3af', '#71717a'];

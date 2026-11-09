@@ -3717,7 +3717,10 @@ let dismissedOverlapPairs = new Set();
 let currentConflictData = null;
 
 function checkActiveTaskTimerConflict(activeTask) {
-  if (!activeTask || !activeTask.startTime || !activeTask.endTime) return;
+  const isSimple = (typeof taskStore !== 'undefined' && typeof taskStore.getSimpleModeEnabled === 'function') && taskStore.getSimpleModeEnabled();
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true;
+  if (isSimple || !isTimespans) return;
+  if (!activeTask || activeTask.isCompleted || !activeTask.startTime || !activeTask.endTime) return;
   const tasks = ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks()) || [];
   if (tasks.length < 2) return;
 
@@ -3728,6 +3731,7 @@ function checkActiveTaskTimerConflict(activeTask) {
   for (let i = 0; i < tasks.length; i++) {
     const other = tasks[i];
     if (other.id === activeTask.id) continue;
+    if (other.isCompleted) continue;
     if (!other.startTime || !other.endTime) continue;
     const bStart = parseTimeToMinutes(other.startTime);
     let bEnd = parseTimeToMinutes(other.endTime);
@@ -3806,6 +3810,9 @@ function handleSwapOverlapPriority(taskId, dir) {
 window.handleSwapOverlapPriority = handleSwapOverlapPriority;
 
 function checkAndPromptScheduleConflict(tasks) {
+  const isSimple = (typeof taskStore !== 'undefined' && typeof taskStore.getSimpleModeEnabled === 'function') && taskStore.getSimpleModeEnabled();
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true;
+  if (isSimple || !isTimespans) return;
   if (!tasks || tasks.length < 2) return;
   if (typeof calendarView !== 'undefined' && calendarView) {
     if ((typeof calendarView.isOpen === 'function' && calendarView.isOpen()) || calendarView.isDraggingEvent) {
@@ -3817,14 +3824,14 @@ function checkAndPromptScheduleConflict(tasks) {
 
   for (let i = 0; i < tasks.length; i++) {
     const tA = tasks[i];
-    if (!tA.startTime || !tA.endTime) continue;
+    if (tA.isCompleted || !tA.startTime || !tA.endTime) continue;
     const aStart = parseTimeToMinutes(tA.startTime);
     let aEnd = parseTimeToMinutes(tA.endTime);
     if (aEnd <= aStart) aEnd += 1440;
 
     for (let j = i + 1; j < tasks.length; j++) {
       const tB = tasks[j];
-      if (!tB.startTime || !tB.endTime) continue;
+      if (tB.isCompleted || !tB.startTime || !tB.endTime) continue;
       const bStart = parseTimeToMinutes(tB.startTime);
       let bEnd = parseTimeToMinutes(tB.endTime);
       if (bEnd <= bStart) bEnd += 1440;
@@ -3845,13 +3852,19 @@ function checkAndPromptScheduleConflict(tasks) {
 
 function promptConflictForTask(taskId, taskList) {
   if (!taskId) return;
+  const isSimple = (typeof taskStore !== 'undefined' && typeof taskStore.getSimpleModeEnabled === 'function') && taskStore.getSimpleModeEnabled();
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function') ? taskStore.getTimespansEnabled() : true;
+  if (isSimple || !isTimespans) {
+    openTaskEditModal(taskId);
+    return;
+  }
   const tasks = taskList || ((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || taskStore.getTasks()) || [];
   if (tasks.length < 2) {
     openTaskEditModal(taskId);
     return;
   }
   const targetTask = tasks.find(t => t.id === taskId);
-  if (!targetTask || !targetTask.startTime || !targetTask.endTime) {
+  if (!targetTask || targetTask.isCompleted || !targetTask.startTime || !targetTask.endTime) {
     openTaskEditModal(taskId);
     return;
   }
@@ -3863,7 +3876,7 @@ function promptConflictForTask(taskId, taskList) {
   for (let i = 0; i < tasks.length; i++) {
     const other = tasks[i];
     if (other.id === taskId) continue;
-    if (!other.startTime || !other.endTime) continue;
+    if (other.isCompleted || !other.startTime || !other.endTime) continue;
     const oStart = parseTimeToMinutes(other.startTime);
     let oEnd = parseTimeToMinutes(other.endTime);
     if (oEnd <= oStart) oEnd += 1440;
@@ -4124,22 +4137,23 @@ function getCategoryHexColor(category) {
   }
   const cat = (category || 'general').trim().toLowerCase();
   switch (cat) {
-    case 'work': return '#3b82f6';
-    case 'study': return '#8b5cf6';
-    case 'break': return '#f59e0b';
-    case 'personal': return '#ea580c';
-    case 'meeting': return '#d946ef';
-    case 'health': return '#e11d48';
-    case 'fitness': return '#f43f5e';
-    case 'reading': return '#0284c7';
+    case 'work': return '#00b4ff';
+    case 'study': return '#bf00ff';
+    case 'break':
+    case 'rest': return '#ff9500';
+    case 'personal': return '#ff5e00';
+    case 'meeting': return '#ff00cc';
+    case 'health': return '#ff1744';
+    case 'fitness': return '#ff2d87';
+    case 'reading': return '#00b4ff';
     case 'coding':
-    case 'dev': return '#6366f1';
-    case 'social': return '#ec4899';
-    case 'travel': return '#a855f7';
+    case 'dev': return '#4d4dff';
+    case 'social': return '#ff2d87';
+    case 'travel': return '#7928ca';
     case 'food':
-    case 'dining': return '#f97316';
-    case 'finance': return '#0d9488';
-    default: return '#64748b';
+    case 'dining': return '#ff5e00';
+    case 'finance': return '#00f5d4';
+    default: return '#4d4dff';
   }
 }
 

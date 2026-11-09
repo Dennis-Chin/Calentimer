@@ -1465,13 +1465,13 @@ export class TimerRuntime {
     const overlapIndices = new Set();
     for (let i = 0; i < list.length; i++) {
       const tA = list[i];
-      if (!tA || !tA.startTime || !tA.endTime) continue;
+      if (!tA || tA.isCompleted || !tA.startTime || !tA.endTime) continue;
       const aStart = parseTimeToMinutes(tA.startTime);
       let aEnd = parseTimeToMinutes(tA.endTime);
       if (aEnd <= aStart) aEnd += 1440;
       for (let j = i + 1; j < list.length; j++) {
         const tB = list[j];
-        if (!tB || !tB.startTime || !tB.endTime) continue;
+        if (!tB || tB.isCompleted || !tB.startTime || !tB.endTime) continue;
         const bStart = parseTimeToMinutes(tB.startTime);
         let bEnd = parseTimeToMinutes(tB.endTime);
         if (bEnd <= bStart) bEnd += 1440;
