@@ -390,30 +390,35 @@ export function calculateSchedule(config) {
 
   // 7. Generate timeline schedule (start & end clock times)
   let currentClockMinutes = startMinutes;
+  const isSequentialMode = Boolean(config.isSequential || (config.options && config.options.isSequential));
   const scheduledTasks = tasks.map((task, idx) => {
     const allocated = allocatedDurations[idx];
 
     let taskStart = currentClockMinutes;
-    const specifiedStart = task.fixedStartTime || (task.isLocked ? task.startTime : null);
-    if (specifiedStart) {
-      try {
-        const parsedStart = parseTimeToMinutes(specifiedStart);
-        taskStart = parsedStart;
-      } catch (e) {
-        // Fallback to sequential
+    if (!isSequentialMode) {
+      const specifiedStart = task.fixedStartTime || (task.isLocked ? task.startTime : null);
+      if (specifiedStart) {
+        try {
+          const parsedStart = parseTimeToMinutes(specifiedStart);
+          taskStart = parsedStart;
+        } catch (e) {
+          // Fallback to sequential
+        }
       }
     }
 
     let taskEnd = taskStart + allocated;
-    const specifiedEnd = task.fixedEndTime || (task.isLocked ? task.endTime : null);
-    if (specifiedEnd) {
-      try {
-        const parsedEnd = parseTimeToMinutes(specifiedEnd);
-        if (parsedEnd > taskStart || (task.isLocked && parsedEnd !== taskStart)) {
-          taskEnd = parsedEnd;
+    if (!isSequentialMode) {
+      const specifiedEnd = task.fixedEndTime || (task.isLocked ? task.endTime : null);
+      if (specifiedEnd) {
+        try {
+          const parsedEnd = parseTimeToMinutes(specifiedEnd);
+          if (parsedEnd > taskStart || (task.isLocked && parsedEnd !== taskStart)) {
+            taskEnd = parsedEnd;
+          }
+        } catch (e) {
+          // Fallback to sequential
         }
-      } catch (e) {
-        // Fallback to sequential
       }
     }
     currentClockMinutes = taskEnd;

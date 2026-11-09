@@ -148,8 +148,8 @@
       </div>
       <div class="header-right">
         <!-- Dynamic Mode Switch Toggle (Standard ⇄ Simple) -->
-        <div class="mode-slider-wrap" id="modeSliderWrap" title="Switch between Standard and Simple mode" role="button" tabindex="0" aria-label="Toggle between Standard and Simple mode">
-          <span class="mode-slider-label" id="modeSliderLabel">Standard</span>
+        <div class="mode-slider-wrap" id="modeSliderWrap" title="Toggle Simple Mode" role="button" tabindex="0" aria-label="Toggle Simple Mode">
+          <span class="mode-slider-label" id="modeSliderLabel">Simple</span>
           <div class="mode-slider-track" id="modeSliderTrack">
             <div class="mode-slider-thumb" id="modeSliderThumb"></div>
           </div>
@@ -704,6 +704,17 @@
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="toggleHardStopEnabled" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Display Time Spans on Timer</span>
+                <span class="setting-desc">Show start and end time stamps on the timer in Sequential and Simple modes. When turned off, only task duration is shown.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleShowTimeSpansSequential">
                 <span class="toggle-slider"></span>
               </label>
             </div>

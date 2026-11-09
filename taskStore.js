@@ -48,6 +48,7 @@ const STORAGE_KEYS = {
   SIMPLE_PRESET: 'calentimer_simple_preset_v1',
   SIMPLE_LOOP: 'calentimer_simple_loop_v1',
   SIMPLE_CUSTOM_CFG: 'calentimer_simple_custom_cfg_v1',
+  SHOW_TIMESPANS_SEQUENTIAL: 'calentimer_show_timespans_sequential_v1',
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1'
 };
 
@@ -2027,6 +2028,29 @@ export class TaskStore {
 
   setTimespansEnabled(enabled) {
     safeSetItem(STORAGE_KEYS.TIMESPANS_ENABLED, Boolean(enabled) ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Retrieves whether time spans should be displayed on the rotary timer screen
+   * in Sequential and Simple modes. Defaults to false (duration only).
+   * @returns {boolean}
+   */
+  getShowTimeSpansInSequential() {
+    try {
+      const v = safeGetItem(STORAGE_KEYS.SHOW_TIMESPANS_SEQUENTIAL);
+      if (v !== null) return v === 'true';
+    } catch (_) {}
+    return false;
+  }
+
+  /**
+   * Sets whether time spans should be displayed on the rotary timer screen
+   * in Sequential and Simple modes.
+   * @param {boolean} enabled
+   */
+  setShowTimeSpansInSequential(enabled) {
+    safeSetItem(STORAGE_KEYS.SHOW_TIMESPANS_SEQUENTIAL, Boolean(enabled) ? 'true' : 'false');
     this._notify();
   }
 

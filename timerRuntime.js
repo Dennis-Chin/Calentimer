@@ -135,10 +135,24 @@ export class TimerRuntime {
       this.activeTaskIndex = 0;
     }
 
+    const isSimple = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
+      ? taskStore.getAppMode() === 'simple'
+      : false;
+    const isSequential = isSimple || (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function' && !taskStore.getTimespansEnabled());
+
     // Determine which tasks still need scheduling
     let remainingTasks = [];
     if (this.status === TimerStatus.IDLE) {
-      remainingTasks = this.initialTasks.map(t => ({ ...t }));
+      remainingTasks = this.initialTasks.map(t => {
+        const copy = Object.assign({}, t);
+        if (isSequential) {
+          copy.fixedStartTime = null;
+          copy.fixedEndTime = null;
+          copy.startTime = null;
+          copy.endTime = null;
+        }
+        return copy;
+      });
     } else if (this.currentSchedule && this.currentSchedule.tasks) {
       const allScheduled = this.currentSchedule.tasks;
       const completedTaskIds = new Set(
@@ -162,26 +176,24 @@ export class TimerRuntime {
           const remainingSec = this.getRemainingSeconds();
           const remainingMin = Math.max(1, Math.ceil(remainingSec / 60));
           const startedStartStr = formatMinutesToTime(parseTimeToMinutes(new Date(this.taskStartedAt)));
-          remainingTasks.push({
-            ...origTask,
-            fixedStartTime: origTask.isLocked ? (origTask.fixedStartTime || origTask.startTime) : startedStartStr,
-            fixedEndTime: origTask.isLocked ? (origTask.fixedEndTime || origTask.endTime) : null,
-            startTime: origTask.isLocked ? (origTask.startTime || origTask.fixedStartTime) : undefined,
-            endTime: origTask.isLocked ? (origTask.endTime || origTask.fixedEndTime) : undefined,
-            plannedDuration: origTask.isLocked ? origTask.plannedDuration : remainingMin,
+          remainingTasks.push(Object.assign({}, origTask, {
+            fixedStartTime: (!isSequential && origTask.isLocked) ? (origTask.fixedStartTime || origTask.startTime) : startedStartStr,
+            fixedEndTime: (!isSequential && origTask.isLocked) ? (origTask.fixedEndTime || origTask.endTime) : null,
+            startTime: (!isSequential && origTask.isLocked) ? (origTask.startTime || origTask.fixedStartTime) : startedStartStr,
+            endTime: (!isSequential && origTask.isLocked) ? (origTask.endTime || origTask.fixedEndTime) : undefined,
+            plannedDuration: (!isSequential && origTask.isLocked) ? origTask.plannedDuration : remainingMin,
             isLocked: Boolean(origTask.isLocked)
-          });
+          }));
         } else {
           // Task has not started ticking yet: use its full planned duration!
-          remainingTasks.push({
-            ...origTask,
-            startTime: origTask.startTime || null,
-            endTime: origTask.endTime || null,
-            fixedStartTime: origTask.fixedStartTime || (origTask.isLocked ? origTask.startTime : null),
-            fixedEndTime: origTask.fixedEndTime || (origTask.isLocked ? origTask.endTime : null),
+          remainingTasks.push(Object.assign({}, origTask, {
+            startTime: isSequential ? null : (origTask.startTime || null),
+            endTime: isSequential ? null : (origTask.endTime || null),
+            fixedStartTime: isSequential ? null : (origTask.fixedStartTime || (origTask.isLocked ? origTask.startTime : null)),
+            fixedEndTime: isSequential ? null : (origTask.fixedEndTime || (origTask.isLocked ? origTask.endTime : null)),
             plannedDuration: origTask.plannedDuration,
             isLocked: Boolean(origTask.isLocked)
-          });
+          }));
         }
       }
 
@@ -198,10 +210,10 @@ export class TimerRuntime {
           colorId: initTask.colorId || null,
           useTimeBank: initTask.useTimeBank !== false,
           tags: initTask.tags,
-          startTime: initTask.startTime || null,
-          endTime: initTask.endTime || null,
-          fixedStartTime: initTask.fixedStartTime || (initTask.isLocked ? initTask.startTime : null),
-          fixedEndTime: initTask.fixedEndTime || (initTask.isLocked ? initTask.endTime : null),
+          startTime: isSequential ? null : (initTask.startTime || null),
+          endTime: isSequential ? null : (initTask.endTime || null),
+          fixedStartTime: isSequential ? null : (initTask.fixedStartTime || (initTask.isLocked ? initTask.startTime : null)),
+          fixedEndTime: isSequential ? null : (initTask.fixedEndTime || (initTask.isLocked ? initTask.endTime : null)),
           isLocked: Boolean(initTask.isLocked),
           isCompleted: Boolean(initTask.isCompleted),
           completedDate: initTask.completedDate || null,
@@ -210,7 +222,16 @@ export class TimerRuntime {
         });
       }
     } else {
-      remainingTasks = this.initialTasks.map(t => ({ ...t }));
+      remainingTasks = this.initialTasks.map(t => {
+        const copy = Object.assign({}, t);
+        if (isSequential) {
+          copy.fixedStartTime = null;
+          copy.fixedEndTime = null;
+          copy.startTime = null;
+          copy.endTime = null;
+        }
+        return copy;
+      });
     }
 
     if (remainingTasks.length === 0) {
@@ -225,7 +246,8 @@ export class TimerRuntime {
       tasks: remainingTasks,
       disableHardStop: !this.isHardStopEnabled,
       sortBy: this.status === TimerStatus.IDLE ? this.sortBy : null, // keep execution order if running
-      options: this.options
+      isSequential: isSequential,
+      options: Object.assign({}, this.options, { isSequential: isSequential })
     });
 
     if (schedule.success) {

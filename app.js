@@ -236,7 +236,7 @@ function initApp() {
     if (modeSliderWrap) modeSliderWrap.classList.toggle('is-simple', isSimpleMode);
     if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimpleMode);
     if (modeSliderLabel) {
-      modeSliderLabel.textContent = isSimpleMode ? 'Simple' : 'Standard';
+      modeSliderLabel.textContent = 'Simple';
       modeSliderLabel.classList.toggle('is-simple', isSimpleMode);
     }
 
@@ -844,9 +844,17 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
   const activeTask = (runtime ? runtime.getActiveTask() : null);
   const totalDurEl = document.getElementById('activeTaskTotalDuration');
 
-  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+  const isSimple = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
+    ? taskStore.getAppMode() === 'simple'
+    : false;
+
+  const isTimespans = !isSimple && ((typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
     ? taskStore.getTimespansEnabled()
-    : true;
+    : true);
+
+  const showTimeSpansSequential = (typeof taskStore !== 'undefined' && typeof taskStore.getShowTimeSpansInSequential === 'function')
+    ? taskStore.getShowTimeSpansInSequential()
+    : false;
 
   const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
@@ -871,10 +879,21 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
 
     if (isTimespans) {
       activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
-      if (totalDurEl) totalDurEl.textContent = `(${previewMin}m)`;
+      if (totalDurEl) {
+        totalDurEl.textContent = `(${previewMin}m)`;
+        totalDurEl.style.display = '';
+      }
     } else {
       activeTaskTimeSpan.textContent = `${previewMin}m`;
-      if (totalDurEl) totalDurEl.textContent = `(${startStr} → ${endStr})`;
+      if (totalDurEl) {
+        if (showTimeSpansSequential) {
+          totalDurEl.textContent = `(${startStr} → ${endStr})`;
+          totalDurEl.style.display = '';
+        } else {
+          totalDurEl.textContent = '';
+          totalDurEl.style.display = 'none';
+        }
+      }
     }
     return;
   }
@@ -888,10 +907,21 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
     const endStr = formatMinutesToTime(endMinutes);
     if (isTimespans) {
       activeTaskTimeSpan.textContent = `${startStr} → ${endStr}`;
-      if (totalDurEl) totalDurEl.textContent = '(30m)';
+      if (totalDurEl) {
+        totalDurEl.textContent = '(30m)';
+        totalDurEl.style.display = '';
+      }
     } else {
       activeTaskTimeSpan.textContent = '30m';
-      if (totalDurEl) totalDurEl.textContent = `(${startStr} → ${endStr})`;
+      if (totalDurEl) {
+        if (showTimeSpansSequential) {
+          totalDurEl.textContent = `(${startStr} → ${endStr})`;
+          totalDurEl.style.display = '';
+        } else {
+          totalDurEl.textContent = '';
+          totalDurEl.style.display = 'none';
+        }
+      }
     }
     return;
   }
@@ -1035,7 +1065,13 @@ function updateActiveTaskTimeSpanDynamic(remainingSec) {
 
     activeTaskTimeSpan.textContent = `${totalMinutes}m`;
     if (totalDurEl) {
-      totalDurEl.textContent = `(${startStr} → ${endStr})`;
+      if (showTimeSpansSequential) {
+        totalDurEl.textContent = `(${startStr} → ${endStr})`;
+        totalDurEl.style.display = '';
+      } else {
+        totalDurEl.textContent = '';
+        totalDurEl.style.display = 'none';
+      }
     }
   }
 }
@@ -2368,6 +2404,7 @@ function setupControls() {
     updateScheduleUI(runtime.currentSchedule);
     updateActiveTaskDisplay();
     updateTimespansButtonUI();
+    if (typeof updateSimpleLoopUI === 'function') updateSimpleLoopUI();
     taskDrawer.style.removeProperty('transform');
     taskDrawer.classList.remove('collapsed');
     taskDrawer.classList.remove('will-minimise', 'will-open');
@@ -3150,37 +3187,53 @@ function setupScheduleHorizontalSwipeToggle(container) {
     const diffX = touch.clientX - touchStartX;
     const diffY = touch.clientY - touchStartY;
 
-    if (Math.abs(diffX) >= 40 && Math.abs(diffX) > Math.abs(diffY) * 1.3) {
-      const isChrono = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-        ? taskStore.getTimespansEnabled()
-        : true;
-
-      // In chronological mode (left toggle): swiping RIGHT (diffX >= 40) toggles sequential. Swiping left does nothing.
-      // In sequential mode (right toggle): swiping LEFT (diffX <= -40) toggles chronological. Swiping right does nothing.
-      if (isChrono && diffX >= 40) {
-        const suppressClick = (ev) => {
+    if (Math.abs(diffX) >= 35 && Math.abs(diffX) > Math.abs(diffY) * 1.3) {
+      const suppressClick = () => {
+        const handler = (ev) => {
           ev.stopPropagation();
           ev.preventDefault();
-          window.removeEventListener('click', suppressClick, true);
+          window.removeEventListener('click', handler, true);
         };
-        window.addEventListener('click', suppressClick, true);
+        window.addEventListener('click', handler, true);
         setTimeout(() => {
-          window.removeEventListener('click', suppressClick, true);
+          window.removeEventListener('click', handler, true);
         }, 350);
+      };
 
-        setScheduleMode(false);
-      } else if (!isChrono && diffX <= -40) {
-        const suppressClick = (ev) => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          window.removeEventListener('click', suppressClick, true);
-        };
-        window.addEventListener('click', suppressClick, true);
-        setTimeout(() => {
-          window.removeEventListener('click', suppressClick, true);
-        }, 350);
+      const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
+        ? taskStore.getAppMode()
+        : 'advanced';
 
-        setScheduleMode(true);
+      if (currentMode === 'simple') {
+        // Simple Mode: Loop (left, true) vs End (right, false)
+        const isLoop = (typeof taskStore !== 'undefined' && typeof taskStore.getSimpleLoopEnabled === 'function')
+          ? taskStore.getSimpleLoopEnabled()
+          : true;
+
+        if (isLoop && diffX >= 35) {
+          suppressClick();
+          if (typeof window.setSimpleLoopOption === 'function') {
+            window.setSimpleLoopOption(false);
+          }
+        } else if (!isLoop && diffX <= -35) {
+          suppressClick();
+          if (typeof window.setSimpleLoopOption === 'function') {
+            window.setSimpleLoopOption(true);
+          }
+        }
+      } else {
+        // Standard Mode: Chronological (left, true) vs Sequential (right, false)
+        const isChrono = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+          ? taskStore.getTimespansEnabled()
+          : true;
+
+        if (isChrono && diffX >= 35) {
+          suppressClick();
+          setScheduleMode(false);
+        } else if (!isChrono && diffX <= -35) {
+          suppressClick();
+          setScheduleMode(true);
+        }
       }
     }
     isHSwiping = false;
@@ -4109,37 +4162,40 @@ function renderTaskList(rawTasks) {
   const isPaused = runtime && runtime.status === TimerStatus.PAUSED;
   const isAllCompleted = runtime.status === TimerStatus.COMPLETED;
 
-  // Detect schedule overlaps in linear pipeline
+  // Detect schedule overlaps in linear pipeline (chronological mode with timespans only; sequential/simple cannot overlap)
+  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
+    ? taskStore.getTimespansEnabled()
+    : true;
+  const isSimpleSchedule = Boolean(typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function' && taskStore.getAppMode() === 'simple');
+
   const conflictingTaskIds = new Set();
   const overlapIndices = new Set();
-  for (let i = 0; i < tasks.length; i++) {
-    const tA = tasks[i];
-    if (!tA.startTime || !tA.endTime) continue;
-    const aStart = parseTimeToMinutes(tA.startTime);
-    let aEnd = parseTimeToMinutes(tA.endTime);
-    if (aEnd <= aStart) aEnd += 1440;
+  if (isTimespans && !isSimpleSchedule) {
+    for (let i = 0; i < tasks.length; i++) {
+      const tA = tasks[i];
+      if (!tA.startTime || !tA.endTime) continue;
+      const aStart = parseTimeToMinutes(tA.startTime);
+      let aEnd = parseTimeToMinutes(tA.endTime);
+      if (aEnd <= aStart) aEnd += 1440;
 
-    for (let j = i + 1; j < tasks.length; j++) {
-      const tB = tasks[j];
-      if (!tB.startTime || !tB.endTime) continue;
-      const bStart = parseTimeToMinutes(tB.startTime);
-      let bEnd = parseTimeToMinutes(tB.endTime);
-      if (bEnd <= bStart) bEnd += 1440;
+      for (let j = i + 1; j < tasks.length; j++) {
+        const tB = tasks[j];
+        if (!tB.startTime || !tB.endTime) continue;
+        const bStart = parseTimeToMinutes(tB.startTime);
+        let bEnd = parseTimeToMinutes(tB.endTime);
+        if (bEnd <= bStart) bEnd += 1440;
 
-      if (aStart < bEnd && bStart < aEnd) {
-        conflictingTaskIds.add(tA.id);
-        conflictingTaskIds.add(tB.id);
-        const laterIdx = j;
-        if (!overlapIndices.has(laterIdx - 1) && !overlapIndices.has(i)) {
-          overlapIndices.add(laterIdx);
+        if (aStart < bEnd && bStart < aEnd) {
+          conflictingTaskIds.add(tA.id);
+          conflictingTaskIds.add(tB.id);
+          const laterIdx = j;
+          if (!overlapIndices.has(laterIdx - 1) && !overlapIndices.has(i)) {
+            overlapIndices.add(laterIdx);
+          }
         }
       }
     }
   }
-
-  const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
-    ? taskStore.getTimespansEnabled()
-    : true;
 
   // For Sequential mode: calculate dynamic timespans starting from current time
   const seqTimeSpans = [];
@@ -5755,6 +5811,7 @@ function openCalendar() {
   updateScheduleUI(runtime.currentSchedule);
   updateActiveTaskDisplay();
   updateTimespansButtonUI();
+  if (typeof updateSimpleLoopUI === 'function') updateSimpleLoopUI();
   if (calendarModalBackdrop) {
     calendarModalBackdrop.classList.remove('hidden');
   }
@@ -6183,31 +6240,34 @@ function renderCalendarModal() {
     }
   }
 
-  // Detect schedule overlaps for calendar modal
+  // Detect schedule overlaps for calendar modal (chronological mode with timespans only; sequential/simple cannot overlap)
+  const isSimpleCal = Boolean(typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function' && taskStore.getAppMode() === 'simple');
   const calConflictingIds = new Set();
   const calIndentedIndices = new Set();
 
-  for (let i = 0; i < tasks.length; i++) {
-    const tA = tasks[i];
-    if (!tA.startTime || !tA.endTime) continue;
-    const aStart = parseTimeToMinutes(tA.startTime);
-    let aEnd = parseTimeToMinutes(tA.endTime);
-    if (aEnd <= aStart) aEnd += 1440;
+  if (isTimespans && !isSimpleCal) {
+    for (let i = 0; i < tasks.length; i++) {
+      const tA = tasks[i];
+      if (!tA.startTime || !tA.endTime) continue;
+      const aStart = parseTimeToMinutes(tA.startTime);
+      let aEnd = parseTimeToMinutes(tA.endTime);
+      if (aEnd <= aStart) aEnd += 1440;
 
-    for (let j = i + 1; j < tasks.length; j++) {
-      const tB = tasks[j];
-      if (!tB.startTime || !tB.endTime) continue;
-      const bStart = parseTimeToMinutes(tB.startTime);
-      let bEnd = parseTimeToMinutes(tB.endTime);
-      if (bEnd <= bStart) bEnd += 1440;
+      for (let j = i + 1; j < tasks.length; j++) {
+        const tB = tasks[j];
+        if (!tB.startTime || !tB.endTime) continue;
+        const bStart = parseTimeToMinutes(tB.startTime);
+        let bEnd = parseTimeToMinutes(tB.endTime);
+        if (bEnd <= bStart) bEnd += 1440;
 
-      if (aStart < bEnd && bStart < aEnd) {
-        calConflictingIds.add(tA.id);
-        calConflictingIds.add(tB.id);
+        if (aStart < bEnd && bStart < aEnd) {
+          calConflictingIds.add(tA.id);
+          calConflictingIds.add(tB.id);
 
-        const laterIdx = j;
-        if (!calIndentedIndices.has(laterIdx - 1) && !calIndentedIndices.has(i)) {
-          calIndentedIndices.add(laterIdx);
+          const laterIdx = j;
+          if (!calIndentedIndices.has(laterIdx - 1) && !calIndentedIndices.has(i)) {
+            calIndentedIndices.add(laterIdx);
+          }
         }
       }
     }
@@ -8418,6 +8478,22 @@ function setupNavigationAndModals() {
     });
   }
 
+  const toggleShowTimeSpansSequential = document.getElementById('toggleShowTimeSpansSequential');
+  if (toggleShowTimeSpansSequential) {
+    toggleShowTimeSpansSequential.checked = (typeof taskStore.getShowTimeSpansInSequential === 'function')
+      ? taskStore.getShowTimeSpansInSequential()
+      : false;
+    toggleShowTimeSpansSequential.addEventListener('change', () => {
+      const enabled = toggleShowTimeSpansSequential.checked;
+      if (typeof taskStore.setShowTimeSpansInSequential === 'function') {
+        taskStore.setShowTimeSpansInSequential(enabled);
+      }
+      updateActiveTaskDisplay();
+      mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Time spans enabled on timer' : 'Time spans hidden on timer (duration only)');
+    });
+  }
+
   const toggleAlertsEnabled = document.getElementById('toggleAlertsEnabled');
   if (toggleAlertsEnabled) {
     toggleAlertsEnabled.checked = taskStore.getAlertsEnabled();
@@ -9608,7 +9684,7 @@ function setupNavigationAndModals() {
     if (modeSliderWrap) modeSliderWrap.classList.toggle('is-simple', isSimple);
     if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimple);
     if (modeSliderLabel) {
-      modeSliderLabel.textContent = isSimple ? 'Simple' : 'Standard';
+      modeSliderLabel.textContent = 'Simple';
       modeSliderLabel.classList.toggle('is-simple', isSimple);
     }
   }
@@ -10044,6 +10120,7 @@ function setupNavigationAndModals() {
       mobileServices.hapticTap();
       showToastNotification(isLoop ? '🔁 Schedule set to Loop' : '🏁 Schedule set to End at completion');
     }
+    window.setSimpleLoopOption = setSimpleLoopOption;
 
     const btnDrawerLoop = document.getElementById('btnDrawerLoopOption');
     const btnDrawerEnd = document.getElementById('btnDrawerEndOption');
@@ -10054,6 +10131,49 @@ function setupNavigationAndModals() {
     if (btnDrawerEnd) btnDrawerEnd.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(false); });
     if (btnCalLoop) btnCalLoop.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(true); });
     if (btnCalEnd) btnCalEnd.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(false); });
+
+    const attachLoopSegmentSwipe = (segmentEl) => {
+      if (!segmentEl) return;
+      let startX = 0;
+      let startY = 0;
+      let isSwiping = false;
+
+      segmentEl.addEventListener('touchstart', (e) => {
+        if (!e.touches || e.touches.length !== 1) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isSwiping = false;
+      }, { passive: true });
+
+      segmentEl.addEventListener('touchmove', (e) => {
+        if (!e.touches || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        if (Math.abs(dx) > 15 && Math.abs(dx) > Math.abs(dy)) {
+          isSwiping = true;
+        }
+      }, { passive: true });
+
+      segmentEl.addEventListener('touchend', (e) => {
+        if (!isSwiping) return;
+        const touch = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+        if (!touch) return;
+        const dx = touch.clientX - startX;
+        if (dx > 20) {
+          // Swipe right -> End
+          setSimpleLoopOption(false);
+          if (e.cancelable) e.preventDefault();
+        } else if (dx < -20) {
+          // Swipe left -> Loop
+          setSimpleLoopOption(true);
+          if (e.cancelable) e.preventDefault();
+        }
+        isSwiping = false;
+      });
+    };
+
+    attachLoopSegmentSwipe(document.getElementById('drawerSimpleLoopSegment'));
+    attachLoopSegmentSwipe(document.getElementById('calendarSimpleLoopSegment'));
 
     updateSimpleLoopUI();
 

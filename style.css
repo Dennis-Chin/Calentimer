@@ -7549,10 +7549,46 @@ body {
 /* Simple Mode Loop vs End segmented toggle in Today's Schedule */
 .simple-loop-segment-control {
   display: none !important;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 body.simple-mode-active .simple-loop-segment-control {
   display: flex !important;
+}
+
+.simple-loop-segment-control .mode-segment-btn.active[data-loop="true"],
+.simple-loop-segment-control #btnDrawerLoopOption.active,
+.simple-loop-segment-control #btnCalLoopOption.active {
+  background: rgba(0, 255, 136, 0.18) !important;
+  border-color: rgba(0, 255, 136, 0.5) !important;
+  color: var(--primary) !important;
+  box-shadow: 0 2px 10px rgba(0, 255, 136, 0.25) !important;
+}
+
+.simple-loop-segment-control .mode-segment-btn.active[data-loop="false"],
+.simple-loop-segment-control #btnDrawerEndOption.active,
+.simple-loop-segment-control #btnCalEndOption.active {
+  background: rgba(245, 158, 11, 0.2) !important;
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  color: #fbbf24 !important;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.25) !important;
+}
+
+[data-theme="light"] .simple-loop-segment-control .mode-segment-btn.active[data-loop="true"],
+[data-theme="light"] .simple-loop-segment-control #btnDrawerLoopOption.active,
+[data-theme="light"] .simple-loop-segment-control #btnCalLoopOption.active {
+  background: rgba(5, 150, 105, 0.15) !important;
+  border-color: #059669 !important;
+  color: #059669 !important;
+}
+
+[data-theme="light"] .simple-loop-segment-control .mode-segment-btn.active[data-loop="false"],
+[data-theme="light"] .simple-loop-segment-control #btnDrawerEndOption.active,
+[data-theme="light"] .simple-loop-segment-control #btnCalEndOption.active {
+  background: rgba(217, 119, 6, 0.15) !important;
+  border-color: #d97706 !important;
+  color: #b45309 !important;
 }
 
 /* Simple Mode Setup & Presets Modal */
