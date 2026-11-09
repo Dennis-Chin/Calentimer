@@ -22,6 +22,11 @@ export const CATEGORY_DEFINITIONS = {
     color: '#f59e0b', // Warm Amber (strictly reserved for breaks)
     defaultEmoji: '☕'
   },
+  Rest: {
+    name: 'Rest',
+    color: '#f59e0b', // Warm Amber (strictly reserved for breaks / rest)
+    defaultEmoji: '☕'
+  },
   Study: {
     name: 'Study',
     color: '#8b5cf6', // Vibrant Purple / Iris
@@ -197,6 +202,7 @@ export function getCategoryColor(category) {
     }
   }
 
+  if (clean === 'rest' || clean === 'break') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Break.color);
   if (clean === 'dev' || clean === 'programming') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Coding.color);
   if (clean === 'exercise' || clean === 'gym' || clean === 'workout') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Fitness.color);
   if (clean === 'dining' || clean === 'meal' || clean === 'lunch' || clean === 'dinner') return sanitizeCategoryColor(CATEGORY_DEFINITIONS.Food.color);

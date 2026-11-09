@@ -147,12 +147,11 @@
         <span class="app-brand">Calentimer</span>
       </div>
       <div class="header-right">
-        <!-- Dynamic Single-Name Mode Slider Toggle (Advanced ⇄ Simple) -->
-        <div class="mode-slider-wrap" id="modeSliderWrap" title="Switch between Advanced and Simple mode" role="button" tabindex="0" aria-label="Toggle between Advanced and Simple mode">
+        <!-- Dynamic Mode Switch Toggle (Standard ⇄ Simple) -->
+        <div class="mode-slider-wrap" id="modeSliderWrap" title="Switch between Standard and Simple mode" role="button" tabindex="0" aria-label="Toggle between Standard and Simple mode">
+          <span class="mode-slider-label" id="modeSliderLabel">Standard</span>
           <div class="mode-slider-track" id="modeSliderTrack">
-            <div class="mode-slider-thumb" id="modeSliderThumb">
-              <span class="mode-slider-label" id="modeSliderLabel">Advanced</span>
-            </div>
+            <div class="mode-slider-thumb" id="modeSliderThumb"></div>
           </div>
         </div>
       </div>
@@ -383,6 +382,12 @@
         <div class="schedule-mode-segment-control" id="scheduleModeSegment">
           <button type="button" class="mode-segment-btn active" id="btnModeChronological" data-mode="chronological">🕒 Chronological</button>
           <button type="button" class="mode-segment-btn" id="btnModeSequential" data-mode="sequential">📋 Sequential</button>
+        </div>
+
+        <!-- Simple Mode Loop vs End Segmented Control -->
+        <div class="schedule-mode-segment-control simple-loop-segment-control" id="drawerSimpleLoopSegment">
+          <button type="button" class="mode-segment-btn active" id="btnDrawerLoopOption" data-loop="true">🔁 Loop</button>
+          <button type="button" class="mode-segment-btn" id="btnDrawerEndOption" data-loop="false">🏁 End</button>
         </div>
 
         <!-- Tasks Schedule List -->
@@ -895,6 +900,12 @@
         <div class="schedule-mode-segment-control" id="calendarScheduleModeSegment" style="margin: 0 0 12px 0;">
           <button type="button" class="mode-segment-btn active" id="btnCalModeChronological" data-mode="chronological">🕒 Chronological</button>
           <button type="button" class="mode-segment-btn" id="btnCalModeSequential" data-mode="sequential">📋 Sequential</button>
+        </div>
+
+        <!-- Simple Mode Loop vs End Segmented Control -->
+        <div class="schedule-mode-segment-control simple-loop-segment-control" id="calendarSimpleLoopSegment" style="margin: 0 0 12px 0;">
+          <button type="button" class="mode-segment-btn active" id="btnCalLoopOption" data-loop="true">🔁 Loop</button>
+          <button type="button" class="mode-segment-btn" id="btnCalEndOption" data-loop="false">🏁 End</button>
         </div>
 
         <div class="calendar-timeline" id="calendarTimelineList">
@@ -2240,7 +2251,7 @@
     <div class="confirm-modal-card">
       <div class="confirm-modal-icon" id="confirmModeSwitchIcon">⚡</div>
       <div class="confirm-modal-title" id="confirmModeSwitchTitle">Switch to Simple Mode?</div>
-      <div class="confirm-modal-desc" id="confirmModeSwitchDesc">Your Advanced schedule and settings will be safely saved. Switch to Simple focus mode?</div>
+      <div class="confirm-modal-desc" id="confirmModeSwitchDesc">Your Standard schedule and settings will be safely saved. Switch to Simple focus mode?</div>
       <div class="confirm-modal-actions" style="margin-top: 10px;">
         <button type="button" class="btn-confirm-cancel" id="btnCancelModeSwitch">Cancel</button>
         <button type="button" class="btn-confirm-primary" id="btnConfirmModeSwitch">Switch Mode</button>

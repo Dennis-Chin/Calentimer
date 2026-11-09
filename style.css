@@ -3757,10 +3757,35 @@ body {
   opacity: 0.8;
 }
 
+.is-break-mode .dial-tick {
+  stroke: rgba(245, 158, 11, 0.45) !important;
+}
+
 .is-break-mode .dial-tick-active,
 .is-break-mode .dial-tick.major {
   stroke: #f59e0b !important;
-  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.55)) !important;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.75)) !important;
+}
+
+.is-break-mode .track-progress {
+  stroke: #f59e0b !important;
+  filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6)) !important;
+}
+
+.is-break-mode .revolving-circle {
+  fill: #f59e0b !important;
+  stroke: #ffffff !important;
+  filter: drop-shadow(0 0 10px #f59e0b) !important;
+}
+
+.is-break-mode .revolving-glow {
+  fill: #f59e0b !important;
+}
+
+.is-break-mode .task-category-chip {
+  color: #fbbf24 !important;
+  background: rgba(245, 158, 11, 0.18) !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
 }
 
 .is-break-mode .revolving-active-line {
@@ -7426,39 +7451,11 @@ body {
 .mode-slider-wrap {
   display: inline-flex;
   align-items: center;
+  gap: 7px;
   cursor: pointer;
   user-select: none;
   touch-action: pan-y;
-}
-
-.mode-slider-track {
-  width: 96px;
-  height: 32px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  position: relative;
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-.mode-slider-thumb {
-  height: 26px;
-  min-width: 66px;
-  padding: 0 10px;
-  background: var(--bg-surface-elevated);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  left: 2px;
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  padding: 2px 4px;
 }
 
 .mode-slider-label {
@@ -7466,54 +7463,96 @@ body {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.4px;
-  color: var(--text-main);
+  color: var(--text-muted);
   white-space: nowrap;
   pointer-events: none;
   transition: color 0.22s ease;
 }
 
-/* Simple Mode state: slides knob to the right and glows neon */
+.mode-slider-label.is-simple,
+.mode-slider-wrap.is-simple .mode-slider-label {
+  color: var(--primary);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+}
+
+.mode-slider-track {
+  width: 40px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.mode-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: absolute;
+  left: 2px;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.22s ease, box-shadow 0.22s ease;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+
+/* Simple Mode state: slides circular knob to the right and glows neon */
 .mode-slider-track.is-simple {
-  border-color: rgba(0, 255, 136, 0.35);
-  background: rgba(0, 255, 136, 0.08);
+  border-color: rgba(0, 255, 136, 0.45);
+  background: rgba(0, 255, 136, 0.15);
 }
 
 .mode-slider-track.is-simple .mode-slider-thumb {
-  transform: translateX(24px);
-  background: #0d1a14;
-  border-color: var(--primary);
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.35);
+  transform: translateX(18px);
+  background: var(--primary);
+  border-color: #ffffff;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.7);
 }
 
-.mode-slider-track.is-simple .mode-slider-label {
-  color: var(--primary);
+[data-theme="light"] .mode-slider-label {
+  color: #64748b;
+}
+
+[data-theme="light"] .mode-slider-label.is-simple,
+[data-theme="light"] .mode-slider-wrap.is-simple .mode-slider-label {
+  color: #059669;
 }
 
 [data-theme="light"] .mode-slider-track {
   background: #e2e8f0;
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 [data-theme="light"] .mode-slider-thumb {
   background: #ffffff;
-  border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.1);
+  border-color: rgba(15, 23, 42, 0.15);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
 }
 
 [data-theme="light"] .mode-slider-track.is-simple {
-  background: rgba(5, 150, 105, 0.12);
+  background: rgba(5, 150, 105, 0.16);
   border-color: #059669;
 }
 
 [data-theme="light"] .mode-slider-track.is-simple .mode-slider-thumb {
-  background: #ffffff;
-  border-color: #059669;
-  box-shadow: 0 0 8px rgba(5, 150, 105, 0.25);
+  background: #059669;
+  border-color: #ffffff;
+  box-shadow: 0 0 8px rgba(5, 150, 105, 0.4);
 }
 
-[data-theme="light"] .mode-slider-track.is-simple .mode-slider-label {
-  color: #065f46;
+/* Simple Mode Loop vs End segmented toggle in Today's Schedule */
+.simple-loop-segment-control {
+  display: none !important;
+}
+
+body.simple-mode-active .simple-loop-segment-control {
+  display: flex !important;
 }
 
 /* Simple Mode Setup & Presets Modal */

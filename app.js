@@ -230,10 +230,15 @@ function initApp() {
     if (document.body) {
       document.body.classList.toggle('simple-mode-active', isSimpleMode);
     }
+    const modeSliderWrap = document.getElementById('modeSliderWrap');
     const modeSliderTrack = document.getElementById('modeSliderTrack');
     const modeSliderLabel = document.getElementById('modeSliderLabel');
+    if (modeSliderWrap) modeSliderWrap.classList.toggle('is-simple', isSimpleMode);
     if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimpleMode);
-    if (modeSliderLabel) modeSliderLabel.textContent = isSimpleMode ? 'Simple' : 'Advanced';
+    if (modeSliderLabel) {
+      modeSliderLabel.textContent = isSimpleMode ? 'Simple' : 'Standard';
+      modeSliderLabel.classList.toggle('is-simple', isSimpleMode);
+    }
 
     taskStore.syncScheduleAndCalendar();
 
@@ -1095,9 +1100,9 @@ function updateActiveTaskDisplay() {
   }
 
   activeTaskTitle.style.cursor = 'default';
-  const isBreak = (
-    (activeTask.category && activeTask.category.toLowerCase() === 'break') ||
-    (activeTask.title && activeTask.title.toLowerCase() === 'break')
+  const isBreak = Boolean(
+    (activeTask.category && (activeTask.category.toLowerCase() === 'break' || activeTask.category.toLowerCase() === 'rest')) ||
+    (activeTask.title && (activeTask.title.toLowerCase().indexOf('break') !== -1 || activeTask.title.toLowerCase().indexOf('rest') !== -1))
   );
 
   if (wheelContainer) wheelContainer.classList.toggle('is-break-mode', Boolean(isBreak));
@@ -4186,7 +4191,10 @@ function renderTaskList(rawTasks) {
     const isCurrentActive = (isRunning || isPaused) && (idx === activeIdx);
     // Task padlock stays strictly in the user-selected state (never forced locked just because timer is running)
     const isLocked = Boolean(task.isLocked);
-    const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
+    const isBreak = Boolean(
+      (task.category && (task.category.toLowerCase() === 'break' || task.category.toLowerCase() === 'rest')) ||
+      (task.title && (task.title.toLowerCase().indexOf('break') !== -1 || task.title.toLowerCase().indexOf('rest') !== -1))
+    );
     const isOverlap = overlapIndices.has(idx);
 
     const isTimespans = (typeof taskStore !== 'undefined' && typeof taskStore.getTimespansEnabled === 'function')
@@ -4222,7 +4230,7 @@ function renderTaskList(rawTasks) {
       statusClass = 'task-pending';
       const catHex = task.color || getCategoryHexColor(task.category);
       statusBadge = isBreak
-        ? `<span class="task-status-pill break-pill" data-action="tap-status-pill" data-id="${task.id}" title="Break (tap to activate on timer)">☕ Break</span>`
+        ? `<span class="task-status-pill break-pill" data-action="tap-status-pill" data-id="${task.id}" title="${escapeHtml(task.category || 'Break')} (tap to activate on timer)">☕ ${escapeHtml(task.category || 'Break')}</span>`
         : `<span class="task-status-pill pending" data-action="tap-status-pill" data-id="${task.id}" title="To-do (tap to activate on timer)" style="background:${hexToRgba(catHex, 0.18)};color:${catHex};border:1px solid ${hexToRgba(catHex, 0.45)};">⏳ Todo</span>`;
     }
 
@@ -6211,7 +6219,10 @@ function renderCalendarModal() {
     // Task padlock stays strictly in user-selected state (never forced active merely because timer is running)
     const isLocked = Boolean(task.isLocked);
     const isOverrunningTask = Boolean((runtime && runtime.isOverrunning) && (runtime && runtime.getActiveTask() && runtime.getActiveTask().id) === task.id);
-    const isBreak = task.category === 'Break' || (task.title ? task.title.toLowerCase() : "") === 'break';
+    const isBreak = Boolean(
+      (task.category && (task.category.toLowerCase() === 'break' || task.category.toLowerCase() === 'rest')) ||
+      (task.title && (task.title.toLowerCase().indexOf('break') !== -1 || task.title.toLowerCase().indexOf('rest') !== -1))
+    );
     const catColor = getCategoryColor(task.category);
 
     let statusClass = 'pending';
@@ -9591,10 +9602,15 @@ function setupNavigationAndModals() {
   // ==========================================
   function updateSliderDisplay(mode) {
     const isSimple = mode === 'simple';
+    const modeSliderWrap = document.getElementById('modeSliderWrap');
     const modeSliderTrack = document.getElementById('modeSliderTrack');
     const modeSliderLabel = document.getElementById('modeSliderLabel');
+    if (modeSliderWrap) modeSliderWrap.classList.toggle('is-simple', isSimple);
     if (modeSliderTrack) modeSliderTrack.classList.toggle('is-simple', isSimple);
-    if (modeSliderLabel) modeSliderLabel.textContent = isSimple ? 'Simple' : 'Advanced';
+    if (modeSliderLabel) {
+      modeSliderLabel.textContent = isSimple ? 'Simple' : 'Standard';
+      modeSliderLabel.classList.toggle('is-simple', isSimple);
+    }
   }
   window.updateSliderDisplay = updateSliderDisplay;
 
@@ -9706,7 +9722,8 @@ function setupNavigationAndModals() {
     }
 
     mobileServices.hapticTap();
-    showToastNotification(isSimple ? '⚡ Switched to Simple Mode' : '🚀 Switched to Advanced Mode');
+    showToastNotification(isSimple ? '⚡ Switched to Simple Mode' : '⏱️ Switched to Standard Mode');
+    if (typeof updateSimpleLoopUI === 'function') updateSimpleLoopUI();
   }
   window.switchAppMode = switchAppMode;
 
@@ -9741,17 +9758,17 @@ function setupNavigationAndModals() {
         confirmModeSwitchIcon.textContent = isTargetSimple ? '⚡' : '🚀';
       }
       if (confirmModeSwitchTitle) {
-        confirmModeSwitchTitle.textContent = isTargetSimple ? 'Switch to Simple Mode?' : 'Switch to Advanced Mode?';
+        confirmModeSwitchTitle.textContent = isTargetSimple ? 'Switch to Simple Mode?' : 'Switch to Standard Mode?';
       }
       if (confirmModeSwitchDesc) {
         if (isRunning) {
           confirmModeSwitchDesc.textContent = isTargetSimple
-            ? 'Your active timer will pause and be preserved for Advanced Mode. Switch to Simple focus mode?'
-            : 'Your active timer will pause and be preserved for Simple Mode. Switch to Advanced Mode?';
+            ? 'Your active timer will pause and be preserved for Standard Mode. Switch to Simple focus mode?'
+            : 'Your active timer will pause and be preserved for Simple Mode. Switch to Standard Mode?';
         } else {
           confirmModeSwitchDesc.textContent = isTargetSimple
-            ? 'Switch to Simple Mode? Your schedule, calendar events, and settings will remain safely saved in Advanced Mode.'
-            : 'Switch back to Advanced Mode? Your full daily schedule and calendar settings will be restored.';
+            ? 'Switch to Simple Mode? Your schedule, calendar events, and settings will remain safely saved in Standard Mode.'
+            : 'Switch back to Standard Mode? Your full daily schedule and calendar settings will be restored.';
         }
       }
 
@@ -9931,6 +9948,22 @@ function setupNavigationAndModals() {
       });
     }
 
+    function requestModeSwitch(targetMode) {
+      const isRunning = runtime && runtime.status === TimerStatus.RUNNING;
+      if (isRunning) {
+        promptModeSwitch(targetMode);
+      } else {
+        const isConfigured = (typeof taskStore.getSimpleConfigured === 'function')
+          ? taskStore.getSimpleConfigured()
+          : false;
+        if (targetMode === 'simple' && !isConfigured) {
+          openSimplePresetsModal();
+        } else {
+          switchAppMode(targetMode);
+        }
+      }
+    }
+
     // Slider Toggle Interactions (Tap or Swipe)
     if (modeSliderWrap) {
       let touchStartX = 0;
@@ -9957,7 +9990,7 @@ function setupNavigationAndModals() {
         const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
         const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
         if (isSliderSwiping) {
-          promptModeSwitch(targetMode);
+          requestModeSwitch(targetMode);
           isSliderSwiping = false;
           e.preventDefault();
         }
@@ -9967,7 +10000,7 @@ function setupNavigationAndModals() {
         e.stopPropagation();
         const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
         const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
-        promptModeSwitch(targetMode);
+        requestModeSwitch(targetMode);
       });
 
       modeSliderWrap.addEventListener('keydown', (e) => {
@@ -9975,10 +10008,54 @@ function setupNavigationAndModals() {
           e.preventDefault();
           const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
           const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
-          promptModeSwitch(targetMode);
+          requestModeSwitch(targetMode);
         }
       });
     }
+
+    // Simple Mode Loop vs End segmented toggle in Today's Schedule & Calendar modal
+    function updateSimpleLoopUI() {
+      const isLoop = (typeof taskStore.getSimpleLoopEnabled === 'function')
+        ? taskStore.getSimpleLoopEnabled()
+        : true;
+      const btnDrawerLoop = document.getElementById('btnDrawerLoopOption');
+      const btnDrawerEnd = document.getElementById('btnDrawerEndOption');
+      const btnCalLoop = document.getElementById('btnCalLoopOption');
+      const btnCalEnd = document.getElementById('btnCalEndOption');
+
+      if (btnDrawerLoop) btnDrawerLoop.classList.toggle('active', isLoop);
+      if (btnDrawerEnd) btnDrawerEnd.classList.toggle('active', !isLoop);
+      if (btnCalLoop) btnCalLoop.classList.toggle('active', isLoop);
+      if (btnCalEnd) btnCalEnd.classList.toggle('active', !isLoop);
+    }
+    window.updateSimpleLoopUI = updateSimpleLoopUI;
+
+    function setSimpleLoopOption(isLoop) {
+      if (typeof taskStore.setSimpleLoopEnabled === 'function') {
+        taskStore.setSimpleLoopEnabled(isLoop);
+      }
+      if (runtime && typeof runtime.setLoopEnabled === 'function') {
+        runtime.setLoopEnabled(isLoop);
+      }
+      if (toggleSimpleLoop) {
+        toggleSimpleLoop.checked = isLoop;
+      }
+      updateSimpleLoopUI();
+      mobileServices.hapticTap();
+      showToastNotification(isLoop ? '🔁 Schedule set to Loop' : '🏁 Schedule set to End at completion');
+    }
+
+    const btnDrawerLoop = document.getElementById('btnDrawerLoopOption');
+    const btnDrawerEnd = document.getElementById('btnDrawerEndOption');
+    const btnCalLoop = document.getElementById('btnCalLoopOption');
+    const btnCalEnd = document.getElementById('btnCalEndOption');
+
+    if (btnDrawerLoop) btnDrawerLoop.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(true); });
+    if (btnDrawerEnd) btnDrawerEnd.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(false); });
+    if (btnCalLoop) btnCalLoop.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(true); });
+    if (btnCalEnd) btnCalEnd.addEventListener('click', (e) => { e.stopPropagation(); setSimpleLoopOption(false); });
+
+    updateSimpleLoopUI();
 
     // Simple Mode Quick Action Footer Buttons in Task Drawer & Today's Schedule Modal
     const wireSimpleAction = (id, fn) => {

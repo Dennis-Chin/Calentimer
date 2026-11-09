@@ -409,6 +409,7 @@ export class TaskStore {
           isLocked: false,
           useTimeBank: false,
           category: 'Rest',
+          color: '#f59e0b',
           emoji: '☕'
         });
       }
