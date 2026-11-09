@@ -1042,7 +1042,7 @@ export class CalendarView {
           if (dur <= 0) dur = 60;
         }
         const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
-        const heightPx = Math.max(26, (dur / 60) * hourHeight);
+        const heightPx = Math.max(4, Math.round(((dur / 60) * hourHeight) - 1));
 
         let isLaterOverlap = false;
         for (let k = 0; k < j; k++) {
@@ -1079,6 +1079,7 @@ export class CalendarView {
         card.style.top = `${topPx}px`;
         card.style.borderLeftColor = ev.color || this._getCategoryColor(ev.category);
         card.setAttribute('data-event-id', ev.id);
+      card.setAttribute('title', `${ev.title || 'Event'} (${ev.startTime} - ${ev.endTime}, ${dur}m)`);
         if (isDone) {
           card.style.background = 'rgba(16, 185, 129, 0.22)';
         } else if (isCurrent) {
@@ -1643,17 +1644,20 @@ export class CalendarView {
     card.style.height = `${heightPx}px`;
 
     // When ultra squashed (height < 22px), use ultra-compact single row without emoji or category
-    if (heightPx < 22) {
-      card.classList.add('is-single-row', 'is-ultra-compact');
+    if (heightPx < 14) {
+      card.classList.add('is-single-row', 'is-ultra-compact', 'is-nano-compact');
       card.classList.remove('is-compact-two-line');
+    } else if (heightPx < 22) {
+      card.classList.add('is-single-row', 'is-ultra-compact');
+      card.classList.remove('is-compact-two-line', 'is-nano-compact');
     } else if (heightPx < 38) {
       card.classList.add('is-single-row');
-      card.classList.remove('is-ultra-compact', 'is-compact-two-line');
+      card.classList.remove('is-ultra-compact', 'is-compact-two-line', 'is-nano-compact');
     } else if (heightPx < 54) {
-      card.classList.remove('is-single-row', 'is-ultra-compact');
+      card.classList.remove('is-single-row', 'is-ultra-compact', 'is-nano-compact');
       card.classList.add('is-compact-two-line');
     } else {
-      card.classList.remove('is-single-row', 'is-ultra-compact', 'is-compact-two-line');
+      card.classList.remove('is-single-row', 'is-ultra-compact', 'is-compact-two-line', 'is-nano-compact');
     }
   }
 
@@ -1686,7 +1690,7 @@ export class CalendarView {
           if (dur <= 0) dur = 60;
         }
         const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
-        const heightPx = Math.max(10, Math.round(((dur / 60) * hourHeight) - 1));
+        const heightPx = Math.max(4, Math.round(((dur / 60) * hourHeight) - 1));
         card.style.top = `${topPx}px`;
         this._applyEventCardLayout(card, heightPx);
       }
@@ -2254,7 +2258,7 @@ export class CalendarView {
       }
 
       const topPx = 14 + ((Math.max(startHour * 60, startMin) - (startHour * 60)) / 60) * hourHeight;
-      const heightPx = Math.max(10, Math.round(((dur / 60) * hourHeight) - 1));
+      const heightPx = Math.max(4, Math.round(((dur / 60) * hourHeight) - 1));
 
       const isLaterOverlap = hasOverlap[j] && (eventCols[j] === 1);
       const isEarlierOverlap = hasOverlap[j] && (eventCols[j] === 0);
@@ -2291,6 +2295,7 @@ export class CalendarView {
       card.style.top = `${topPx}px`;
       card.style.borderLeftColor = eventColor;
       card.setAttribute('data-event-id', ev.id);
+      card.setAttribute('title', `${ev.title || 'Event'} (${ev.startTime} - ${ev.endTime}, ${dur}m)`);
       if (isDone) {
         card.style.background = 'rgba(16, 185, 129, 0.22)';
       } else if (isCurrent) {
@@ -2526,6 +2531,7 @@ export class CalendarView {
           card.style.height = `${height}px`;
           card.style.backgroundColor = ev.color || this._getCategoryColor(ev.category);
           card.setAttribute('data-event-id', ev.id);
+          card.setAttribute('title', `${ev.title || 'Event'} (${ev.startTime} - ${ev.endTime}, ${durationMin}m)`);
 
           const isCompact = height < 44;
           if (isCompact) {
@@ -2941,7 +2947,7 @@ export class CalendarView {
           currentStartMin = Math.max(startHour * 60, Math.min(initialEndMin - minDur, snappedMinutes));
           currentDur = initialEndMin - currentStartMin;
           const newTopPx = 14 + (((currentStartMin - (startHour * 60)) / 60) * hourHeight);
-          const newHeightPx = Math.max(16, (currentDur / 60) * hourHeight);
+          const newHeightPx = Math.max(4, Math.round(((currentDur / 60) * hourHeight) - 1));
 
           card.style.top = `${newTopPx}px`;
           card.style.height = `${newHeightPx}px`;
@@ -2964,7 +2970,7 @@ export class CalendarView {
         } else {
           currentEndMin = Math.max(initialStartMin + minDur, Math.min(endHour * 60, snappedMinutes));
           currentDur = currentEndMin - initialStartMin;
-          const newHeightPx = Math.max(16, (currentDur / 60) * hourHeight);
+          const newHeightPx = Math.max(4, Math.round(((currentDur / 60) * hourHeight) - 1));
 
           card.style.height = `${newHeightPx}px`;
 
@@ -3328,13 +3334,13 @@ export class CalendarView {
         const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
         const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
         const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
-        const durHeight = Math.max(10, Math.round(((durMin / 60) * hourHeight) - 1));
+        const durHeight = Math.max(4, Math.round(((durMin / 60) * hourHeight) - 1));
 
         if (silhouette.parentNode !== newBody) {
           newBody.appendChild(silhouette);
         }
-        silhouette.style.top = `${snappedTopPx - 2}px`;
-        silhouette.style.height = `${durHeight + 4}px`;
+        silhouette.style.top = `${snappedTopPx}px`;
+        silhouette.style.height = `${durHeight}px`;
         silhouette.style.display = 'block';
 
         const previewStartH = Math.floor(snappedMinutes / 60);

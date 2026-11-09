@@ -5511,6 +5511,18 @@ body {
   border-left-width: 3px !important;
 }
 
+/* Invisible tap target expander so squashed 5m events can still be easily tapped / held */
+.day-event-card.is-ultra-compact::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .day-event-card.is-ultra-compact .day-event-emoji {
   display: none !important;
 }
@@ -5549,6 +5561,79 @@ body {
 .day-event-card.is-ultra-compact .cal-event-lock-btn svg {
   width: 9px !important;
   height: 9px !important;
+}
+
+/* Nano-compact squeeze styling for < 14px height (5-10 minute events) */
+.day-event-card.is-nano-compact {
+  padding: 0 3px !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-right: none !important;
+  border-left-width: 3px !important;
+  border-radius: 2px !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+}
+
+.day-event-card.is-nano-compact .day-event-content {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 3px !important;
+  width: 100% !important;
+  line-height: 1 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.day-event-card.is-nano-compact .day-event-title-line {
+  display: flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.day-event-card.is-nano-compact .day-event-title {
+  font-size: 0.52rem !important;
+  line-height: 1 !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+}
+
+.day-event-card.is-nano-compact .day-event-meta-line {
+  font-size: 0.48rem !important;
+  line-height: 1 !important;
+  gap: 2px !important;
+  display: flex !important;
+  align-items: center !important;
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+}
+
+.day-event-card.is-nano-compact .event-time-range {
+  font-size: 0.48rem !important;
+  line-height: 1 !important;
+}
+
+.day-event-card.is-nano-compact .event-duration-pill {
+  font-size: 0.46rem !important;
+  line-height: 1 !important;
+}
+
+.day-event-card.is-nano-compact .cal-event-lock-btn {
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  line-height: 1 !important;
+}
+
+.day-event-card.is-nano-compact .cal-event-lock-btn svg {
+  width: 7px !important;
+  height: 7px !important;
 }
 
 /* Squeeze styles for 30-minute cards (Compact Two-Line Layout with No Top/Bottom Truncation) */
