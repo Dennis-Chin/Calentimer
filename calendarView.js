@@ -127,7 +127,15 @@ export class CalendarView {
       confirmSyncNowModalBackdrop: document.getElementById('confirmSyncNowModalBackdrop'),
       btnConfirmSyncNow: document.getElementById('btnConfirmSyncNow'),
       btnDismissSyncNow: document.getElementById('btnDismissSyncNow'),
-      btnCalToolbarSync: document.getElementById('btnCalToolbarSync')
+      btnCalToolbarSync: document.getElementById('btnCalToolbarSync'),
+
+      // Phase 3: Unscheduled Tasks & Multi-Session Blocks Sidebar
+      btnToggleTasks: document.getElementById('btnToggleCalTasksSidebar'),
+      calTasksBadge: document.getElementById('calTasksBadge'),
+      unscheduledSidebar: document.getElementById('calUnscheduledSidebar'),
+      btnCloseSidebar: document.getElementById('btnCloseCalSidebar'),
+      sidebarBody: document.getElementById('calSidebarBody'),
+      mainLayout: document.getElementById('fullCalendarMainLayout')
     };
 
     this._bindEvents();
@@ -339,6 +347,18 @@ export class CalendarView {
       el.confirmSyncNowModalBackdrop.addEventListener('touchstart', (e) => {
         if (e.target === el.confirmSyncNowModalBackdrop) this.closeSyncConfirmModal();
       }, { passive: true });
+    }
+
+    // Unscheduled Tasks Sidebar Toggle & Close
+    if (el.btnToggleTasks) {
+      el.btnToggleTasks.addEventListener('click', () => {
+        this.toggleUnscheduledSidebar();
+      });
+    }
+    if (el.btnCloseSidebar) {
+      el.btnCloseSidebar.addEventListener('click', () => {
+        this.closeUnscheduledSidebar();
+      });
     }
 
     // Event Inspector Handlers
@@ -1820,6 +1840,371 @@ export class CalendarView {
     if (navItemTimer) navItemTimer.classList.add('active');
   }
 
+  // ==========================================
+  // Unscheduled Tasks & Multi-Session Sidebar
+  // ==========================================
+
+  toggleUnscheduledSidebar() {
+    const sb = this.elements.unscheduledSidebar;
+    if (!sb) return;
+    if (sb.classList.contains('hidden')) {
+      this.openUnscheduledSidebar();
+    } else {
+      this.closeUnscheduledSidebar();
+    }
+  }
+
+  openUnscheduledSidebar() {
+    const sb = this.elements.unscheduledSidebar;
+    if (!sb) return;
+    sb.classList.remove('hidden');
+    if (this.elements.btnToggleTasks) {
+      this.elements.btnToggleTasks.classList.add('is-active');
+    }
+    mobileServices.hapticTap();
+    this._renderUnscheduledSidebar();
+  }
+
+  closeUnscheduledSidebar() {
+    const sb = this.elements.unscheduledSidebar;
+    if (!sb) return;
+    sb.classList.add('hidden');
+    if (this.elements.btnToggleTasks) {
+      this.elements.btnToggleTasks.classList.remove('is-active');
+    }
+  }
+
+  _renderUnscheduledSidebar() {
+    const body = this.elements.sidebarBody;
+    const badge = this.elements.calTasksBadge;
+    if (!body) return;
+
+    const items = (typeof taskStore !== 'undefined' && typeof taskStore.getUnscheduledSessionsAndTodos === 'function')
+      ? taskStore.getUnscheduledSessionsAndTodos()
+      : [];
+
+    if (badge) {
+      const unscheduledCount = items.filter(it => !it.isScheduled && !it.isCompleted).length;
+      badge.textContent = String(unscheduledCount);
+    }
+
+    body.innerHTML = '';
+    if (items.length === 0) {
+      body.innerHTML = `
+        <div class="cal-sidebar-empty">
+          <span>No unscheduled tasks or multi-session blocks.</span>
+        </div>
+      `;
+      return;
+    }
+
+    items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = `cal-sidebar-card ${item.isScheduled ? 'is-scheduled' : ''} ${item.isCompleted ? 'is-completed' : ''}`;
+      card.setAttribute('data-id', item.id);
+      card.setAttribute('data-master-id', item.masterTaskId || '');
+      if (item.sessionIndex !== null && typeof item.sessionIndex !== 'undefined') {
+        card.setAttribute('data-session-index', String(item.sessionIndex));
+      }
+      card.setAttribute('data-duration', String(item.duration || 45));
+      card.setAttribute('data-title', item.title || '');
+      card.setAttribute('data-emoji', item.emoji || '📅');
+      card.setAttribute('data-category', item.category || 'General');
+
+      const subCount = (Array.isArray(item.subtasks) && item.subtasks.length > 0)
+        ? `<span class="cal-sidebar-subtask-count">✓ ${item.subtasks.filter(s => s.completed).length}/${item.subtasks.length}</span>`
+        : '';
+
+      const statusText = item.isCompleted
+        ? '<span class="cal-sidebar-status-sched" style="color:#10b981;">✓ Finished</span>'
+        : (item.isScheduled ? `<span class="cal-sidebar-status-sched">📅 ${item.scheduledDate ? item.scheduledDate.slice(5) : ''} ${item.scheduledTime || ''}</span>` : '');
+
+      const placeBtnText = item.isScheduled ? 'Move' : 'Place';
+
+      card.innerHTML = `
+        <div class="cal-sidebar-card-top">
+          <span class="cal-sidebar-card-emoji">${item.emoji || '📌'}</span>
+          <span class="cal-sidebar-card-title">${this._escapeHtml(item.displayTitle || item.title)}</span>
+        </div>
+        <div class="cal-sidebar-card-meta">
+          <span class="cal-sidebar-card-dur">${item.duration || 45}m</span>
+          ${subCount}
+          ${statusText}
+          <button type="button" class="cal-sidebar-card-btn-place" data-action="place-session" title="Place onto calendar timeline">${placeBtnText}</button>
+        </div>
+      `;
+
+      // 1-Tap Place Button
+      const btnPlace = card.querySelector('[data-action="place-session"]');
+      if (btnPlace) {
+        btnPlace.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._placeSidebarTaskDirectly(item);
+        });
+      }
+
+      // Pointer Drag-and-drop onto Day & Week timeline
+      this._setupSidebarCardDrag(card, item);
+
+      body.appendChild(card);
+    });
+  }
+
+  _placeSidebarTaskDirectly(item) {
+    const targetDate = this.selectedDate || this.currentDate || new Date();
+    const dateStr = this._formatDateISO(targetDate);
+    const dur = item.duration || 45;
+
+    const allEvents = taskStore.getCalendarEvents().filter(e => e.date === dateStr);
+    let candidateMin = 600; // 10:00 AM default
+    const now = new Date();
+    if (dateStr === this._formatDateISO(now)) {
+      const nowMin = (now.getHours() * 60) + now.getMinutes();
+      candidateMin = Math.ceil((nowMin + 15) / 15) * 15;
+    }
+
+    for (let attempt = 0; attempt < 48; attempt++) {
+      const testStart = candidateMin;
+      const testEnd = candidateMin + dur;
+      if (testEnd > 1440) break;
+      const hasConflict = allEvents.some(ev => {
+        const s = this._parseTimeToMinutes(ev.startTime);
+        const e = this._parseTimeToMinutes(ev.endTime);
+        return testStart < e && testEnd > s;
+      });
+      if (!hasConflict) {
+        break;
+      }
+      candidateMin += 15;
+    }
+
+    const startTime = this._formatMinutesToTime(candidateMin % 1440);
+
+    taskStore.scheduleSessionBlock({
+      masterTaskId: item.masterTaskId,
+      sessionIndex: item.sessionIndex,
+      totalSessions: item.totalSessions,
+      date: dateStr,
+      startTime: startTime,
+      duration: dur,
+      title: item.title,
+      emoji: item.emoji,
+      category: item.category
+    });
+
+    mobileServices.hapticBuzz();
+    this._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
+    this.render();
+    this._renderUnscheduledSidebar();
+  }
+
+  _setupSidebarCardDrag(card, item) {
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let ghost = null;
+    let snapPreview = null;
+    let activePointerId = null;
+    const durMin = item.duration || 45;
+
+    const onPointerDown = (e) => {
+      if (e.target.closest('[data-action="place-session"]')) return;
+      if (e.button !== undefined && e.button !== 0) return;
+
+      activePointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      isDragging = false;
+
+      const onPointerMove = (moveEv) => {
+        if (moveEv.pointerId !== activePointerId) return;
+
+        if (!isDragging) {
+          if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
+            isDragging = true;
+            this.isDraggingEvent = true;
+
+            ghost = document.createElement('div');
+            ghost.className = 'cal-drag-sidebar-ghost';
+            ghost.textContent = (item.emoji || '📌') + ' ' + (item.displayTitle || item.title);
+            document.body.appendChild(ghost);
+
+            if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+              mobileServices.hapticBuzz();
+            }
+          } else {
+            return;
+          }
+        }
+
+        if (moveEv.cancelable) moveEv.preventDefault();
+
+        if (ghost) {
+          ghost.style.left = (moveEv.clientX + 12) + 'px';
+          ghost.style.top = (moveEv.clientY + 12) + 'px';
+        }
+
+        const dayBody = this.elements.dayTimelineBody;
+        const weekBody = this.elements.weekGridBody;
+
+        if (this.activeView === 'day' && dayBody) {
+          const rect = dayBody.getBoundingClientRect();
+          if (moveEv.clientX >= rect.left && moveEv.clientX <= rect.right &&
+              moveEv.clientY >= rect.top && moveEv.clientY <= rect.bottom) {
+            const hourHeight = this.dayHourHeight || 56;
+            const isCustom = taskStore.getCalendarCustomRangeEnabled();
+            let startHour = 0;
+            if (isCustom) {
+              const startStr = taskStore.getCalendarStartTime() || '08:00';
+              startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+            }
+            const relY = moveEv.clientY - rect.top - 14;
+            const mins = Math.max(0, (relY / hourHeight) * 60) + (startHour * 60);
+            const resolution = this.currentResolution || 15;
+            const snappedStartMin = Math.max(0, Math.min(1440 - durMin, Math.round(mins / resolution) * resolution));
+            const topPx = 14 + (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
+            const heightPx = Math.max(14, Math.round(((durMin / 60) * hourHeight) - 1));
+
+            if (!snapPreview) {
+              snapPreview = document.createElement('div');
+              snapPreview.className = 'cal-drop-snap-preview';
+              dayBody.appendChild(snapPreview);
+            }
+            snapPreview.style.top = topPx + 'px';
+            snapPreview.style.height = heightPx + 'px';
+            snapPreview.textContent = this._formatMinutesToTime(snappedStartMin) + ' - ' + this._formatMinutesToTime((snappedStartMin + durMin) % 1440);
+          } else {
+            if (snapPreview && snapPreview.parentNode) {
+              snapPreview.parentNode.removeChild(snapPreview);
+              snapPreview = null;
+            }
+          }
+        } else if (this.activeView === 'week' && weekBody) {
+          const dayCols = Array.from(weekBody.querySelectorAll('.week-day-col'));
+          let matchedCol = null;
+          for (let i = 0; i < dayCols.length; i++) {
+            const cRect = dayCols[i].getBoundingClientRect();
+            if (moveEv.clientX >= cRect.left && moveEv.clientX <= cRect.right &&
+                moveEv.clientY >= cRect.top && moveEv.clientY <= cRect.bottom) {
+              matchedCol = dayCols[i];
+              break;
+            }
+          }
+
+          if (matchedCol) {
+            const hourHeight = this.weekHourHeight || 50;
+            const isCustom = taskStore.getCalendarCustomRangeEnabled();
+            let startHour = 0;
+            if (isCustom) {
+              const startStr = taskStore.getCalendarStartTime() || '08:00';
+              startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+            }
+            const cRect = matchedCol.getBoundingClientRect();
+            const relY = moveEv.clientY - cRect.top;
+            const mins = Math.max(0, (relY / hourHeight) * 60) + (startHour * 60);
+            const resolution = this.weekResolution || 15;
+            const snappedStartMin = Math.max(0, Math.min(1440 - durMin, Math.round(mins / resolution) * resolution));
+            const topPx = Math.max(0, ((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
+            const heightPx = Math.max(14, Math.round(((durMin / 60) * hourHeight) - 2));
+
+            if (!snapPreview || snapPreview.parentNode !== matchedCol) {
+              if (snapPreview && snapPreview.parentNode) {
+                snapPreview.parentNode.removeChild(snapPreview);
+              }
+              snapPreview = document.createElement('div');
+              snapPreview.className = 'cal-drop-snap-preview';
+              snapPreview.style.left = '4px';
+              snapPreview.style.right = '4px';
+              matchedCol.appendChild(snapPreview);
+            }
+            snapPreview.style.top = topPx + 'px';
+            snapPreview.style.height = heightPx + 'px';
+            snapPreview.textContent = this._formatMinutesToTime(snappedStartMin);
+          } else {
+            if (snapPreview && snapPreview.parentNode) {
+              snapPreview.parentNode.removeChild(snapPreview);
+              snapPreview = null;
+            }
+          }
+        }
+      };
+
+      const onPointerUp = (upEv) => {
+        if (upEv.pointerId !== activePointerId) return;
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+
+        if (ghost && ghost.parentNode) {
+          ghost.parentNode.removeChild(ghost);
+          ghost = null;
+        }
+
+        const hadSnap = Boolean(snapPreview);
+        let targetDateStr = null;
+        let targetStartMin = null;
+
+        if (snapPreview) {
+          const parentCol = snapPreview.closest('.week-day-col');
+          if (parentCol) {
+            targetDateStr = parentCol.getAttribute('data-date');
+          } else {
+            const targetDate = this.selectedDate || this.currentDate || new Date();
+            targetDateStr = this._formatDateISO(targetDate);
+          }
+
+          const topVal = parseFloat(snapPreview.style.top || '0');
+          const isWeek = Boolean(parentCol);
+          const hourHeight = isWeek ? (this.weekHourHeight || 50) : (this.dayHourHeight || 56);
+          const isCustom = taskStore.getCalendarCustomRangeEnabled();
+          let startHour = 0;
+          if (isCustom) {
+            const startStr = taskStore.getCalendarStartTime() || '08:00';
+            startHour = Math.max(0, Math.min(23, Math.floor(this._parseTimeToMinutes(startStr) / 60)));
+          }
+          const baseOffset = isWeek ? 0 : 14;
+          const mins = (((topVal - baseOffset) / hourHeight) * 60) + (startHour * 60);
+          targetStartMin = Math.round(mins);
+
+          if (snapPreview.parentNode) {
+            snapPreview.parentNode.removeChild(snapPreview);
+            snapPreview = null;
+          }
+        }
+
+        this.isDraggingEvent = false;
+
+        if (isDragging && hadSnap && targetDateStr && typeof targetStartMin === 'number') {
+          const startTime = this._formatMinutesToTime(targetStartMin);
+          taskStore.scheduleSessionBlock({
+            masterTaskId: item.masterTaskId,
+            sessionIndex: item.sessionIndex,
+            totalSessions: item.totalSessions,
+            date: targetDateStr,
+            startTime: startTime,
+            duration: durMin,
+            title: item.title,
+            emoji: item.emoji,
+            category: item.category
+          });
+
+          if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+            mobileServices.hapticBuzz();
+          }
+          this._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
+          this.render();
+          this._renderUnscheduledSidebar();
+        }
+      };
+
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    };
+
+    card.addEventListener('pointerdown', onPointerDown);
+  }
+
   _populateResolutionOptions(options, selectedVal) {
     const sel = this.elements.resolutionSelect;
     if (!sel) return;
@@ -2019,6 +2404,7 @@ export class CalendarView {
     this._clearActiveResizeHandles();
     this._renderRangeLabel();
     this.updateProviderToggleUI();
+    this._renderUnscheduledSidebar();
 
     if (this.activeView === 'day') {
       const currentScroll = (typeof preserveScrollTop === 'number')

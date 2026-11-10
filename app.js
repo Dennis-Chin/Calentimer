@@ -644,6 +644,38 @@ function setupRuntimeEvents() {
           completedDate: todayStr
         });
       }
+      // Preserve in calendar events history permanently
+      if (typeof taskStore !== 'undefined' && typeof taskStore.updateCalendarEvent === 'function') {
+        taskStore.updateCalendarEvent(data.task.id, {
+          isCompleted: true,
+          completedDate: todayStr
+        });
+      }
+      // If multi-session child block, roll tracked minutes into master task
+      if (data.task.masterTaskId && typeof taskStore !== 'undefined') {
+        const match = taskStore.findTaskAnywhere(data.task.masterTaskId);
+        if (match && match.task) {
+          const master = match.task;
+          const sessionMin = Math.round(data.task.allocatedDuration || data.task.plannedDuration || 0);
+          const currentMins = master.completedMinutes || 0;
+          const newMins = currentMins + sessionMin;
+          const masterUpdates = { completedMinutes: newMins };
+
+          // Check if all sessions for this master task are now complete
+          const allSessions = taskStore.getTasks().filter(t => t.masterTaskId === master.id || t.id === master.id);
+          const allDone = allSessions.every(s => (s.id === data.task.id ? true : s.isCompleted));
+          if (allDone && (master.sessionCount && allSessions.length >= master.sessionCount)) {
+            masterUpdates.isCompleted = true;
+            masterUpdates.completedDate = todayStr;
+          }
+
+          if (match.source === 'todo') {
+            taskStore.updateTodoTask(master.id, masterUpdates);
+          } else {
+            taskStore.updateTask(master.id, masterUpdates);
+          }
+        }
+      }
     }
     updateTotalMinutesDisplay();
     updateActiveTaskDisplay();
@@ -1122,7 +1154,10 @@ function updateTimerQuickToggles(isOverrunning = false) {
 
 function updateActiveTaskDisplay() {
   const activeTask = runtime.getActiveTask();
+  const sessionPill = document.getElementById('activeSessionProgressPill');
+
   if (!activeTask || runtime.status === TimerStatus.COMPLETED) {
+    if (sessionPill) sessionPill.classList.add('hidden');
     activeCategoryChip.textContent = 'TASK';
     activeTaskTitle.textContent = 'Add Task';
     activeTaskTitle.style.cursor = 'pointer';
@@ -1148,6 +1183,34 @@ function updateActiveTaskDisplay() {
   activeTaskTitle.textContent = activeTask.title;
   updateActiveTaskTimeSpanDynamic();
   updateTimerQuickToggles();
+
+  if (sessionPill) {
+    const isMulti = Boolean(activeTask.isMultiSession);
+    const subtasks = (typeof taskStore !== 'undefined' && typeof taskStore.getSubtasks === 'function')
+      ? taskStore.getSubtasks(activeTask.id)
+      : (Array.isArray(activeTask.subtasks) ? activeTask.subtasks : []);
+    const prog = (typeof taskStore !== 'undefined' && typeof taskStore.getTaskProgress === 'function')
+      ? taskStore.getTaskProgress(activeTask)
+      : { completed: 0, total: 0, percent: 0 };
+
+    if (isMulti || subtasks.length > 0) {
+      let text = '';
+      if (isMulti) {
+        const sIdx = typeof activeTask.sessionIndex === 'number' ? activeTask.sessionIndex : 1;
+        const sTot = activeTask.sessionCount || 1;
+        text = `Session ${sIdx} of ${sTot}`;
+        if (prog.total > 0) {
+          text += ` • Steps: ${prog.completed}/${prog.total}`;
+        }
+      } else {
+        text = `Steps: ${prog.completed}/${prog.total}`;
+      }
+      sessionPill.textContent = text;
+      sessionPill.classList.remove('hidden');
+    } else {
+      sessionPill.classList.add('hidden');
+    }
+  }
 }
 
 function updateScheduleUI(schedule) {
@@ -4308,6 +4371,51 @@ function renderTaskList(rawTasks) {
     card.setAttribute('data-id', task.id);
     card.setAttribute('data-index', idx);
 
+    const subtasks = (typeof taskStore !== 'undefined' && typeof taskStore.getSubtasks === 'function')
+      ? taskStore.getSubtasks(task.id)
+      : [];
+    const hasSubtasks = subtasks.length > 0;
+    const isMulti = Boolean(task.isMultiSession || (task.sessionIndex && task.totalSessions) || (task.sessionCount && task.sessionCount > 1));
+    const progress = (typeof taskStore !== 'undefined' && typeof taskStore.getTaskProgress === 'function')
+      ? taskStore.getTaskProgress(task)
+      : { completed: 0, total: 0, percent: 0 };
+    const isTaskExpanded = expandedTaskDrawerIds.has(task.id);
+
+    let sessionBadgeHtml = '';
+    if (task.isMultiSession || (task.sessionIndex && task.totalSessions)) {
+      const sIdx = task.sessionIndex || 1;
+      const sTot = task.totalSessions || task.sessionCount || 1;
+      sessionBadgeHtml = `<span class="session-badge">Session ${sIdx} of ${sTot} 🔗</span>`;
+    }
+
+    let subtaskTogglePillHtml = '';
+    if (hasSubtasks || isMulti) {
+      const badgeDoneClass = (progress.completed === progress.total && progress.total > 0) ? 'all-done' : '';
+      const arrowOpenClass = isTaskExpanded ? 'open' : '';
+      subtaskTogglePillHtml = `
+        <button type="button" class="todo-subtask-toggle-btn task-subtask-toggle" data-action="toggle-task-subtask-drawer" data-id="${task.id}" title="Toggle steps">
+          <span class="todo-subtask-badge ${badgeDoneClass}">✓ ${progress.completed}/${progress.total} <span class="todo-subtask-arrow ${arrowOpenClass}">▾</span></span>
+        </button>
+      `;
+    }
+
+    let checkOrEarnedHtml = '';
+    if (hasSubtasks || isMulti) {
+      if (progress.completed === progress.total && progress.total > 0) {
+        checkOrEarnedHtml = '<span class="todo-earned-check" title="All steps completed!">✓</span>';
+      } else {
+        checkOrEarnedHtml = '';
+      }
+    } else {
+      checkOrEarnedHtml = `
+        <button type="button" class="task-check-btn ${task.isCompleted ? 'checked' : ''}" data-action="toggle-task-done" data-id="${task.id}" title="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}" aria-label="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}">
+          <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </button>
+      `;
+    }
+
     const catHex = task.color || getCategoryHexColor(task.category);
     if (statusClass === 'task-pending') {
       card.style.background = hexToRgba(catHex, 0.12);
@@ -4318,6 +4426,15 @@ function renderTaskList(rawTasks) {
       card.style.borderColor = '#00f0ff';
       card.style.borderLeft = '5px solid #00f0ff';
       card.style.boxShadow = '0 0 16px rgba(0, 240, 255, 0.25)';
+    }
+
+    // Emerald fractional wash
+    if (progress.total > 0 && progress.percent > 0) {
+      const isLight = (document.documentElement && document.documentElement.getAttribute('data-theme') === 'light') || (document.body && document.body.getAttribute('data-theme') === 'light');
+      const baseBg = isCurrentActive ? '#142329' : (isLight ? '#ffffff' : '#1e222d');
+      const pct = progress.percent;
+      card.style.background = 'linear-gradient(to right, rgba(16, 185, 129, 0.22) ' + pct + '%, ' + baseBg + ' ' + pct + '%)';
+      card.style.borderColor = 'rgba(16, 185, 129, 0.4)';
     }
 
     const isCompressed = task.allocatedDuration < task.plannedDuration;
@@ -4341,11 +4458,54 @@ function renderTaskList(rawTasks) {
       </div>
     ` : '';
 
+    let drawerHtml = '';
+    if (isTaskExpanded) {
+      let subtasksListHtml = '';
+      subtasks.forEach((sub, sIdx) => {
+        const isDone = Boolean(sub.completed);
+        subtasksListHtml += `
+          <div class="subtask-row" data-subtask-id="${sub.id}" data-index="${sIdx}">
+            <div class="subtask-drag-handle" data-subtask-id="${sub.id}" title="Hold & drag to reorder">
+              <svg width="8" height="12" viewBox="0 0 10 15" fill="currentColor">
+                <circle cx="2.5" cy="2.5" r="1.3"/>
+                <circle cx="7.5" cy="2.5" r="1.3"/>
+                <circle cx="2.5" cy="7.5" r="1.3"/>
+                <circle cx="7.5" cy="7.5" r="1.3"/>
+                <circle cx="2.5" cy="12.5" r="1.3"/>
+                <circle cx="7.5" cy="12.5" r="1.3"/>
+              </svg>
+            </div>
+            <button type="button" class="subtask-check-btn ${isDone ? 'checked' : ''}" data-action="toggle-task-subtask" data-task-id="${task.id}" data-subtask-id="${sub.id}" title="${isDone ? 'Mark step uncompleted' : 'Mark step done'}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <span class="subtask-title ${isDone ? 'completed' : ''}">${escapeHtml(sub.title || '')}</span>
+            <button type="button" class="subtask-delete-btn" data-action="delete-task-subtask" data-task-id="${task.id}" data-subtask-id="${sub.id}" title="Delete step">✕</button>
+          </div>
+        `;
+      });
+
+      drawerHtml = `
+        <div class="todo-subtask-drawer" data-task-id="${task.id}">
+          <div class="subtask-list">
+            ${subtasksListHtml}
+          </div>
+          <div class="subtask-add-row">
+            <input type="text" class="subtask-add-input" data-task-id="${task.id}" placeholder="+ Add a step (press Enter)" autocomplete="off">
+            <button type="button" class="btn-subtask-add-confirm" data-action="confirm-add-task-subtask" data-task-id="${task.id}">Add</button>
+          </div>
+        </div>
+      `;
+    }
+
     card.innerHTML = `
       <!-- Top Row: Status badge on top left, actions on top right -->
       <div class="task-card-top-row">
         <div class="task-card-status-wrap">
           ${statusBadge}
+          ${sessionBadgeHtml}
+          ${subtaskTogglePillHtml}
           ${overlapBadgeHtml}
         </div>
         <div class="task-card-actions">
@@ -4393,11 +4553,7 @@ function renderTaskList(rawTasks) {
         <div class="task-card-title-wrap">
           <span class="task-card-title">${escapeHtml(task.title)}</span>
         </div>
-        <button type="button" class="task-check-btn ${task.isCompleted ? 'checked' : ''}" data-action="toggle-task-done" data-id="${task.id}" title="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}" aria-label="${task.isCompleted ? 'Mark as to-do' : 'Mark as done'}">
-          <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </button>
+        ${checkOrEarnedHtml}
       </div>
 
       <!-- Bottom Row: Timing duration in blue text on a single line -->
@@ -4408,6 +4564,7 @@ function renderTaskList(rawTasks) {
         }</span>
         <span class="task-category-chip" style="${catHex ? 'background:' + hexToRgba(catHex, 0.18) + ';color:' + catHex + ';border:1px solid ' + hexToRgba(catHex, 0.45) + ';' : ''}">${escapeHtml(task.category || 'General')}</span>
       </div>
+      ${drawerHtml}
     `;
 
     // Custom Themed Hold-to-delete gesture (450ms) on task card
@@ -4428,7 +4585,7 @@ function renderTaskList(rawTasks) {
     };
 
     card.addEventListener('touchstart', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill, .todo-subtask-drawer, .todo-subtask-toggle-btn, .subtask-row, .subtask-add-row, .subtask-add-input, .btn-subtask-add-confirm')) return;
       holdMoved = false;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
@@ -4455,7 +4612,7 @@ function renderTaskList(rawTasks) {
 
     card.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill')) return;
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], [data-action="pick-emoji"], [data-action="toggle-task-done"], [data-action="tap-status-pill"], .task-check-btn, .task-emoji-btn, .btn-icon-action, .task-card-status-wrap, .task-status-pill, .todo-subtask-drawer, .todo-subtask-toggle-btn, .subtask-row, .subtask-add-row, .subtask-add-input, .btn-subtask-add-confirm')) return;
       holdMoved = false;
       startX = e.clientX;
       startY = e.clientY;
@@ -4480,6 +4637,93 @@ function renderTaskList(rawTasks) {
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     });
+
+    // Subtask toggle pill click in task drawer
+    const toggleTaskPillBtn = card.querySelector('[data-action="toggle-task-subtask-drawer"]');
+    if (toggleTaskPillBtn) {
+      toggleTaskPillBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedTaskDrawerIds.has(task.id)) {
+          expandedTaskDrawerIds.delete(task.id);
+        } else {
+          expandedTaskDrawerIds.add(task.id);
+        }
+        mobileServices.hapticTap();
+        renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+        if (expandedTaskDrawerIds.has(task.id)) {
+          setTimeout(() => {
+            const inp = card.querySelector(`.subtask-add-input[data-task-id="${task.id}"]`);
+            if (inp) inp.focus();
+          }, 60);
+        }
+      });
+    }
+
+    // Subtask check click
+    card.querySelectorAll('[data-action="toggle-task-subtask"]').forEach(subCheckBtn => {
+      subCheckBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const subId = subCheckBtn.getAttribute('data-subtask-id');
+        const targetSub = subtasks.find(s => s.id === subId);
+        if (targetSub) {
+          taskStore.updateSubtask(task.id, subId, { completed: !targetSub.completed });
+          mobileServices.hapticTap();
+          renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+        }
+      });
+    });
+
+    // Subtask delete click
+    card.querySelectorAll('[data-action="delete-task-subtask"]').forEach(subDelBtn => {
+      subDelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const subId = subDelBtn.getAttribute('data-subtask-id');
+        taskStore.deleteSubtask(task.id, subId);
+        mobileServices.hapticTap();
+        renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      });
+    });
+
+    // Subtask add handling
+    const addTaskSubInput = card.querySelector('.subtask-add-input');
+    const addTaskSubBtn = card.querySelector('[data-action="confirm-add-task-subtask"]');
+    const doAddTaskSubtask = () => {
+      if (!addTaskSubInput) return;
+      const text = (addTaskSubInput.value || '').trim();
+      if (!text) return;
+      taskStore.addSubtask(task.id, { title: text, completed: false });
+      mobileServices.hapticTap();
+      renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      setTimeout(() => {
+        const nextInp = taskListContainer.querySelector(`.subtask-add-input[data-task-id="${task.id}"]`);
+        if (nextInp) nextInp.focus();
+      }, 60);
+    };
+
+    if (addTaskSubInput) {
+      addTaskSubInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          doAddTaskSubtask();
+        }
+      });
+      addTaskSubInput.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    if (addTaskSubBtn) {
+      addTaskSubBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        doAddTaskSubtask();
+      });
+    }
+
+    const taskDrawerEl = card.querySelector('.todo-subtask-drawer');
+    if (taskDrawerEl) {
+      setupInteractiveSubtaskDrag(taskDrawerEl, task.id, () => {
+        renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
+      });
+    }
 
     // Toggle task done tick box
     const checkBtn = card.querySelector('[data-action="toggle-task-done"]');
@@ -5351,10 +5595,82 @@ let isAddModalManualCategory = false;
 let isEditModalManualEmoji = false;
 let isEditModalManualCategory = false;
 
+let addModalSubtasks = [];
+let editModalSubtasks = [];
+let addModalSessionCount = 2;
+let editModalSessionCount = 2;
+
+function renderAddModalSubtaskList() {
+  const container = document.getElementById('addModalSubtaskList');
+  if (!container) return;
+  container.innerHTML = '';
+  addModalSubtasks.forEach((st, idx) => {
+    const row = document.createElement('div');
+    row.className = 'subtask-editor-row';
+    row.setAttribute('data-index', idx);
+    row.innerHTML = `
+      <span class="subtask-editor-handle" title="Drag to reorder">::</span>
+      <span class="subtask-editor-title">${escapeHtml(st.title || '')}</span>
+      <button type="button" class="btn-subtask-editor-del" data-index="${idx}" title="Remove step">✕</button>
+    `;
+    const delBtn = row.querySelector('.btn-subtask-editor-del');
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        addModalSubtasks.splice(idx, 1);
+        renderAddModalSubtaskList();
+      });
+    }
+    container.appendChild(row);
+  });
+}
+
+function renderEditModalSubtaskList() {
+  const container = document.getElementById('editTaskSubtaskList');
+  if (!container) return;
+  container.innerHTML = '';
+  editModalSubtasks.forEach((st, idx) => {
+    const row = document.createElement('div');
+    row.className = 'subtask-editor-row';
+    row.setAttribute('data-index', idx);
+    row.innerHTML = `
+      <span class="subtask-editor-handle" title="Drag to reorder">::</span>
+      <span class="subtask-editor-title">${escapeHtml(st.title || '')}</span>
+      <button type="button" class="btn-subtask-editor-del" data-index="${idx}" title="Remove step">✕</button>
+    `;
+    const delBtn = row.querySelector('.btn-subtask-editor-del');
+    if (delBtn) {
+      delBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        editModalSubtasks.splice(idx, 1);
+        renderEditModalSubtaskList();
+      });
+    }
+    container.appendChild(row);
+  });
+}
+
 function openAddTaskModal(defaultType = 'work', prefillData = null) {
   ensureHistoryBuffer();
   isAddModalManualEmoji = false;
   isAddModalManualCategory = false;
+  addModalSubtasks = [];
+  addModalSessionCount = 2;
+  const toggleMulti = document.getElementById('addModalIsMultiSession');
+  const detailsMulti = document.getElementById('addModalMultiSessionDetails');
+  const valMulti = document.getElementById('addModalSessionCountVal');
+  const hintMulti = document.getElementById('addModalMultiSessionHint');
+  const addModalAddToTodo = document.getElementById('addModalAddToTodo');
+  if (toggleMulti) toggleMulti.checked = false;
+  if (detailsMulti) detailsMulti.classList.add('hidden');
+  if (valMulti) valMulti.textContent = '2';
+  if (hintMulti) hintMulti.textContent = 'Total duration split into 2 sessions';
+  if (addModalAddToTodo) addModalAddToTodo.checked = false;
+  const addModalNewSubtaskInput = document.getElementById('addModalNewSubtaskInput');
+  if (addModalNewSubtaskInput) addModalNewSubtaskInput.value = '';
+  renderAddModalSubtaskList();
   if (typeof addModalFieldState !== 'undefined') {
     addModalFieldState.durationUserDefined = false;
     addModalFieldState.startUserDefined = false;
@@ -5484,6 +5800,29 @@ function openTaskEditModal(taskId) {
   isEditModalManualEmoji = false;
   isEditModalManualCategory = false;
 
+  const subtasks = (typeof taskStore !== 'undefined' && typeof taskStore.getSubtasks === 'function')
+    ? taskStore.getSubtasks(taskId)
+    : (Array.isArray(task.subtasks) ? task.subtasks : []);
+  editModalSubtasks = subtasks.map(s => ({ id: s.id, title: s.title, completed: Boolean(s.completed) }));
+  editModalSessionCount = task.sessionCount || 2;
+  const isMulti = Boolean(task.isMultiSession);
+  const toggleMulti = document.getElementById('editTaskIsMultiSession');
+  const detailsMulti = document.getElementById('editTaskMultiSessionDetails');
+  const valMulti = document.getElementById('editTaskSessionCountVal');
+  const hintMulti = document.getElementById('editTaskMultiSessionHint');
+  const editTaskAddToTodo = document.getElementById('editTaskAddToTodo');
+  if (toggleMulti) toggleMulti.checked = isMulti;
+  if (detailsMulti) detailsMulti.classList.toggle('hidden', !isMulti);
+  if (valMulti) valMulti.textContent = String(editModalSessionCount);
+  if (hintMulti) hintMulti.textContent = `Total duration split into ${editModalSessionCount} sessions`;
+  if (editTaskAddToTodo) {
+    const isAlsoInTodo = taskStore.getTodoTasks().some(t => t.id === taskId || t.masterTaskId === taskId);
+    editTaskAddToTodo.checked = isAlsoInTodo;
+  }
+  const editTaskNewSubtaskInput = document.getElementById('editTaskNewSubtaskInput');
+  if (editTaskNewSubtaskInput) editTaskNewSubtaskInput.value = '';
+  renderEditModalSubtaskList();
+
   syncModalToggleIcons();
   if (typeof renderAllDurationPresetChips === 'function') renderAllDurationPresetChips();
   if (refreshEditCategoryChips) refreshEditCategoryChips();
@@ -5605,9 +5944,16 @@ function saveCurrentTaskEdit() {
     taskColorId = googleCalendarAdapter.getGoogleColorId(category, taskColor, null);
   }
 
+  const editMultiInput = document.getElementById('editTaskIsMultiSession');
+  const isMultiSession = Boolean(editMultiInput && editMultiInput.checked);
+  const sessionCount = isMultiSession ? editModalSessionCount : 1;
+  const sessionDuration = isMultiSession ? Math.max(1, Math.round(plannedDuration / sessionCount)) : plannedDuration;
+  const editAddToTodoInput = document.getElementById('editTaskAddToTodo');
+  const addToTodo = Boolean(editAddToTodoInput && editAddToTodoInput.checked);
+
   taskStore.updateTask(currentEditTaskId, {
     title,
-    plannedDuration,
+    plannedDuration: isMultiSession ? sessionDuration : plannedDuration,
     category,
     fixedStartTime,
     fixedEndTime,
@@ -5615,8 +5961,46 @@ function saveCurrentTaskEdit() {
     useTimeBank,
     emoji,
     color: taskColor,
-    colorId: taskColorId
+    colorId: taskColorId,
+    isMultiSession: isMultiSession,
+    sessionCount: sessionCount,
+    sessionDuration: sessionDuration,
+    subtasks: editModalSubtasks.slice()
   });
+
+  const existingTodo = taskStore.getTodoTasks().find(t => t.id === currentEditTaskId || t.masterTaskId === currentEditTaskId);
+  if (addToTodo) {
+    if (existingTodo) {
+      taskStore.updateTodoTask(existingTodo.id, {
+        title,
+        category,
+        emoji,
+        isMultiSession,
+        sessionCount,
+        sessionDuration,
+        plannedDuration,
+        subtasks: editModalSubtasks.slice()
+      });
+    } else {
+      taskStore.addTodoTask({
+        id: 'todo-' + currentEditTaskId,
+        masterTaskId: currentEditTaskId,
+        title,
+        category,
+        emoji,
+        completed: false,
+        isMultiSession,
+        sessionCount,
+        sessionDuration,
+        plannedDuration,
+        subtasks: editModalSubtasks.slice()
+      });
+    }
+    renderTodoList();
+  } else if (existingTodo) {
+    taskStore.deleteTodoTask(existingTodo.id);
+    renderTodoList();
+  }
 
   const updatedTask = taskStore.getTasks().find(t => t.id === currentEditTaskId);
   if ((prevGoogle && nextGoogle) || (prevMS && nextMS)) {
@@ -6329,22 +6713,96 @@ function renderCalendarModal() {
     item.setAttribute('data-id', task.id);
     item.setAttribute('data-index', idx);
 
+    const subtasks = (typeof taskStore !== 'undefined' && typeof taskStore.getSubtasks === 'function')
+      ? taskStore.getSubtasks(task.id)
+      : (Array.isArray(task.subtasks) ? task.subtasks : []);
+    const progress = (typeof taskStore !== 'undefined' && typeof taskStore.getTaskProgress === 'function')
+      ? taskStore.getTaskProgress(task)
+      : { completed: 0, total: 0, percent: 0 };
+    const hasSubtasks = subtasks.length > 0;
+    const isMulti = Boolean(task.isMultiSession);
+    const isCalExpanded = expandedCalendarDrawerIds.has(task.id);
+
     const catHex = task.color || getCategoryHexColor(task.category);
     if (statusClass === 'pending') {
       const tint = hexToRgba(catHex, 0.12);
       const isLight = (document.documentElement && document.documentElement.getAttribute('data-theme') === 'light') || (document.body && document.body.getAttribute('data-theme') === 'light');
       const baseBg = isLight ? '#ffffff' : '#141822';
-      item.style.background = `linear-gradient(${tint}, ${tint}), ${baseBg}`;
+      if (progress.percent > 0) {
+        item.style.background = `linear-gradient(to right, rgba(16, 185, 129, 0.22) ${progress.percent}%, ${baseBg} ${progress.percent}%)`;
+      } else {
+        item.style.background = `linear-gradient(${tint}, ${tint}), ${baseBg}`;
+      }
       item.style.borderColor = hexToRgba(catHex, 0.35);
       item.style.borderLeft = `4px solid ${catHex}`;
     } else if (statusClass === 'current') {
-      item.style.background = '#142329';
+      if (progress.percent > 0) {
+        item.style.background = `linear-gradient(to right, rgba(16, 185, 129, 0.28) ${progress.percent}%, #142329 ${progress.percent}%)`;
+      } else {
+        item.style.background = '#142329';
+      }
       item.style.borderColor = '#00f0ff';
       item.style.borderLeft = '4px solid #00f0ff';
       item.style.boxShadow = '0 0 14px rgba(0, 240, 255, 0.25)';
     }
 
     const pillStyle = `background:${hexToRgba(catHex, 0.2)};border:1px solid ${hexToRgba(catHex, 0.45)};color:${catHex};`;
+
+    let sessionBadgeHtml = '';
+    if (isMulti) {
+      const sIdx = typeof task.sessionIndex === 'number' ? task.sessionIndex : 1;
+      const sTot = task.sessionCount || 1;
+      sessionBadgeHtml = `<span class="session-badge cal-session-badge" style="margin-left: 6px;">Session ${sIdx} of ${sTot} 🔗</span>`;
+    }
+
+    let subtaskTogglePillHtml = '';
+    if (hasSubtasks) {
+      subtaskTogglePillHtml = `
+        <button type="button" class="btn-subtask-toggle cal-subtask-toggle ${isCalExpanded ? 'expanded' : ''}" data-action="toggle-cal-subtask-drawer" data-id="${task.id}" title="Toggle steps">
+          <span>✓ ${progress.completed}/${progress.total}</span>
+          <span class="arrow">${isCalExpanded ? '▴' : '▾'}</span>
+        </button>
+      `;
+    }
+
+    let drawerHtml = '';
+    if (hasSubtasks || isCalExpanded) {
+      const rowsHtml = subtasks.map(st => {
+        const isDone = Boolean(st.completed);
+        return `
+          <div class="subtask-row ${isDone ? 'is-completed' : ''}" data-subtask-id="${st.id}">
+            <div class="subtask-drag-handle" title="Drag to reorder">
+              <svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
+                <circle cx="2" cy="2" r="1.1"/>
+                <circle cx="6" cy="2" r="1.1"/>
+                <circle cx="2" cy="6" r="1.1"/>
+                <circle cx="6" cy="6" r="1.1"/>
+                <circle cx="2" cy="10" r="1.1"/>
+                <circle cx="6" cy="10" r="1.1"/>
+              </svg>
+            </div>
+            <label class="subtask-checkbox-label">
+              <input type="checkbox" class="subtask-checkbox" data-action="toggle-cal-subtask" data-task-id="${task.id}" data-subtask-id="${st.id}" ${isDone ? 'checked' : ''}>
+              <span class="subtask-custom-checkbox"></span>
+            </label>
+            <span class="subtask-title">${escapeHtml(st.title || '')}</span>
+            <button type="button" class="btn-subtask-delete" data-action="delete-cal-subtask" data-task-id="${task.id}" data-subtask-id="${st.id}" title="Remove step">✕</button>
+          </div>
+        `;
+      }).join('');
+
+      drawerHtml = `
+        <div class="calendar-subtask-drawer ${isCalExpanded ? 'open' : ''}" data-task-id="${task.id}">
+          <div class="subtask-items-container">
+            ${rowsHtml}
+          </div>
+          <div class="subtask-add-row">
+            <input type="text" class="subtask-add-input" placeholder="+ Add a step..." data-task-id="${task.id}" autocomplete="off">
+            <button type="button" class="btn-subtask-add-confirm" data-action="confirm-add-cal-subtask" data-task-id="${task.id}">Add</button>
+          </div>
+        </div>
+      `;
+    }
 
     const calOverlapHtml = isCalOverlap ? `
       <div class="task-overlap-tag-group" data-action="swap-overlap-priority" data-id="${task.id}" data-dir="${isCalOverlap ? 'up' : 'down'}" style="margin-left: 6px; cursor: pointer;" title="Tap to switch overlap priority">
@@ -6382,7 +6840,9 @@ function renderCalendarModal() {
       <div class="calendar-block-main" data-action="edit-calendar-task" data-id="${task.id}" title="Tap to edit task options">
         <div class="calendar-main-line1">
           <span class="calendar-block-title">${escapeHtml(task.title)}</span>
+          ${sessionBadgeHtml}
           <span class="calendar-duration-badge">${task.allocatedDuration || task.plannedDuration}m</span>
+          ${subtaskTogglePillHtml}
           ${calOverlapHtml}
         </div>
         <div class="calendar-main-line2">
@@ -6404,6 +6864,7 @@ function renderCalendarModal() {
           </svg>
         </button>
       </div>
+      ${drawerHtml}
     `;
 
     // Partitioned Gestures:
@@ -6518,8 +6979,8 @@ function renderCalendarModal() {
       if (isCalendarModalPullingDown) {
         return;
       }
-      // Ignore interactions originating directly from the drag handle, left gutter area, or emoji button
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
+      // Ignore interactions originating directly from the drag handle, left gutter area, emoji button, or subtasks drawer
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"], .calendar-subtask-drawer, .cal-subtask-toggle, .btn-subtask-toggle, .subtask-row, .subtask-add-row, .subtask-add-input, .btn-subtask-add-confirm')) {
         return;
       }
       const rect = item.getBoundingClientRect();
@@ -6553,7 +7014,7 @@ function renderCalendarModal() {
         clearHold();
         return;
       }
-      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"]')) {
+      if (e.target.closest('[data-action="drag-handle"], [data-action="locked-drag-attempt"], .calendar-block-left, [data-action="pick-calendar-emoji"], .calendar-subtask-drawer, .cal-subtask-toggle, .btn-subtask-toggle, .subtask-row, .subtask-add-row, .subtask-add-input, .btn-subtask-add-confirm')) {
         return;
       }
       const rect = item.getBoundingClientRect();
@@ -6619,8 +7080,13 @@ function renderCalendarModal() {
         if (swipeDirection === 'right') {
           // One-handed swipe right threshold reached: instantly toggle task done status!
           if (currentShiftPct >= 12 || Math.abs(currentShiftPct) >= 12) {
-            mobileServices.hapticTap();
-            toggleTaskDoneStatus(task.id);
+            if ((hasSubtasks || isMulti) && progress.completed < progress.total) {
+              mobileServices.hapticWarning();
+              showToastNotification('Complete all steps/sessions first to mark this task done');
+            } else {
+              mobileServices.hapticTap();
+              toggleTaskDoneStatus(task.id);
+            }
           }
         } else {
           // If shifted at least halfway to -25% (<= -12%), snap open; otherwise snap closed
@@ -6679,11 +7145,93 @@ function renderCalendarModal() {
           e.target.closest('[data-action="pick-calendar-emoji"]') ||
           e.target.closest('[data-action="drag-handle"]') ||
           e.target.closest('[data-action="locked-drag-attempt"]') ||
-          e.target.closest('[data-action="swap-overlap-priority"]')) {
+          e.target.closest('[data-action="swap-overlap-priority"]') ||
+          e.target.closest('[data-action="toggle-cal-subtask-drawer"]') ||
+          e.target.closest('.calendar-subtask-drawer')) {
         return;
       }
       openTaskEditModal(task.id);
     });
+
+    // Subtask toggle button
+    const calSubToggleBtn = item.querySelector('[data-action="toggle-cal-subtask-drawer"]');
+    if (calSubToggleBtn) {
+      calSubToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (expandedCalendarDrawerIds.has(task.id)) {
+          expandedCalendarDrawerIds.delete(task.id);
+        } else {
+          expandedCalendarDrawerIds.add(task.id);
+        }
+        mobileServices.hapticTap();
+        renderCalendarModal();
+      });
+    }
+
+    // Subtask Drawer actions
+    const calDrawerEl = item.querySelector('.calendar-subtask-drawer');
+    if (calDrawerEl) {
+      calDrawerEl.addEventListener('click', (e) => e.stopPropagation());
+      calDrawerEl.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+      calDrawerEl.addEventListener('mousedown', (e) => e.stopPropagation());
+
+      calDrawerEl.querySelectorAll('[data-action="toggle-cal-subtask"]').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          e.stopPropagation();
+          const subId = chk.getAttribute('data-subtask-id');
+          taskStore.updateSubtask(task.id, subId, { completed: chk.checked });
+          mobileServices.hapticTap();
+          renderCalendarModal();
+          renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+        });
+      });
+
+      calDrawerEl.querySelectorAll('[data-action="delete-cal-subtask"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const subId = btn.getAttribute('data-subtask-id');
+          taskStore.deleteSubtask(task.id, subId);
+          mobileServices.hapticTap();
+          renderCalendarModal();
+          renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+        });
+      });
+
+      const calAddInput = calDrawerEl.querySelector('.subtask-add-input');
+      const calAddBtn = calDrawerEl.querySelector('[data-action="confirm-add-cal-subtask"]');
+      const handleCalSubtaskAdd = () => {
+        if (!calAddInput) return;
+        const text = calAddInput.value.trim();
+        if (!text) return;
+        taskStore.addSubtask(task.id, { title: text, completed: false });
+        calAddInput.value = '';
+        mobileServices.hapticTap();
+        renderCalendarModal();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      };
+
+      if (calAddBtn) {
+        calAddBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleCalSubtaskAdd();
+        });
+      }
+      if (calAddInput) {
+        calAddInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.stopPropagation();
+            e.preventDefault();
+            handleCalSubtaskAdd();
+          }
+        });
+      }
+
+      setupInteractiveSubtaskDrag(calDrawerEl, task.id, () => {
+        renderCalendarModal();
+        renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
+      });
+    }
 
     // Overlap priority swap buttons (▲ and ▼) inside calendar item
     const _calSwapPriorityBtns = item.querySelectorAll('[data-action="swap-overlap-priority"]');
@@ -6746,6 +7294,103 @@ window.closeTodo = closeTodo;
 // ==========================================
 let pendingDeleteTodoId = null;
 let pendingDeleteTodoTitle = '';
+const expandedTodoDrawerIds = new Set();
+const expandedTaskDrawerIds = new Set();
+const expandedCalendarDrawerIds = new Set();
+
+function setupInteractiveSubtaskDrag(drawerEl, taskId, onReorderCallback) {
+  if (!drawerEl || drawerEl._hasSubtaskDrag) return;
+  drawerEl._hasSubtaskDrag = true;
+
+  drawerEl.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.subtask-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.subtask-row');
+    if (!row) return;
+
+    const list = drawerEl.querySelector('.subtask-list');
+    if (!list) return;
+
+    const allRows = Array.from(list.children).filter(r => r.matches('.subtask-row'));
+    const fromIndex = allRows.indexOf(row);
+    if (fromIndex === -1) return;
+
+    const pointerId = e.pointerId;
+    let isDragging = false;
+    let currentSlot = fromIndex;
+    const startY = e.clientY;
+
+    try {
+      handle.setPointerCapture(pointerId);
+    } catch (_) {}
+
+    const onPointerMove = (moveEv) => {
+      if (moveEv.pointerId !== pointerId) return;
+      if (!isDragging) {
+        if (Math.abs(moveEv.clientY - startY) > 5) {
+          isDragging = true;
+          row.classList.add('is-subtask-dragging');
+          handle.classList.add('is-holding');
+          if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+            mobileServices.hapticBuzz();
+          }
+        } else {
+          return;
+        }
+      }
+      if (moveEv.cancelable) moveEv.preventDefault();
+
+      const midPositions = allRows.map((r, idx) => {
+        const rect = r.getBoundingClientRect();
+        return { index: idx, midY: rect.top + rect.height / 2 };
+      });
+
+      let targetSlot = fromIndex;
+      for (let i = 0; i < midPositions.length; i++) {
+        if (moveEv.clientY > midPositions[i].midY) {
+          targetSlot = i;
+        }
+      }
+      targetSlot = Math.max(0, Math.min(allRows.length - 1, targetSlot));
+      if (targetSlot !== currentSlot) {
+        currentSlot = targetSlot;
+        if (typeof mobileServices !== 'undefined' && mobileServices.hapticTick) {
+          mobileServices.hapticTick();
+        }
+      }
+    };
+
+    const onPointerUp = (upEv) => {
+      if (upEv.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+
+      try {
+        handle.releasePointerCapture(pointerId);
+      } catch (_) {}
+
+      row.classList.remove('is-subtask-dragging');
+      handle.classList.remove('is-holding');
+
+      if (isDragging && fromIndex !== currentSlot) {
+        taskStore.reorderSubtasks(taskId, fromIndex, currentSlot);
+        if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+          mobileServices.hapticBuzz();
+        }
+        if (typeof onReorderCallback === 'function') {
+          onReorderCallback();
+        } else {
+          renderTodoList();
+        }
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  });
+}
 
 function openConfirmDeleteTodo(id, title) {
   pendingDeleteTodoId = id;
@@ -6794,36 +7439,131 @@ function renderTodoList() {
     deleteAction.className = 'calendar-swipe-delete-action';
     deleteAction.innerHTML = `<button type="button" class="btn-swipe-delete" data-action="swipe-delete-todo" data-id="${todo.id}" title="Delete task">✕</button>`;
 
+    const progress = (typeof taskStore !== 'undefined' && typeof taskStore.getTaskProgress === 'function')
+      ? taskStore.getTaskProgress(todo)
+      : { completed: 0, total: 0, percent: 0 };
+    const subtasks = Array.isArray(todo.subtasks) ? todo.subtasks.slice().sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
+    const hasSubtasks = subtasks.length > 0;
+    const isMulti = Boolean(todo.isMultiSession && todo.sessionCount && todo.sessionCount > 1);
+    const hasProgress = progress.total > 0;
+    const isExpanded = expandedTodoDrawerIds.has(todo.id);
+    const isAllDone = (hasProgress && progress.completed === progress.total) || Boolean(todo.completed);
+
     const item = document.createElement('div');
-    item.className = `todo-block ${todo.completed ? 'completed' : ''}`;
+    item.className = `todo-block ${isAllDone ? 'completed' : ''}`;
     item.setAttribute('data-id', todo.id);
     item.setAttribute('data-index', idx);
 
-    item.innerHTML = `
-      <div class="todo-block-left">
-        <div class="drag-handle-compact" data-action="drag-handle" title="Hold & drag to reorder">
-          <svg width="10" height="15" viewBox="0 0 10 15" fill="currentColor">
-            <circle cx="2.5" cy="2.5" r="1.3"/>
-            <circle cx="7.5" cy="2.5" r="1.3"/>
-            <circle cx="2.5" cy="7.5" r="1.3"/>
-            <circle cx="7.5" cy="7.5" r="1.3"/>
-            <circle cx="2.5" cy="12.5" r="1.3"/>
-            <circle cx="7.5" cy="12.5" r="1.3"/>
+    // Apply proportional emerald background wash
+    if (hasProgress && progress.percent > 0) {
+      const isLight = (document.documentElement && document.documentElement.getAttribute('data-theme') === 'light') || (document.body && document.body.getAttribute('data-theme') === 'light');
+      const baseBg = isLight ? '#ffffff' : '#1e222d';
+      const pct = progress.percent;
+      item.style.background = 'linear-gradient(to right, rgba(16, 185, 129, 0.22) ' + pct + '%, ' + baseBg + ' ' + pct + '%)';
+      item.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    }
+
+    // Right-hand completion action
+    let checkOrEarnedHtml = '';
+    if (hasSubtasks || isMulti) {
+      if (progress.completed === progress.total && progress.total > 0) {
+        checkOrEarnedHtml = '<span class="todo-earned-check" title="All steps completed!">✓</span>';
+      } else {
+        checkOrEarnedHtml = '';
+      }
+    } else {
+      checkOrEarnedHtml = `
+        <button type="button" class="todo-checkbox-btn ${todo.completed ? 'checked' : ''}" data-action="toggle-todo" data-id="${todo.id}" title="${todo.completed ? 'Mark uncompleted' : 'Mark done'}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
-        </div>
-        <button type="button" class="calendar-emoji-btn todo-emoji-btn" data-action="pick-todo-emoji" data-id="${todo.id}" title="Tap to change emoji">
-          ${todo.emoji || '📌'}
         </button>
-        <span class="todo-title">${escapeHtml(todo.title)}</span>
+      `;
+    }
+
+    // Pill badge for subtasks
+    let pillBadgeHtml = '';
+    if (hasSubtasks || isMulti) {
+      const badgeDoneClass = (progress.completed === progress.total && progress.total > 0) ? 'all-done' : '';
+      const arrowOpenClass = isExpanded ? 'open' : '';
+      pillBadgeHtml = `
+        <button type="button" class="todo-subtask-toggle-btn" data-action="toggle-subtask-drawer" data-id="${todo.id}" title="Toggle subtasks">
+          <span class="todo-subtask-badge ${badgeDoneClass}">✓ ${progress.completed}/${progress.total} <span class="todo-subtask-arrow ${arrowOpenClass}">▾</span></span>
+        </button>
+      `;
+    } else {
+      pillBadgeHtml = `
+        <button type="button" class="todo-subtask-add-pill-btn" data-action="toggle-subtask-drawer" data-id="${todo.id}" title="Add steps / subtasks">+ Steps</button>
+      `;
+    }
+
+    // Subtask drawer content
+    let drawerHtml = '';
+    if (isExpanded) {
+      let subtasksListHtml = '';
+      subtasks.forEach((sub, sIdx) => {
+        const isDone = Boolean(sub.completed);
+        subtasksListHtml += `
+          <div class="subtask-row" data-subtask-id="${sub.id}" data-index="${sIdx}">
+            <div class="subtask-drag-handle" data-subtask-id="${sub.id}" title="Hold & drag to reorder">
+              <svg width="8" height="12" viewBox="0 0 10 15" fill="currentColor">
+                <circle cx="2.5" cy="2.5" r="1.3"/>
+                <circle cx="7.5" cy="2.5" r="1.3"/>
+                <circle cx="2.5" cy="7.5" r="1.3"/>
+                <circle cx="7.5" cy="7.5" r="1.3"/>
+                <circle cx="2.5" cy="12.5" r="1.3"/>
+                <circle cx="7.5" cy="12.5" r="1.3"/>
+              </svg>
+            </div>
+            <button type="button" class="subtask-check-btn ${isDone ? 'checked' : ''}" data-action="toggle-subtask" data-todo-id="${todo.id}" data-subtask-id="${sub.id}" title="${isDone ? 'Mark step uncompleted' : 'Mark step done'}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <span class="subtask-title ${isDone ? 'completed' : ''}">${escapeHtml(sub.title || '')}</span>
+            <button type="button" class="subtask-delete-btn" data-action="delete-subtask" data-todo-id="${todo.id}" data-subtask-id="${sub.id}" title="Delete step">✕</button>
+          </div>
+        `;
+      });
+
+      drawerHtml = `
+        <div class="todo-subtask-drawer" data-todo-id="${todo.id}">
+          <div class="subtask-list">
+            ${subtasksListHtml}
+          </div>
+          <div class="subtask-add-row">
+            <input type="text" class="subtask-add-input" data-todo-id="${todo.id}" placeholder="+ Add a step (press Enter)" autocomplete="off">
+            <button type="button" class="btn-subtask-add-confirm" data-action="confirm-add-subtask" data-todo-id="${todo.id}">Add</button>
+          </div>
+        </div>
+      `;
+    }
+
+    item.innerHTML = `
+      <div class="todo-block-header">
+        <div class="todo-block-left">
+          <div class="drag-handle-compact" data-action="drag-handle" title="Hold & drag to reorder">
+            <svg width="10" height="15" viewBox="0 0 10 15" fill="currentColor">
+              <circle cx="2.5" cy="2.5" r="1.3"/>
+              <circle cx="7.5" cy="2.5" r="1.3"/>
+              <circle cx="2.5" cy="7.5" r="1.3"/>
+              <circle cx="7.5" cy="7.5" r="1.3"/>
+              <circle cx="2.5" cy="12.5" r="1.3"/>
+              <circle cx="7.5" cy="12.5" r="1.3"/>
+            </svg>
+          </div>
+          <button type="button" class="calendar-emoji-btn todo-emoji-btn" data-action="pick-todo-emoji" data-id="${todo.id}" title="Tap to change emoji">
+            ${todo.emoji || '📌'}
+          </button>
+          <span class="todo-title">${escapeHtml(todo.title)}</span>
+          ${pillBadgeHtml}
+        </div>
+        ${checkOrEarnedHtml}
       </div>
-      <button type="button" class="todo-checkbox-btn ${todo.completed ? 'checked' : ''}" data-action="toggle-todo" data-id="${todo.id}" title="${todo.completed ? 'Mark uncompleted' : 'Mark done'}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-      </button>
+      ${drawerHtml}
     `;
 
-    // Checkbox toggle
+    // Checkbox toggle on whole task
     const checkBtn = item.querySelector('[data-action="toggle-todo"]');
     if (checkBtn) {
       checkBtn.addEventListener('click', (e) => {
@@ -6841,6 +7581,92 @@ function renderTodoList() {
         e.stopPropagation();
         openEmojiPicker(todo.id);
       });
+    }
+
+    // Subtask toggle pill click
+    const togglePillBtn = item.querySelector('[data-action="toggle-subtask-drawer"]');
+    if (togglePillBtn) {
+      togglePillBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedTodoDrawerIds.has(todo.id)) {
+          expandedTodoDrawerIds.delete(todo.id);
+        } else {
+          expandedTodoDrawerIds.add(todo.id);
+        }
+        mobileServices.hapticTap();
+        renderTodoList();
+        if (expandedTodoDrawerIds.has(todo.id)) {
+          setTimeout(() => {
+            const inp = container.querySelector(`.subtask-add-input[data-todo-id="${todo.id}"]`);
+            if (inp) inp.focus();
+          }, 60);
+        }
+      });
+    }
+
+    // Subtask check click
+    item.querySelectorAll('[data-action="toggle-subtask"]').forEach(subCheckBtn => {
+      subCheckBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const subId = subCheckBtn.getAttribute('data-subtask-id');
+        const targetSub = subtasks.find(s => s.id === subId);
+        if (targetSub) {
+          taskStore.updateSubtask(todo.id, subId, { completed: !targetSub.completed });
+          mobileServices.hapticTap();
+          renderTodoList();
+        }
+      });
+    });
+
+    // Subtask delete click
+    item.querySelectorAll('[data-action="delete-subtask"]').forEach(subDelBtn => {
+      subDelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const subId = subDelBtn.getAttribute('data-subtask-id');
+        taskStore.deleteSubtask(todo.id, subId);
+        mobileServices.hapticTap();
+        renderTodoList();
+      });
+    });
+
+    // Subtask add handling
+    const addInput = item.querySelector('.subtask-add-input');
+    const addBtn = item.querySelector('[data-action="confirm-add-subtask"]');
+    const doAddSubtask = () => {
+      if (!addInput) return;
+      const text = (addInput.value || '').trim();
+      if (!text) return;
+      taskStore.addSubtask(todo.id, { title: text, completed: false });
+      mobileServices.hapticTap();
+      renderTodoList();
+      setTimeout(() => {
+        const nextInp = container.querySelector(`.subtask-add-input[data-todo-id="${todo.id}"]`);
+        if (nextInp) nextInp.focus();
+      }, 60);
+    };
+
+    if (addInput) {
+      addInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          doAddSubtask();
+        }
+      });
+      addInput.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    if (addBtn) {
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        doAddSubtask();
+      });
+    }
+
+    // Setup interactive subtask drag reorder
+    const drawerEl = item.querySelector('.todo-subtask-drawer');
+    if (drawerEl) {
+      setupInteractiveSubtaskDrag(drawerEl, todo.id);
     }
 
     // Partitioned gestures: Touching left zone closes any open swipe delete buttons
@@ -6865,8 +7691,8 @@ function renderTodoList() {
     let currentShiftPct = 0;
 
     item.addEventListener('touchstart', (e) => {
-      // Ignore interactions originating directly from the drag handle, left zone, or emoji/checkbox buttons
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"]')) {
+      // Ignore interactions originating directly from the drag handle, left zone, emoji/checkbox buttons, or subtask drawer
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
         return;
       }
       const rect = item.getBoundingClientRect();
@@ -6892,7 +7718,7 @@ function renderTodoList() {
     }, { passive: true });
 
     item.addEventListener('touchmove', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"]')) {
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;
@@ -7015,8 +7841,8 @@ function setupInteractiveTodoDrag(container) {
 
   container.addEventListener('pointerdown', (e) => {
     if (e.button !== undefined && e.button !== 0) return;
-    // Do not initiate drag if tapping emoji picker or toggle checkbox
-    if (e.target.closest('.todo-emoji-btn, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-checkbox-btn')) {
+    // Do not initiate drag if tapping emoji picker, toggle checkbox, subtask drawer, or subtask controls
+    if (e.target.closest('.todo-emoji-btn, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-checkbox-btn, .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input, .btn-subtask-add-confirm')) {
       return;
     }
 
@@ -8013,9 +8839,16 @@ function setupNavigationAndModals() {
       resolvedColorId = googleCalendarAdapter.getGoogleColorId(category, resolvedColor, null);
     }
 
+    const addMultiInput = document.getElementById('addModalIsMultiSession');
+    const isMultiSession = Boolean(addMultiInput && addMultiInput.checked);
+    const sessionCount = isMultiSession ? addModalSessionCount : 1;
+    const sessionDuration = isMultiSession ? Math.max(1, Math.round(duration / sessionCount)) : duration;
+    const addToTodoInput = document.getElementById('addModalAddToTodo');
+    const addToTodo = Boolean(addToTodoInput && addToTodoInput.checked);
+
     const newTask = taskStore.addTask({
       title,
-      plannedDuration: duration,
+      plannedDuration: isMultiSession ? sessionDuration : duration,
       category,
       fixedStartTime,
       fixedEndTime,
@@ -8028,8 +8861,34 @@ function setupNavigationAndModals() {
       origin: 'local',
       createdInApp: true,
       isDirty: false,
-      provider: syncGoogle ? 'google' : (syncMS ? 'microsoft' : 'local')
+      provider: syncGoogle ? 'google' : (syncMS ? 'microsoft' : 'local'),
+      isMultiSession: isMultiSession,
+      sessionCount: sessionCount,
+      sessionDuration: sessionDuration,
+      sessionIndex: isMultiSession ? 1 : null,
+      subtasks: addModalSubtasks.slice()
     });
+
+    if (isMultiSession) {
+      taskStore.updateTask(newTask.id, { masterTaskId: newTask.id });
+    }
+
+    if (addToTodo) {
+      taskStore.addTodoTask({
+        id: 'todo-' + newTask.id,
+        masterTaskId: newTask.id,
+        title: title,
+        emoji: currentAddTaskEmoji || '📝',
+        category: category,
+        completed: false,
+        isMultiSession: isMultiSession,
+        sessionCount: sessionCount,
+        sessionDuration: sessionDuration,
+        plannedDuration: duration,
+        subtasks: addModalSubtasks.slice()
+      });
+      renderTodoList();
+    }
 
     if (syncGoogle) {
       if (typeof calendarSyncService !== 'undefined' && typeof calendarSyncService.createRemoteEvent === 'function') {
@@ -8160,6 +9019,145 @@ function setupNavigationAndModals() {
   if (taskEditModalBackdrop) {
     taskEditModalBackdrop.addEventListener('click', (e) => {
       if (e.target === taskEditModalBackdrop) handleCloseTaskEdit(e);
+    });
+  }
+
+  // Multi-Session Steppers & Subtask Editors for Add & Edit Modals
+  const addModalIsMultiSession = document.getElementById('addModalIsMultiSession');
+  const addModalMultiSessionDetails = document.getElementById('addModalMultiSessionDetails');
+  const addModalMultiSessionHint = document.getElementById('addModalMultiSessionHint');
+  const updateAddModalHint = () => {
+    if (addModalMultiSessionHint) {
+      addModalMultiSessionHint.textContent = `Total duration split into ${addModalSessionCount} sessions`;
+    }
+  };
+  if (addModalIsMultiSession) {
+    addModalIsMultiSession.addEventListener('change', () => {
+      if (addModalMultiSessionDetails) {
+        addModalMultiSessionDetails.classList.toggle('hidden', !addModalIsMultiSession.checked);
+      }
+      updateAddModalHint();
+    });
+  }
+  const btnDecAddSessions = document.getElementById('btnDecAddSessions');
+  const btnIncAddSessions = document.getElementById('btnIncAddSessions');
+  const addModalSessionCountVal = document.getElementById('addModalSessionCountVal');
+  if (btnDecAddSessions) {
+    btnDecAddSessions.addEventListener('click', (e) => {
+      e.preventDefault();
+      addModalSessionCount = Math.max(2, addModalSessionCount - 1);
+      if (addModalSessionCountVal) addModalSessionCountVal.textContent = String(addModalSessionCount);
+      updateAddModalHint();
+      mobileServices.hapticTick();
+    });
+  }
+  if (btnIncAddSessions) {
+    btnIncAddSessions.addEventListener('click', (e) => {
+      e.preventDefault();
+      addModalSessionCount = Math.min(10, addModalSessionCount + 1);
+      if (addModalSessionCountVal) addModalSessionCountVal.textContent = String(addModalSessionCount);
+      updateAddModalHint();
+      mobileServices.hapticTick();
+    });
+  }
+
+  const btnAddModalAddSubtask = document.getElementById('btnAddModalAddSubtask');
+  const addModalNewSubtaskInput = document.getElementById('addModalNewSubtaskInput');
+  const handleAddModalSubtaskAdd = () => {
+    if (!addModalNewSubtaskInput) return;
+    const title = addModalNewSubtaskInput.value.trim();
+    if (!title) return;
+    addModalSubtasks.push({
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      title: title,
+      completed: false
+    });
+    addModalNewSubtaskInput.value = '';
+    renderAddModalSubtaskList();
+    mobileServices.hapticTap();
+  };
+  if (btnAddModalAddSubtask) {
+    btnAddModalAddSubtask.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleAddModalSubtaskAdd();
+    });
+  }
+  if (addModalNewSubtaskInput) {
+    addModalNewSubtaskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAddModalSubtaskAdd();
+      }
+    });
+  }
+
+  const editTaskIsMultiSession = document.getElementById('editTaskIsMultiSession');
+  const editTaskMultiSessionDetails = document.getElementById('editTaskMultiSessionDetails');
+  const editTaskMultiSessionHint = document.getElementById('editTaskMultiSessionHint');
+  const updateEditModalHint = () => {
+    if (editTaskMultiSessionHint) {
+      editTaskMultiSessionHint.textContent = `Total duration split into ${editModalSessionCount} sessions`;
+    }
+  };
+  if (editTaskIsMultiSession) {
+    editTaskIsMultiSession.addEventListener('change', () => {
+      if (editTaskMultiSessionDetails) {
+        editTaskMultiSessionDetails.classList.toggle('hidden', !editTaskIsMultiSession.checked);
+      }
+      updateEditModalHint();
+    });
+  }
+  const btnDecEditSessions = document.getElementById('btnDecEditSessions');
+  const btnIncEditSessions = document.getElementById('btnIncEditSessions');
+  const editTaskSessionCountVal = document.getElementById('editTaskSessionCountVal');
+  if (btnDecEditSessions) {
+    btnDecEditSessions.addEventListener('click', (e) => {
+      e.preventDefault();
+      editModalSessionCount = Math.max(2, editModalSessionCount - 1);
+      if (editTaskSessionCountVal) editTaskSessionCountVal.textContent = String(editModalSessionCount);
+      updateEditModalHint();
+      mobileServices.hapticTick();
+    });
+  }
+  if (btnIncEditSessions) {
+    btnIncEditSessions.addEventListener('click', (e) => {
+      e.preventDefault();
+      editModalSessionCount = Math.min(10, editModalSessionCount + 1);
+      if (editTaskSessionCountVal) editTaskSessionCountVal.textContent = String(editModalSessionCount);
+      updateEditModalHint();
+      mobileServices.hapticTick();
+    });
+  }
+
+  const btnEditTaskAddSubtask = document.getElementById('btnEditTaskAddSubtask');
+  const editTaskNewSubtaskInput = document.getElementById('editTaskNewSubtaskInput');
+  const handleEditTaskSubtaskAdd = () => {
+    if (!editTaskNewSubtaskInput) return;
+    const title = editTaskNewSubtaskInput.value.trim();
+    if (!title) return;
+    editModalSubtasks.push({
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      title: title,
+      completed: false
+    });
+    editTaskNewSubtaskInput.value = '';
+    renderEditModalSubtaskList();
+    mobileServices.hapticTap();
+  };
+  if (btnEditTaskAddSubtask) {
+    btnEditTaskAddSubtask.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleEditTaskSubtaskAdd();
+    });
+  }
+  if (editTaskNewSubtaskInput) {
+    editTaskNewSubtaskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleEditTaskSubtaskAdd();
+      }
     });
   }
 

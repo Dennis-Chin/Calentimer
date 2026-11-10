@@ -41,6 +41,7 @@ const targetFiles = [
   'eventClassifier.js',
   'cryptoPolyfill.js',
   'telemetrySyncService.js',
+  'testMultiSessionSubtasks.js',
   'server/worker.js'
 ];
 

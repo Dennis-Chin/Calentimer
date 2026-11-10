@@ -570,6 +570,13 @@ export class TaskStore {
       externalId: (task && task.externalId) ? task.externalId : null,
       color: (task && task.color) ? task.color : (this.getCategoryColor((task && task.category) ? task.category : 'General') || null),
       colorId: (task && task.colorId) ? task.colorId : null,
+      subtasks: (task && Array.isArray(task.subtasks)) ? task.subtasks : [],
+      isMultiSession: Boolean(task && task.isMultiSession),
+      sessionCount: (task && typeof task.sessionCount === 'number') ? task.sessionCount : 1,
+      sessionDuration: (task && typeof task.sessionDuration === 'number') ? task.sessionDuration : Math.max(1, parseInt(task && task.plannedDuration, 10) || 25),
+      sessionIndex: (task && typeof task.sessionIndex === 'number') ? task.sessionIndex : null,
+      masterTaskId: (task && task.masterTaskId) ? task.masterTaskId : null,
+      completedMinutes: (task && typeof task.completedMinutes === 'number') ? task.completedMinutes : 0,
       lastModified: now
     };
     tasks.push(newTask);
@@ -1232,18 +1239,33 @@ export class TaskStore {
 
   /**
    * Adds a new To-Do item.
-   * @param {{title: string, emoji?: string, completed?: boolean}} todo
+   * @param {{title: string, emoji?: string, category?: string, plannedDuration?: number, completed?: boolean, isMultiSession?: boolean, sessionCount?: number, sessionDuration?: number, subtasks?: Array}} todo
    * @returns {Object}
    */
   addTodoTask(todo) {
     const title = todo && todo.title ? String(todo.title).trim() : 'Task';
     const emoji = todo && todo.emoji ? String(todo.emoji) : '📌';
+    const category = todo && todo.category ? String(todo.category).trim() : 'General';
+    const plannedDuration = (todo && typeof todo.plannedDuration === 'number') ? Math.max(1, todo.plannedDuration) : 30;
     const completed = Boolean(todo && todo.completed);
+    const isMultiSession = Boolean(todo && todo.isMultiSession);
+    const sessionCount = (todo && typeof todo.sessionCount === 'number') ? Math.max(1, todo.sessionCount) : 1;
+    const sessionDuration = (todo && typeof todo.sessionDuration === 'number') ? Math.max(1, todo.sessionDuration) : 30;
+    const completedMinutes = (todo && typeof todo.completedMinutes === 'number') ? Math.max(0, todo.completedMinutes) : 0;
+    const subtasks = (todo && Array.isArray(todo.subtasks)) ? todo.subtasks : [];
+
     const newTask = {
       id: 'todo-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       title: title,
       emoji: emoji,
+      category: category,
+      plannedDuration: plannedDuration,
       completed: completed,
+      isMultiSession: isMultiSession,
+      sessionCount: sessionCount,
+      sessionDuration: sessionDuration,
+      completedMinutes: completedMinutes,
+      subtasks: subtasks,
       createdAt: Date.now()
     };
     const current = this.getTodoTasks();
@@ -1265,7 +1287,15 @@ export class TaskStore {
     const item = current[index];
     if (updates.title !== undefined) item.title = String(updates.title).trim();
     if (updates.emoji !== undefined) item.emoji = String(updates.emoji);
+    if (updates.category !== undefined) item.category = String(updates.category).trim();
+    if (updates.plannedDuration !== undefined) item.plannedDuration = Math.max(1, parseInt(updates.plannedDuration, 10) || 30);
     if (updates.completed !== undefined) item.completed = Boolean(updates.completed);
+    if (updates.isMultiSession !== undefined) item.isMultiSession = Boolean(updates.isMultiSession);
+    if (updates.sessionCount !== undefined) item.sessionCount = Math.max(1, parseInt(updates.sessionCount, 10) || 1);
+    if (updates.sessionDuration !== undefined) item.sessionDuration = Math.max(1, parseInt(updates.sessionDuration, 10) || 30);
+    if (updates.completedMinutes !== undefined) item.completedMinutes = Math.max(0, parseInt(updates.completedMinutes, 10) || 0);
+    if (updates.subtasks !== undefined && Array.isArray(updates.subtasks)) item.subtasks = updates.subtasks;
+
     current[index] = item;
     this.saveTodoTasks(current);
     return item;
@@ -1312,6 +1342,373 @@ export class TaskStore {
     const incomplete = current.filter(t => !t.completed);
     this.saveTodoTasks(incomplete);
     return incomplete;
+  }
+
+  // ==========================================
+  // Subtasks & Multi-Session Task Methods
+  // ==========================================
+
+  /**
+   * Finds a task across all stores (To-Do, Today's Tasks, Calendar Events).
+   * @param {string} taskId
+   * @returns {Object|null}
+   */
+  findTaskAnywhere(taskId) {
+    if (!taskId) return null;
+    const todos = this.getTodoTasks();
+    const todoMatch = todos.find(t => t.id === taskId);
+    if (todoMatch) return { task: todoMatch, store: 'todo' };
+
+    const tasks = this.getTasks();
+    const taskMatch = tasks.find(t => t.id === taskId);
+    if (taskMatch) return { task: taskMatch, store: 'task' };
+
+    const calEvents = this.getCalendarEvents();
+    const calMatch = calEvents.find(e => e.id === taskId);
+    if (calMatch) return { task: calMatch, store: 'calendar' };
+
+    return null;
+  }
+
+  /**
+   * Retrieves subtasks list for a given task ID.
+   * @param {string} taskId
+   * @returns {Array<{id: string, title: string, completed: boolean, order: number, duration?: number}>}
+   */
+  getSubtasks(taskId) {
+    const match = this.findTaskAnywhere(taskId);
+    if (match && match.task && Array.isArray(match.task.subtasks)) {
+      return match.task.subtasks.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+    return [];
+  }
+
+  /**
+   * Adds a new subtask to a task.
+   * @param {string} taskId
+   * @param {string|Object} subtaskData
+   * @returns {Object|null}
+   */
+  addSubtask(taskId, subtaskData) {
+    const match = this.findTaskAnywhere(taskId);
+    if (!match || !match.task) return null;
+
+    const currentSubtasks = Array.isArray(match.task.subtasks) ? match.task.subtasks : [];
+    const title = typeof subtaskData === 'string'
+      ? subtaskData.trim()
+      : ((subtaskData && subtaskData.title) ? String(subtaskData.title).trim() : 'Subtask');
+    if (!title) return null;
+
+    const newSubtask = {
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      title: title,
+      completed: Boolean(subtaskData && typeof subtaskData === 'object' && subtaskData.completed),
+      order: currentSubtasks.length,
+      duration: (subtaskData && typeof subtaskData === 'object' && subtaskData.duration) ? parseInt(subtaskData.duration, 10) : 15
+    };
+
+    currentSubtasks.push(newSubtask);
+
+    if (match.store === 'todo') {
+      this.updateTodoTask(taskId, { subtasks: currentSubtasks });
+    } else if (match.store === 'task') {
+      this.updateTask(taskId, { subtasks: currentSubtasks });
+    } else if (match.store === 'calendar') {
+      this.updateCalendarEvent(taskId, { subtasks: currentSubtasks });
+    }
+
+    return newSubtask;
+  }
+
+  /**
+   * Updates a subtask (e.g. toggle completion, rename).
+   * @param {string} taskId
+   * @param {string} subtaskId
+   * @param {Object} updates
+   * @returns {Object|null}
+   */
+  updateSubtask(taskId, subtaskId, updates) {
+    const match = this.findTaskAnywhere(taskId);
+    if (!match || !match.task || !Array.isArray(match.task.subtasks)) return null;
+
+    const subtasks = match.task.subtasks;
+    const subIdx = subtasks.findIndex(s => s.id === subtaskId);
+    if (subIdx === -1) return null;
+
+    const sub = subtasks[subIdx];
+    if (updates.title !== undefined) sub.title = String(updates.title).trim();
+    if (updates.completed !== undefined) sub.completed = Boolean(updates.completed);
+    if (updates.duration !== undefined) sub.duration = Math.max(1, parseInt(updates.duration, 10) || 15);
+    if (updates.order !== undefined) sub.order = updates.order;
+    subtasks[subIdx] = sub;
+
+    // Check if task completion should be updated based on all subtasks completed
+    const allCompleted = subtasks.length > 0 && subtasks.every(s => s.completed);
+
+    if (match.store === 'todo') {
+      const updatePayload = { subtasks: subtasks };
+      if (allCompleted && !match.task.completed) {
+        updatePayload.completed = true;
+      } else if (!allCompleted && match.task.completed) {
+        updatePayload.completed = false;
+      }
+      this.updateTodoTask(taskId, updatePayload);
+    } else if (match.store === 'task') {
+      this.updateTask(taskId, { subtasks: subtasks });
+    } else if (match.store === 'calendar') {
+      this.updateCalendarEvent(taskId, { subtasks: subtasks });
+    }
+
+    return sub;
+  }
+
+  /**
+   * Deletes a subtask by ID.
+   * @param {string} taskId
+   * @param {string} subtaskId
+   * @returns {boolean}
+   */
+  deleteSubtask(taskId, subtaskId) {
+    const match = this.findTaskAnywhere(taskId);
+    if (!match || !match.task || !Array.isArray(match.task.subtasks)) return false;
+
+    const filtered = match.task.subtasks.filter(s => s.id !== subtaskId);
+    if (filtered.length === match.task.subtasks.length) return false;
+
+    filtered.forEach((s, idx) => {
+      s.order = idx;
+    });
+
+    if (match.store === 'todo') {
+      this.updateTodoTask(taskId, { subtasks: filtered });
+    } else if (match.store === 'task') {
+      this.updateTask(taskId, { subtasks: filtered });
+    } else if (match.store === 'calendar') {
+      this.updateCalendarEvent(taskId, { subtasks: filtered });
+    }
+
+    return true;
+  }
+
+  /**
+   * Reorders subtasks within a task.
+   * @param {string} taskId
+   * @param {number} fromIndex
+   * @param {number} toIndex
+   * @returns {Array}
+   */
+  reorderSubtasks(taskId, fromIndex, toIndex) {
+    const match = this.findTaskAnywhere(taskId);
+    if (!match || !match.task || !Array.isArray(match.task.subtasks)) return [];
+
+    const subtasks = match.task.subtasks.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    if (fromIndex < 0 || fromIndex >= subtasks.length || toIndex < 0 || toIndex >= subtasks.length) {
+      return subtasks;
+    }
+
+    const [moved] = subtasks.splice(fromIndex, 1);
+    subtasks.splice(toIndex, 0, moved);
+    subtasks.forEach((s, idx) => {
+      s.order = idx;
+    });
+
+    if (match.store === 'todo') {
+      this.updateTodoTask(taskId, { subtasks: subtasks });
+    } else if (match.store === 'task') {
+      this.updateTask(taskId, { subtasks: subtasks });
+    } else if (match.store === 'calendar') {
+      this.updateCalendarEvent(taskId, { subtasks: subtasks });
+    }
+
+    return subtasks;
+  }
+
+  /**
+   * Calculates progress ratio and percentage for a task with subtasks or sessions.
+   * @param {Object} task
+   * @returns {{completed: number, total: number, percent: number}}
+   */
+  getTaskProgress(task) {
+    if (!task) return { completed: 0, total: 0, percent: 0 };
+
+    const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+    if (subtasks.length > 0) {
+      const completedCount = subtasks.filter(s => s.completed).length;
+      const totalCount = subtasks.length;
+      const percent = Math.round((completedCount / totalCount) * 100);
+      return {
+        completed: completedCount,
+        total: totalCount,
+        percent: Math.min(100, Math.max(0, percent))
+      };
+    }
+
+    if (task.isMultiSession && task.sessionCount && task.sessionCount > 1) {
+      const total = task.sessionCount;
+      const calEvents = this.getCalendarEvents();
+      const completedSessions = calEvents.filter(e => e.masterTaskId === task.id && e.isCompleted).length;
+      const percent = Math.round((completedSessions / total) * 100);
+      return {
+        completed: completedSessions,
+        total: total,
+        percent: Math.min(100, Math.max(0, percent))
+      };
+    }
+
+    if (task.completed || task.isCompleted) {
+      return { completed: 1, total: 1, percent: 100 };
+    }
+
+    return { completed: 0, total: 0, percent: 0 };
+  }
+
+  /**
+   * Retrieves unscheduled To-Do tasks, multi-session blocks, and subtasks
+   * for the Calendar Unscheduled Tasks Sidebar.
+   * @returns {Array<Object>}
+   */
+  getUnscheduledSessionsAndTodos() {
+    const todos = this.getTodoTasks();
+    const calEvents = this.getCalendarEvents();
+    const items = [];
+
+    todos.forEach(todo => {
+      if (todo.completed) return; // Skip already completed master items
+
+      const subtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+      const isMulti = Boolean(todo.isMultiSession && todo.sessionCount && todo.sessionCount > 1);
+
+      if (isMulti) {
+        // Multi-session task: generate items for each session
+        const total = todo.sessionCount;
+        const dur = todo.sessionDuration || 45;
+
+        for (let i = 1; i <= total; i++) {
+          const scheduledEvent = calEvents.find(e => e.masterTaskId === todo.id && e.sessionIndex === i);
+          const isScheduled = Boolean(scheduledEvent);
+          const isDone = Boolean(scheduledEvent && scheduledEvent.isCompleted);
+
+          items.push({
+            id: 'session-item-' + todo.id + '-' + i,
+            masterTaskId: todo.id,
+            sessionIndex: i,
+            totalSessions: total,
+            title: todo.title,
+            displayTitle: `${todo.title} (Session ${i} of ${total})`,
+            duration: (scheduledEvent && scheduledEvent.plannedDuration) ? scheduledEvent.plannedDuration : dur,
+            emoji: todo.emoji || '📝',
+            category: todo.category || 'General',
+            isSession: true,
+            isScheduled: isScheduled,
+            isCompleted: isDone,
+            scheduledDate: scheduledEvent ? scheduledEvent.date : null,
+            scheduledTime: scheduledEvent ? scheduledEvent.startTime : null,
+            subtasks: subtasks
+          });
+        }
+      } else {
+        // Standard task
+        const scheduledEvent = calEvents.find(e => e.id === todo.id || (e.masterTaskId === todo.id && !e.sessionIndex));
+        const isScheduled = Boolean(scheduledEvent);
+
+        items.push({
+          id: todo.id,
+          masterTaskId: todo.id,
+          sessionIndex: null,
+          totalSessions: 1,
+          title: todo.title,
+          displayTitle: todo.title,
+          duration: todo.plannedDuration || 30,
+          emoji: todo.emoji || '📌',
+          category: todo.category || 'General',
+          isSession: false,
+          isScheduled: isScheduled,
+          isCompleted: Boolean(todo.completed),
+          scheduledDate: scheduledEvent ? scheduledEvent.date : null,
+          scheduledTime: scheduledEvent ? scheduledEvent.startTime : null,
+          subtasks: subtasks
+        });
+      }
+    });
+
+    return items;
+  }
+
+  /**
+   * Schedules a task or session block onto the calendar from the sidebar.
+   * @param {Object} scheduleData
+   * @returns {Object}
+   */
+  scheduleSessionBlock(scheduleData) {
+    const masterTaskId = scheduleData && scheduleData.masterTaskId ? scheduleData.masterTaskId : null;
+    const sessionIndex = scheduleData && typeof scheduleData.sessionIndex === 'number' ? scheduleData.sessionIndex : null;
+    const totalSessions = scheduleData && typeof scheduleData.totalSessions === 'number' ? scheduleData.totalSessions : null;
+    const date = (scheduleData && scheduleData.date) ? scheduleData.date : this.getTodayDateString();
+    const startTime = (scheduleData && scheduleData.startTime) ? scheduleData.startTime : '10:00';
+    const duration = (scheduleData && typeof scheduleData.duration === 'number') ? Math.max(1, scheduleData.duration) : 45;
+    const title = (scheduleData && scheduleData.title) ? scheduleData.title : 'Task Session';
+    const emoji = (scheduleData && scheduleData.emoji) ? scheduleData.emoji : '📅';
+    const category = (scheduleData && scheduleData.category) ? scheduleData.category : 'General';
+
+    // Calculate end time
+    const startParts = startTime.split(':');
+    const startMin = (parseInt(startParts[0], 10) || 0) * 60 + (parseInt(startParts[1], 10) || 0);
+    const endMin = (startMin + duration) % 1440;
+    const endH = Math.floor(endMin / 60);
+    const endM = endMin % 60;
+    const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+    const eventId = (sessionIndex && masterTaskId)
+      ? `cal-sess-${masterTaskId}-${sessionIndex}`
+      : (masterTaskId || `cal-event-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`);
+
+    // Inherit subtasks from master task if available
+    const match = masterTaskId ? this.findTaskAnywhere(masterTaskId) : null;
+    const subtasks = (match && match.task && Array.isArray(match.task.subtasks)) ? match.task.subtasks : [];
+
+    const newEvent = {
+      id: eventId,
+      masterTaskId: masterTaskId,
+      sessionIndex: sessionIndex,
+      totalSessions: totalSessions,
+      isMultiSession: Boolean(sessionIndex && totalSessions && totalSessions > 1),
+      title: title,
+      date: date,
+      startTime: startTime,
+      endTime: endTime,
+      plannedDuration: duration,
+      isLocked: false,
+      useTimeBank: true,
+      emoji: emoji,
+      category: category,
+      subtasks: subtasks,
+      source: 'local',
+      origin: 'local',
+      createdInApp: true
+    };
+
+    // If an existing event with this ID exists, update it; otherwise add it
+    const calEvents = this.getCalendarEvents();
+    const existingIdx = calEvents.findIndex(e => e.id === eventId);
+    if (existingIdx !== -1) {
+      calEvents[existingIdx] = Object.assign({}, calEvents[existingIdx], newEvent, { lastModified: Date.now() });
+      this.saveCalendarEvents(calEvents);
+    } else {
+      this.addCalendarEvent(newEvent);
+    }
+
+    // If scheduled for today, ensure it is represented in today's task schedule
+    if (date === this.getTodayDateString()) {
+      const todayTasks = this.getTasks();
+      const taskIdx = todayTasks.findIndex(t => t.id === eventId);
+      if (taskIdx === -1) {
+        this.addTask(newEvent);
+      } else {
+        this.updateTask(eventId, newEvent);
+      }
+    }
+
+    return newEvent;
   }
 
   // ==========================================
@@ -1430,6 +1827,11 @@ export class TaskStore {
       syncHash: (eventData && eventData.syncHash) ? eventData.syncHash : null,
       lastSyncedAt: (eventData && typeof eventData.lastSyncedAt === 'number') ? eventData.lastSyncedAt : null,
       isDirty: (eventData && eventData.isDirty !== undefined) ? Boolean(eventData.isDirty) : false,
+      subtasks: (eventData && Array.isArray(eventData.subtasks)) ? eventData.subtasks : [],
+      isMultiSession: Boolean(eventData && eventData.isMultiSession),
+      sessionIndex: (eventData && typeof eventData.sessionIndex === 'number') ? eventData.sessionIndex : null,
+      totalSessions: (eventData && typeof eventData.totalSessions === 'number') ? eventData.totalSessions : null,
+      masterTaskId: (eventData && eventData.masterTaskId) ? eventData.masterTaskId : null,
       lastModified: now
     };
     current.push(newEvent);

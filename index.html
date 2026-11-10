@@ -269,6 +269,7 @@
             <span class="active-task-time-span" id="activeTaskTimeSpan">--:-- → --:--</span>
             <span class="active-task-total-duration" id="activeTaskTotalDuration">(30m)</span>
           </div>
+          <div class="active-session-progress-pill hidden" id="activeSessionProgressPill">Session 1 of 3 • 45m / 135m</div>
 
           <!-- Quick Toggles: Time Bank Piggy & Lock Indicator -->
           <div class="timer-quick-toggles" id="timerQuickToggles">
@@ -1015,6 +1016,13 @@
               <option value="month">Month</option>
             </select>
           </div>
+
+          <!-- Unscheduled Tasks & Multi-Session Blocks Sidebar Toggle -->
+          <button type="button" class="cal-tasks-toggle-btn" id="btnToggleCalTasksSidebar" title="Toggle unscheduled tasks & sessions sidebar">
+            <span class="cal-tasks-icon">📋</span>
+            <span class="cal-tasks-label">Tasks</span>
+            <span class="cal-tasks-badge" id="calTasksBadge">0</span>
+          </button>
         </div>
 
         <div class="cal-sub-center">
@@ -1060,66 +1068,83 @@
         </div>
       </div>
 
-      <!-- Calendar Views Container -->
-      <div class="modal-body full-calendar-body" style="position: relative;">
-        <!-- 1. Day View (Default View) -->
-        <div class="calendar-view-container" id="calendarDayView">
-          <div class="day-timeline-scroll" id="dayTimelineScroll">
-            <div class="day-timeline-body" id="dayTimelineBody">
-              <!-- Dynamically populated with hour slots, interval lines, current time bar & events -->
+      <!-- Main Calendar Layout (Sidebar + Views Container) -->
+      <div class="full-calendar-main-layout" id="fullCalendarMainLayout">
+        <!-- Unscheduled Tasks & Multi-Session Blocks Sidebar -->
+        <aside class="cal-unscheduled-sidebar hidden" id="calUnscheduledSidebar">
+          <div class="cal-sidebar-header">
+            <div class="cal-sidebar-title-group">
+              <span class="cal-sidebar-icon">📋</span>
+              <span class="cal-sidebar-title">Unscheduled Tasks</span>
+            </div>
+            <button type="button" class="btn-close-cal-sidebar" id="btnCloseCalSidebar" title="Close sidebar">✕</button>
+          </div>
+          <div class="cal-sidebar-body" id="calSidebarBody">
+            <!-- Unscheduled items populated dynamically -->
+          </div>
+        </aside>
+
+        <!-- Calendar Views Container -->
+        <div class="modal-body full-calendar-body" style="position: relative;">
+          <!-- 1. Day View (Default View) -->
+          <div class="calendar-view-container" id="calendarDayView">
+            <div class="day-timeline-scroll" id="dayTimelineScroll">
+              <div class="day-timeline-body" id="dayTimelineBody">
+                <!-- Dynamically populated with hour slots, interval lines, current time bar & events -->
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 2. Week View -->
-        <div class="calendar-view-container hidden" id="calendarWeekView">
-          <div class="week-header-row" id="weekHeaderRow">
-            <!-- 7 columns with day names & dates -->
-          </div>
-          <div class="week-grid-scroll" id="weekGridScroll">
-            <div class="week-grid-body" id="weekGridBody">
-              <!-- Hour rows & solid category event blocks -->
+          <!-- 2. Week View -->
+          <div class="calendar-view-container hidden" id="calendarWeekView">
+            <div class="week-header-row" id="weekHeaderRow">
+              <!-- 7 columns with day names & dates -->
+            </div>
+            <div class="week-grid-scroll" id="weekGridScroll">
+              <div class="week-grid-body" id="weekGridBody">
+                <!-- Hour rows & solid category event blocks -->
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 3. Month View -->
-        <div class="calendar-view-container hidden" id="calendarMonthView">
-          <div class="month-weekday-header">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
-          <div class="month-grid-cells" id="monthGridCells">
-            <!-- Cells generated dynamically with solid category event pills -->
-          </div>
-        </div>
-
-        <!-- Bottom Fade Overlay for Smooth Edge Falloff -->
-        <div class="calendar-bottom-fade" aria-hidden="true"></div>
-
-        <!-- Bottom Floating Controls: Interval (Left of +) & Add Event Button (+) -->
-        <div class="cal-bottom-bar" id="calBottomBar">
-          <!-- Time Interval Resolution Selector with Clock Emoji -->
-          <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
-            <span class="cal-res-icon">🕒</span>
-            <span class="cal-res-label">Interval:</span>
-            <span class="cal-res-val" id="calResolutionVal">15m</span>
-            <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
-            <select id="calResolutionSelect" class="cal-dropdown-select-overlay" title="Time Interval Resolution">
-              <option value="5">5m</option>
-              <option value="10">10m</option>
-              <option value="15" selected>15m</option>
-              <option value="30">30m</option>
-              <option value="60">60m</option>
-            </select>
+          <!-- 3. Month View -->
+          <div class="calendar-view-container hidden" id="calendarMonthView">
+            <div class="month-weekday-header">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+            <div class="month-grid-cells" id="monthGridCells">
+              <!-- Cells generated dynamically with solid category event pills -->
+            </div>
           </div>
 
-          <!-- Floating Green Add Event Button (Far Bottom Right) -->
-          <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
+          <!-- Bottom Fade Overlay for Smooth Edge Falloff -->
+          <div class="calendar-bottom-fade" aria-hidden="true"></div>
+
+          <!-- Bottom Floating Controls: Interval (Left of +) & Add Event Button (+) -->
+          <div class="cal-bottom-bar" id="calBottomBar">
+            <!-- Time Interval Resolution Selector with Clock Emoji -->
+            <div class="cal-res-wrapper" id="calResolutionWrapper" title="Interval resolution">
+              <span class="cal-res-icon">🕒</span>
+              <span class="cal-res-label">Interval:</span>
+              <span class="cal-res-val" id="calResolutionVal">15m</span>
+              <span class="cal-dropdown-arrow" aria-hidden="true">▾</span>
+              <select id="calResolutionSelect" class="cal-dropdown-select-overlay" title="Time Interval Resolution">
+                <option value="5">5m</option>
+                <option value="10">10m</option>
+                <option value="15" selected>15m</option>
+                <option value="30">30m</option>
+                <option value="60">60m</option>
+              </select>
+            </div>
+
+            <!-- Floating Green Add Event Button (Far Bottom Right) -->
+            <button type="button" class="btn-float-add-event" id="btnFullCalAddEvent" title="Add new calendar event">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1497,6 +1522,43 @@
           <input type="text" id="addModalTitle" class="edit-task-input" placeholder="e.g. Core Reading & Practice">
         </div>
 
+        <!-- Multi-Session Stepper Control -->
+        <div class="edit-task-form-group multi-session-form-group">
+          <div class="multi-session-header-row">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:0.95rem;">🔗</span>
+              <label class="edit-task-label" style="margin-bottom:0;">Multi-Session Time Blocking</label>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="addModalIsMultiSession">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="multi-session-details hidden" id="addModalMultiSessionDetails">
+            <div class="stepper-row">
+              <span class="stepper-label">Number of Sessions:</span>
+              <div class="stepper-control">
+                <button type="button" class="btn-stepper" id="btnDecAddSessions" title="Decrease sessions">-</button>
+                <span class="stepper-value" id="addModalSessionCountVal">2</span>
+                <button type="button" class="btn-stepper" id="btnIncAddSessions" title="Increase sessions">+</button>
+              </div>
+            </div>
+            <span class="multi-session-hint" id="addModalMultiSessionHint">Total duration split into 2 sessions</span>
+          </div>
+        </div>
+
+        <!-- Subtasks & Steps Editor -->
+        <div class="edit-task-form-group subtasks-editor-group">
+          <label class="edit-task-label">Steps & Subtasks (Optional)</label>
+          <div class="subtask-editor-list" id="addModalSubtaskList">
+            <!-- Dynamic subtask rows -->
+          </div>
+          <div class="subtask-add-row" style="margin-top:4px;">
+            <input type="text" class="subtask-add-input" id="addModalNewSubtaskInput" placeholder="+ Add a step..." autocomplete="off">
+            <button type="button" class="btn-subtask-add-confirm" id="btnAddModalAddSubtask">Add</button>
+          </div>
+        </div>
+
         <div class="edit-task-row">
           <div class="edit-task-form-group" style="flex: 1;">
             <label class="edit-task-label">Duration (min)</label>
@@ -1600,6 +1662,20 @@
           </label>
         </div>
 
+        <div class="setting-row" style="margin-top: 6px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="modal-toggle-icon" style="color: #10b981; font-size: 1.1rem;">📋</span>
+              <span class="setting-label">Also Add to To-Do List</span>
+            </div>
+            <span class="setting-desc">Keep master task available in To-Do view with shared progress</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="addModalAddToTodo">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
         <!-- Outbound Sync Destinations -->
         <div class="sync-destination-group" id="addTaskSyncGroup">
           <span class="sync-destination-label">Add to</span>
@@ -1657,6 +1733,43 @@
         <div class="edit-task-form-group">
           <label class="edit-task-label">Task Name</label>
           <input type="text" id="editTaskTitle" class="edit-task-input" required placeholder="Task name">
+        </div>
+
+        <!-- Multi-Session Stepper Control -->
+        <div class="edit-task-form-group multi-session-form-group">
+          <div class="multi-session-header-row">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:0.95rem;">🔗</span>
+              <label class="edit-task-label" style="margin-bottom:0;">Multi-Session Time Blocking</label>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="editTaskIsMultiSession">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="multi-session-details hidden" id="editTaskMultiSessionDetails">
+            <div class="stepper-row">
+              <span class="stepper-label">Number of Sessions:</span>
+              <div class="stepper-control">
+                <button type="button" class="btn-stepper" id="btnDecEditSessions" title="Decrease sessions">-</button>
+                <span class="stepper-value" id="editTaskSessionCountVal">2</span>
+                <button type="button" class="btn-stepper" id="btnIncEditSessions" title="Increase sessions">+</button>
+              </div>
+            </div>
+            <span class="multi-session-hint" id="editTaskMultiSessionHint">Total duration split into 2 sessions</span>
+          </div>
+        </div>
+
+        <!-- Subtasks & Steps Editor -->
+        <div class="edit-task-form-group subtasks-editor-group">
+          <label class="edit-task-label">Steps & Subtasks (Optional)</label>
+          <div class="subtask-editor-list" id="editTaskSubtaskList">
+            <!-- Dynamic subtask rows -->
+          </div>
+          <div class="subtask-add-row" style="margin-top:4px;">
+            <input type="text" class="subtask-add-input" id="editTaskNewSubtaskInput" placeholder="+ Add a step..." autocomplete="off">
+            <button type="button" class="btn-subtask-add-confirm" id="btnEditTaskAddSubtask">Add</button>
+          </div>
         </div>
 
         <div class="edit-task-row">
@@ -1755,6 +1868,20 @@
           </div>
           <label class="toggle-switch">
             <input type="checkbox" id="editTaskIsLocked">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row" style="margin-top: 6px;">
+          <div class="setting-info">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="modal-toggle-icon" style="color: #10b981; font-size: 1.1rem;">📋</span>
+              <span class="setting-label">Keep in To-Do List</span>
+            </div>
+            <span class="setting-desc">Keep master task available in To-Do view with shared progress</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="editTaskAddToTodo">
             <span class="toggle-slider"></span>
           </label>
         </div>

@@ -19,6 +19,7 @@ const suites = [
   'testCalendarSyncService.js',
   'testTelemetrySyncService.js',
   'testSimpleMode.js',
+  'testMultiSessionSubtasks.js',
   'testSyntaxCompatibility.js'
 ];
 
