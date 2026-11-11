@@ -2006,12 +2006,25 @@ body {
 }
 
 #taskEditModalBackdrop,
-#addTaskModalBackdrop {
+#addTaskModalBackdrop,
+#addTodoModalBackdrop,
+#calendarEventModalBackdrop,
+#selectTodoModalBackdrop {
   z-index: 1200 !important;
+}
+
+#calendarConnectModalBackdrop,
+#confirmSyncNowModalBackdrop {
+  z-index: 1250 !important;
 }
 
 #emojiPickerModalBackdrop {
   z-index: 1300 !important;
+}
+
+#confirmDeleteTodoModalBackdrop,
+#confirmModeSwitchModalBackdrop {
+  z-index: 1400 !important;
 }
 
 #durationDialModalBackdrop {
@@ -2020,6 +2033,10 @@ body {
 
 #categoryColorPaletteModalBackdrop {
   z-index: 2600 !important;
+}
+
+#confirmExitAppModalBackdrop {
+  z-index: 3000 !important;
 }
 
 .settings-modal, .calendar-modal {
@@ -5482,10 +5499,255 @@ body {
 
 .cal-sidebar-card-dur {
   font-family: var(--font-mono, monospace);
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 1px 5px;
+  font-weight: 700;
+  font-size: 0.68rem;
+  background: rgba(0, 240, 255, 0.12);
+  color: var(--accent-cyan, #00f0ff);
+  border: 1px solid rgba(0, 240, 255, 0.28);
+  padding: 1.5px 6px;
   border-radius: 4px;
+  letter-spacing: 0.2px;
+}
+
+[data-theme="light"] .cal-sidebar-card-dur {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.28);
+}
+
+.calendar-date-badge {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .calendar-date-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+
+.calendar-time-range {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.08);
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .calendar-time-range {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.08);
+}
+
+.cal-sidebar-unscheduled-badge {
+  font-size: 0.68rem;
+  color: var(--text-dim, #64748b);
+  font-style: italic;
+}
+
+.btn-cal-sidebar-fish {
+  background: rgba(2, 132, 199, 0.14);
+  border: 1px solid rgba(2, 132, 199, 0.35);
+  color: #38bdf8;
+  font-size: 0.88rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.btn-cal-sidebar-fish:hover {
+  transform: scale(1.15) rotate(-6deg);
+  background: rgba(2, 132, 199, 0.28);
+  border-color: #38bdf8;
+}
+
+.btn-cal-sidebar-fish:active {
+  transform: scale(0.92);
+}
+
+.cal-sidebar-footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--bg-surface-elevated, #161b26);
+  flex-shrink: 0;
+}
+
+.btn-sidebar-add-todo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1.5px solid rgba(0, 240, 255, 0.35);
+  border-radius: var(--radius-md, 8px);
+  color: var(--accent-cyan, #00f0ff);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn-sidebar-add-todo:hover {
+  background: rgba(0, 240, 255, 0.22);
+  border-color: var(--accent-cyan, #00f0ff);
+  transform: translateY(-1px);
+}
+
+.btn-sidebar-add-todo:active {
+  transform: scale(0.98);
+}
+
+[data-theme="light"] .btn-sidebar-add-todo {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.35);
+  color: #0284c7;
+}
+
+/* Add To-Do text input with right-aligned advanced 2-sliders button */
+.add-todo-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.add-todo-input-wrap .edit-task-input {
+  padding-right: 40px !important;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.btn-add-todo-advanced {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.btn-add-todo-advanced:hover {
+  color: var(--accent-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.12);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.btn-add-todo-advanced:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+/* Fish Reel Animation Clones and Splashes */
+.cal-fish-reel-clone {
+  position: fixed;
+  z-index: 999999 !important;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-surface-elevated, #1a1e29);
+  border: 1.5px solid var(--accent-cyan, #00f0ff);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75), 0 0 16px rgba(0, 240, 255, 0.6);
+  will-change: transform, opacity;
+  animation: fishReelArc 0.65s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
+}
+
+@keyframes fishReelArc {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  35% {
+    transform: translate(calc(var(--fish-dx) * 0.45), calc(var(--fish-dy) * 0.35 - 50px)) scale(1.18) rotate(-14deg);
+  }
+  70% {
+    transform: translate(calc(var(--fish-dx) * 0.8), calc(var(--fish-dy) * 0.75 - 20px)) scale(1.05) rotate(6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(var(--fish-dx), var(--fish-dy)) scale(1) rotate(0deg);
+  }
+}
+
+.cal-water-splash {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999998 !important;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2.5px solid var(--accent-cyan, #00f0ff);
+  animation: splashRipple 0.5s ease-out forwards;
+}
+
+@keyframes splashRipple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0.95;
+    box-shadow: 0 0 14px var(--accent-cyan, #00f0ff);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.2);
+    opacity: 0;
+    box-shadow: 0 0 0px transparent;
+  }
+}
+
+.cal-sidebar-card.fish-landed-pulse {
+  animation: fishLandedPulseAnim 0.75s ease-out;
+}
+
+@keyframes fishLandedPulseAnim {
+  0% {
+    transform: scale(0.96);
+    box-shadow: 0 0 0px transparent;
+  }
+  35% {
+    transform: scale(1.04);
+    box-shadow: 0 0 18px var(--accent-cyan, #00f0ff), 0 0 0 2px var(--accent-cyan, #00f0ff);
+    border-color: var(--accent-cyan, #00f0ff);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0px transparent;
+  }
+}
+
+/* Ensure modal z-index for confirmFishUnschedule */
+#confirmFishUnscheduleModalBackdrop {
+  z-index: 1400 !important;
 }
 
 .cal-sidebar-subtask-count {

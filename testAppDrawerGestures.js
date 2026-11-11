@@ -301,6 +301,7 @@ const seedHiddenModals = [
   'todoModalBackdrop',
   'confirmDeleteTodoModalBackdrop',
   'confirmClearTodoModalBackdrop',
+  'confirmFishUnscheduleModalBackdrop',
   'durationDialModalBackdrop',
   'emojiPickerModalBackdrop',
   'timeBankInfoModalBackdrop',

@@ -49,6 +49,7 @@ const STORAGE_KEYS = {
   SIMPLE_LOOP: 'calentimer_simple_loop_v1',
   SIMPLE_CUSTOM_CFG: 'calentimer_simple_custom_cfg_v1',
   SHOW_TIMESPANS_SEQUENTIAL: 'calentimer_show_timespans_sequential_v1',
+  SKIP_FISH_UNSCHEDULE_CONFIRM: 'calentimer_skip_fish_unschedule_v1',
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1'
 };
 
@@ -2944,6 +2945,22 @@ export class TaskStore {
     if (session && typeof session === 'object') {
       safeSetItem(STORAGE_KEYS.SIMPLE_SESSION, JSON.stringify(session));
     }
+  }
+
+  /**
+   * Checks whether the confirmation modal should be skipped when reeling back a task.
+   * @returns {boolean}
+   */
+  getSkipFishUnscheduleConfirm() {
+    return safeGetItem(STORAGE_KEYS.SKIP_FISH_UNSCHEDULE_CONFIRM) === 'true';
+  }
+
+  /**
+   * Sets whether the confirmation modal should be skipped when reeling back a task.
+   * @param {boolean} skip
+   */
+  setSkipFishUnscheduleConfirm(skip) {
+    safeSetItem(STORAGE_KEYS.SKIP_FISH_UNSCHEDULE_CONFIRM, skip ? 'true' : 'false');
   }
 
   /**

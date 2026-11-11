@@ -10479,6 +10479,28 @@ function setupNavigationAndModals() {
     });
   }
 
+  const btnAddTodoAdvanced = document.getElementById('btnAddTodoAdvanced');
+  if (btnAddTodoAdvanced) {
+    btnAddTodoAdvanced.addEventListener('click', (e) => {
+      e.preventDefault();
+      const title = addTodoTitle ? addTodoTitle.value.trim() : '';
+      if (addTodoModalBackdrop) addTodoModalBackdrop.classList.add('hidden');
+      if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.openEventInspector === 'function') {
+        const fullCalBackdrop = document.getElementById('fullCalendarModalBackdrop');
+        if (fullCalBackdrop && fullCalBackdrop.classList.contains('hidden')) {
+          fullCalBackdrop.classList.remove('hidden');
+        }
+        calendarView.openEventInspector({
+          title: title,
+          emoji: currentTodoEmoji || '📌',
+          plannedDuration: 30,
+          addToTodo: true
+        }, { isTodo: true });
+      }
+      mobileServices.hapticTap();
+    });
+  }
+
   if (formAddTodoTask) {
     formAddTodoTask.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -11368,6 +11390,7 @@ function setupNavigationAndModals() {
       'categoryColorPaletteModalBackdrop',
       'installAppModalBackdrop',
       'confirmDeleteTodoModalBackdrop',
+      'confirmFishUnscheduleModalBackdrop',
       'durationDialModalBackdrop',
       'emojiPickerModalBackdrop',
       'timeBankInfoModalBackdrop',

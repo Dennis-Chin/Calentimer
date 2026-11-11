@@ -1066,17 +1066,26 @@
         <!-- Sidebar Backdrop Overlay -->
         <div class="cal-sidebar-backdrop hidden" id="calSidebarBackdrop"></div>
 
-        <!-- Unscheduled Tasks & Multi-Session Blocks Sidebar -->
+        <!-- Unscheduled To-Do Tasks & Multi-Session Blocks Sidebar -->
         <aside class="cal-unscheduled-sidebar hidden" id="calUnscheduledSidebar">
           <div class="cal-sidebar-header">
             <div class="cal-sidebar-title-group">
               <span class="cal-sidebar-icon">📋</span>
-              <span class="cal-sidebar-title">Unscheduled Tasks</span>
+              <span class="cal-sidebar-title">Unscheduled To-Do Tasks</span>
             </div>
             <button type="button" class="btn-close-cal-sidebar" id="btnCloseCalSidebar" title="Close sidebar">✕</button>
           </div>
           <div class="cal-sidebar-body" id="calSidebarBody">
             <!-- Unscheduled items populated dynamically -->
+          </div>
+          <div class="cal-sidebar-footer" id="calSidebarFooter">
+            <button type="button" class="btn-sidebar-add-todo" id="btnSidebarAddTodo" title="Add a new To-Do task">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Add To-Do Task</span>
+            </button>
           </div>
         </aside>
 
@@ -1404,13 +1413,48 @@
       <form class="modal-body" id="formAddTodoTask">
         <div class="edit-task-form-group">
           <label class="edit-task-label">Task Name</label>
-          <input type="text" id="addTodoTitle" class="edit-task-input" required placeholder="What needs to be done?" autocomplete="off">
+          <div class="add-todo-input-wrap">
+            <input type="text" id="addTodoTitle" class="edit-task-input" required placeholder="What needs to be done?" autocomplete="off">
+            <button type="button" class="btn-add-todo-advanced" id="btnAddTodoAdvanced" title="Switch to full editor">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="edit-modal-footer" style="margin-top: 16px;">
           <button type="submit" class="btn-modal-save" id="btnAddTodoSubmit">+ Add Task</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Custom Confirmation Modal for Fishing/Reeling Task to Unscheduled -->
+  <div class="modal-backdrop hidden" id="confirmFishUnscheduleModalBackdrop">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-icon">🎣</div>
+      <div class="confirm-modal-title" id="confirmFishUnscheduleTitle">Return Task to Unscheduled?</div>
+      <div class="confirm-modal-desc" id="confirmFishUnscheduleDesc">This will remove the task from the calendar and return it to your unscheduled to-do list.</div>
+      <div class="dont-ask-row" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;cursor:pointer;">
+        <label class="toggle-switch" style="transform:scale(0.85);">
+          <input type="checkbox" id="chkDontAskFishUnschedule">
+          <span class="toggle-slider"></span>
+        </label>
+        <span style="font-size:0.84rem;color:var(--text-muted);user-select:none;">Don't ask again</span>
+      </div>
+      <div class="confirm-modal-actions" style="margin-top:16px;">
+        <button type="button" class="btn-confirm-cancel" id="btnCancelFishUnschedule">Cancel</button>
+        <button type="button" class="btn-confirm-danger" id="btnConfirmFishUnschedule" style="background:#0284c7;color:#fff;">Return</button>
+      </div>
     </div>
   </div>
 

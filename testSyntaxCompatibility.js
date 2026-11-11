@@ -484,12 +484,23 @@ assert(latestAppContent.includes('btn-todo-advanced') && latestAppContent.includ
 assert(styleCssContent.includes('.cal-tasks-floating-btn') && styleCssContent.includes('.drop-target-active'), 'style.css styles floating Tasks button with drop target state');
 assert(styleCssContent.includes('.cal-sidebar-backdrop'), 'style.css styles sidebar backdrop');
 assert(styleCssContent.includes('.btn-todo-advanced'), 'style.css styles 2-sliders advanced options button');
+assert(styleCssContent.includes('#calendarEventModalBackdrop') && styleCssContent.includes('z-index: 1200 !important;'), 'style.css ensures #calendarEventModalBackdrop stacks above #todoModalBackdrop (z-index: 1200)');
+assert(calViewContent.includes('el.btnDeleteEvent.textContent = isTodo ? \'🗑️ Delete To-Do\' : \'🗑️ Delete Event\';'), 'calendarView.js sets Delete To-Do button label when editing todo');
 
 console.log('\n--- 19. Testing Mode Toggle Performance & Shimmer Optimization ---');
 assert(styleCssContent.includes('will-change: background-position') && styleCssContent.includes('contain: layout paint'), 'style.css isolates .app-brand shimmer with will-change and contain');
 assert(styleCssContent.includes('translate3d(18px, 0, 0)') && styleCssContent.includes('will-change: transform'), 'style.css hardware-accelerates .mode-slider-thumb with translate3d and will-change');
 assert(latestAppContent.includes('taskStore.setAppMode(targetMode, true)'), 'app.js switches mode silently without firing duplicate listener re-renders');
 assert(latestAppContent.includes('requestAnimationFrame') && latestAppContent.includes('isDrawerOpen'), 'app.js defers non-visible task drawer and calendar modal DOM updates during mode toggle');
+
+console.log('\n--- 20. Testing Fishing Rod Unschedule & Advanced To-Do Add Button ---');
+assert(indexHtmlContent.includes('Unscheduled To-Do Tasks'), 'index.html renames sidebar title to Unscheduled To-Do Tasks');
+assert(indexHtmlContent.includes('id="btnSidebarAddTodo"'), 'index.html includes #btnSidebarAddTodo in sidebar footer');
+assert(indexHtmlContent.includes('id="btnAddTodoAdvanced"'), 'index.html includes #btnAddTodoAdvanced in Add To-Do modal');
+assert(indexHtmlContent.includes('id="confirmFishUnscheduleModalBackdrop"'), 'index.html includes #confirmFishUnscheduleModalBackdrop');
+assert(latestStoreContent.includes('getSkipFishUnscheduleConfirm') && latestStoreContent.includes('setSkipFishUnscheduleConfirm'), 'taskStore.js implements fish unschedule confirm preference');
+assert(styleCssContent.includes('.btn-cal-sidebar-fish') && styleCssContent.includes('.cal-fish-reel-clone'), 'style.css includes fishing rod and reel animation styles');
+assert(calViewContent.includes('_confirmAndReelBackTask') && calViewContent.includes('_executeFishReelAnimation'), 'calendarView.js implements fish reel animation and confirmation');
 
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
