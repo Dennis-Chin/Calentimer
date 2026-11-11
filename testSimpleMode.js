@@ -200,6 +200,95 @@ runtime.completeCurrentTaskEarly(); // task 1 (final) -> should stop
 assert(allCompletedFired === true, 'allTasksCompleted emitted when loop is disabled');
 assert(runtime.status === TimerStatus.COMPLETED, 'Runtime status is COMPLETED when loop is disabled');
 
+// 5. Alternating Focus/Rest Calendar Sequence & Reconfiguration Preservation
+console.log('\n--- 5. Calendar Alternating Order & Reconfig Preservation ---');
+
+taskStore.setAppMode('simple');
+const baseStart = 540; // 09:00
+const pomodoroSeq = taskStore.generatePresetTasks('pomodoro', null, baseStart);
+
+assert(pomodoroSeq[0].startTime === '09:00', 'Pomodoro Focus 1 starts at 09:00');
+assert(pomodoroSeq[0].endTime === '09:25', 'Pomodoro Focus 1 ends at 09:25');
+assert(pomodoroSeq[1].startTime === '09:25', 'Pomodoro Rest 1 starts at 09:25 immediately after Focus 1');
+assert(pomodoroSeq[1].endTime === '09:30', 'Pomodoro Rest 1 ends at 09:30');
+assert(pomodoroSeq[2].startTime === '09:30', 'Pomodoro Focus 2 starts at 09:30 immediately after Rest 1');
+assert(pomodoroSeq[2].endTime === '09:55', 'Pomodoro Focus 2 ends at 09:55');
+assert(pomodoroSeq[3].startTime === '09:55', 'Pomodoro Rest 2 starts at 09:55 immediately after Focus 2');
+assert(pomodoroSeq[3].endTime === '10:00', 'Pomodoro Rest 2 ends at 10:00');
+
+// Save tasks to Simple store and sync to calendar
+taskStore.saveSimpleTasks(pomodoroSeq);
+taskStore.syncScheduleAndCalendar();
+
+const todayStr = taskStore.getTodayDateString();
+const calEventsAfterSync = taskStore.getCalendarEvents().filter(e => e.date === todayStr);
+const simpleEvents = calEventsAfterSync.filter(e => e.id && String(e.id).indexOf('simple-') === 0);
+
+// Verify calendar events maintain strict alternating sequential order
+const firstFourCal = simpleEvents.slice(0, 4);
+assert(firstFourCal.length >= 4, 'Calendar has at least 4 synced simple events');
+assert(firstFourCal[0].category === 'Focus' && firstFourCal[0].startTime === '09:00', 'Cal Event 0 is Focus at 09:00');
+assert(firstFourCal[1].category === 'Rest' && firstFourCal[1].startTime === '09:25', 'Cal Event 1 is Rest at 09:25');
+assert(firstFourCal[2].category === 'Focus' && firstFourCal[2].startTime === '09:30', 'Cal Event 2 is Focus at 09:30');
+assert(firstFourCal[3].category === 'Rest' && firstFourCal[3].startTime === '09:55', 'Cal Event 3 is Rest at 09:55');
+
+// Mark Focus 1 as completed
+pomodoroSeq[0].isCompleted = true;
+pomodoroSeq[0].completedDate = todayStr;
+taskStore.saveSimpleTasks(pomodoroSeq);
+taskStore.updateCalendarEvent(pomodoroSeq[0].id, { isCompleted: true, completedDate: todayStr });
+
+// Now user reconfigures to One Hour preset (60m focus, 10m rest, 3 cycles)
+const existingSimple = taskStore.getSimpleTasks();
+const completedInStore = existingSimple.filter(t => Boolean(t.isCompleted));
+assert(completedInStore.length === 1, 'Completed Focus 1 task is found');
+
+const newHourPreset = taskStore.generatePresetTasks('one_hour', null, 570); // starts at 09:30 after Focus 1
+assert(newHourPreset[0].startTime === '09:30', 'New 1-hour focus starts at 09:30 after completed Focus 1');
+assert(newHourPreset[0].endTime === '10:30', 'New 1-hour focus ends at 10:30');
+assert(newHourPreset[1].startTime === '10:30', 'New 1-hour rest starts at 10:30');
+assert(newHourPreset[1].endTime === '10:40', 'New 1-hour rest ends at 10:40');
+
+// Final list retains completed tasks + new preset tasks
+const finalReconfiguredTasks = completedInStore.concat(newHourPreset);
+taskStore.saveSimpleTasks(finalReconfiguredTasks);
+
+// Update calendar: retain completed events, remove old unfinished simple events, add new preset events
+const currentCal = taskStore.getCalendarEvents();
+const otherDayCal = currentCal.filter(e => e.date !== todayStr);
+const todayCal = currentCal.filter(e => e.date === todayStr);
+
+const unfinishedIds = new Set(existingSimple.filter(t => !t.isCompleted).map(t => t.id));
+const retainedCalToday = todayCal.filter(e => {
+  if (e.isCompleted) return true;
+  if (unfinishedIds.has(e.id)) return false;
+  if (e.id && String(e.id).indexOf('simple-') === 0) return false;
+  return true;
+});
+
+const newCalForHour = newHourPreset.map(t => ({
+  id: t.id,
+  title: t.title,
+  date: todayStr,
+  startTime: t.startTime,
+  endTime: t.endTime,
+  plannedDuration: t.plannedDuration,
+  isCompleted: false,
+  category: t.category
+}));
+
+const updatedCalEvents = otherDayCal.concat(retainedCalToday).concat(newCalForHour);
+taskStore.saveCalendarEvents(updatedCalEvents);
+
+// Verify calendar updated with completed task preserved
+const verifiedCal = taskStore.getCalendarEvents().filter(e => e.date === todayStr);
+const completedPreserved = verifiedCal.find(e => e.id === pomodoroSeq[0].id);
+assert(completedPreserved !== undefined && completedPreserved.isCompleted === true, 'Completed Focus 1 task is preserved on calendar after reconfig');
+const hasNewHourTask = verifiedCal.some(e => e.id === newHourPreset[0].id);
+assert(hasNewHourTask === true, 'New 1-hour preset tasks are present on calendar');
+const oldUnfinishedRemoved = verifiedCal.every(e => !unfinishedIds.has(e.id));
+assert(oldUnfinishedRemoved === true, 'Old unfinished Pomodoro tasks removed from calendar upon reconfig');
+
 // Cleanup
 taskStore.setAppMode('advanced');
 

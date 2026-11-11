@@ -50,6 +50,7 @@ const STORAGE_KEYS = {
   SIMPLE_CUSTOM_CFG: 'calentimer_simple_custom_cfg_v1',
   SHOW_TIMESPANS_SEQUENTIAL: 'calentimer_show_timespans_sequential_v1',
   SKIP_FISH_UNSCHEDULE_CONFIRM: 'calentimer_skip_fish_unschedule_v1',
+  SKIP_REEL_ALL_CONFIRM: 'calentimer_skip_reel_all_v1',
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1'
 };
 
@@ -351,7 +352,7 @@ export class TaskStore {
    * @param {object} [customCfg]
    * @returns {Array<object>}
    */
-  generatePresetTasks(presetKey, customCfg) {
+  generatePresetTasks(presetKey, customCfg, baseStartMinutes) {
     const key = presetKey || 'pomodoro';
     let focusMin = 25;
     let restMin = 5;
@@ -393,23 +394,55 @@ export class TaskStore {
       hasBreaks = restMin > 0;
     }
 
+    let cursorMin;
+    if (typeof baseStartMinutes === 'number') {
+      cursorMin = baseStartMinutes;
+    } else {
+      const now = new Date();
+      cursorMin = (now.getHours() * 60) + now.getMinutes();
+    }
+
     const tasks = [];
     for (let c = 1; c <= cycles; c++) {
       const focusTitle = cycles > 1 ? ('Focus ' + c) : 'Focus';
+      const focusStartMin = cursorMin;
+      const focusEndMin = (focusStartMin + focusMin) % 1440;
+      const sH = Math.floor(focusStartMin / 60) % 24;
+      const sM = focusStartMin % 60;
+      const eH = Math.floor(focusEndMin / 60) % 24;
+      const eM = focusEndMin % 60;
+      const focusStartStr = `${String(sH).padStart(2, '0')}:${String(sM).padStart(2, '0')}`;
+      const focusEndStr = `${String(eH).padStart(2, '0')}:${String(eM).padStart(2, '0')}`;
+
       tasks.push({
         id: 'simple-focus-' + c + '-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
         title: focusTitle,
+        startTime: focusStartStr,
+        endTime: focusEndStr,
         plannedDuration: focusMin,
         isLocked: false,
         useTimeBank: false,
         category: 'Focus',
         emoji: '🎯'
       });
+      cursorMin = focusEndMin;
+
       if (hasBreaks && restMin > 0) {
         const restTitle = cycles > 1 ? ('Rest ' + c) : 'Rest';
+        const restStartMin = cursorMin;
+        const restEndMin = (restStartMin + restMin) % 1440;
+        const rsH = Math.floor(restStartMin / 60) % 24;
+        const rsM = restStartMin % 60;
+        const reH = Math.floor(restEndMin / 60) % 24;
+        const reM = restEndMin % 60;
+        const restStartStr = `${String(rsH).padStart(2, '0')}:${String(rsM).padStart(2, '0')}`;
+        const restEndStr = `${String(reH).padStart(2, '0')}:${String(reM).padStart(2, '0')}`;
+
         tasks.push({
           id: 'simple-rest-' + c + '-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
           title: restTitle,
+          startTime: restStartStr,
+          endTime: restEndStr,
           plannedDuration: restMin,
           isLocked: false,
           useTimeBank: false,
@@ -417,6 +450,7 @@ export class TaskStore {
           color: '#f59e0b',
           emoji: '☕'
         });
+        cursorMin = restEndMin;
       }
     }
     return tasks;
@@ -2077,7 +2111,7 @@ export class TaskStore {
           return a.overlapOrder - b.overlapOrder;
         }
         if (aStart !== bStart) return aStart - bStart;
-        return String(a.id || '').localeCompare(String(b.id || ''));
+        return 0;
       });
 
       this.saveTasks(tasks);
@@ -2254,6 +2288,7 @@ export class TaskStore {
       });
 
       // 3. Sync Tasks -> Calendar Events (Tasks created, reordered, or edited in Schedule)
+      let sequentialCursorMin = null;
       tasksToKeep.forEach(task => {
         if (isItemDeleted(task)) return;
         let existingEvent = calMap.get(task.id);
@@ -2271,16 +2306,35 @@ export class TaskStore {
             calMap.set(task.id, existingEvent);
           }
         }
-        const startTime = task.fixedStartTime || task.startTime || '09:00';
-        let endTime = task.endTime;
+        let startTime = task.fixedStartTime || task.startTime || (existingEvent ? existingEvent.startTime : null);
+        if (!startTime) {
+          if (sequentialCursorMin === null) {
+            const now = new Date();
+            const nowMin = (now.getHours() * 60) + now.getMinutes();
+            sequentialCursorMin = (nowMin >= 0 && nowMin < 1440) ? nowMin : 540;
+          }
+          const sH = Math.floor(sequentialCursorMin / 60) % 24;
+          const sM = sequentialCursorMin % 60;
+          startTime = `${String(sH).padStart(2, '0')}:${String(sM).padStart(2, '0')}`;
+          task.startTime = startTime;
+        } else {
+          const sParts = startTime.split(':');
+          sequentialCursorMin = (parseInt(sParts[0], 10) || 0) * 60 + (parseInt(sParts[1], 10) || 0);
+        }
+
+        const dur = task.plannedDuration || 30;
+        let endTime = task.endTime || (existingEvent ? existingEvent.endTime : null);
         if (!endTime && startTime) {
-          const dur = task.plannedDuration || 30;
           const startParts = startTime.split(':');
           const startMin = (parseInt(startParts[0], 10) || 0) * 60 + (parseInt(startParts[1], 10) || 0);
           const endMin = (startMin + dur) % 1440;
           const endH = Math.floor(endMin / 60);
           const endM = endMin % 60;
           endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+          task.endTime = endTime;
+        }
+        if (sequentialCursorMin !== null) {
+          sequentialCursorMin = (sequentialCursorMin + dur) % 1440;
         }
 
         if (!existingEvent) {
@@ -2377,9 +2431,14 @@ export class TaskStore {
           return a.overlapOrder - b.overlapOrder;
         }
         if (aStart !== bStart) return aStart - bStart;
+        const origIdxA = currentTasks.findIndex(t => t.id === a.id);
+        const origIdxB = currentTasks.findIndex(t => t.id === b.id);
+        if (origIdxA !== -1 && origIdxB !== -1 && origIdxA !== origIdxB) {
+          return origIdxA - origIdxB;
+        }
         return String(a.id || '').localeCompare(String(b.id || ''));
       });
-      safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasksToKeep));
+      this.saveTasks(tasksToKeep);
       tasksChanged = true;
       const todayEventsWithDeletes = allCalEvents.some(e => e.date === todayStr && isItemDeleted(e));
       if (calChanged || todayEventsWithDeletes) {
@@ -2961,6 +3020,22 @@ export class TaskStore {
    */
   setSkipFishUnscheduleConfirm(skip) {
     safeSetItem(STORAGE_KEYS.SKIP_FISH_UNSCHEDULE_CONFIRM, skip ? 'true' : 'false');
+  }
+
+  /**
+   * Checks whether the confirmation modal should be skipped when reeling all tasks back.
+   * @returns {boolean}
+   */
+  getSkipReelAllConfirm() {
+    return safeGetItem(STORAGE_KEYS.SKIP_REEL_ALL_CONFIRM) === 'true';
+  }
+
+  /**
+   * Sets whether the confirmation modal should be skipped when reeling all tasks back.
+   * @param {boolean} skip
+   */
+  setSkipReelAllConfirm(skip) {
+    safeSetItem(STORAGE_KEYS.SKIP_REEL_ALL_CONFIRM, skip ? 'true' : 'false');
   }
 
   /**

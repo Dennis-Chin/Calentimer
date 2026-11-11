@@ -145,7 +145,7 @@ export class TimerRuntime {
     if (this.status === TimerStatus.IDLE) {
       remainingTasks = this.initialTasks.map(t => {
         const copy = Object.assign({}, t);
-        if (isSequential) {
+        if (isSequential && !t.isCompleted) {
           copy.fixedStartTime = null;
           copy.fixedEndTime = null;
           copy.startTime = null;
@@ -1568,9 +1568,10 @@ export class TimerRuntime {
     }
 
     let index = this.activeTaskIndex;
-    if (index < 0 || (allTasks[index] && indentedIds.has(allTasks[index].id))) {
-      const firstValidIdx = allTasks.findIndex(t => t && !indentedIds.has(t.id));
-      index = firstValidIdx >= 0 ? firstValidIdx : 0;
+    if (index < 0 || (allTasks[index] && (indentedIds.has(allTasks[index].id) || allTasks[index].isCompleted))) {
+      const firstValidIdx = allTasks.findIndex(t => t && !indentedIds.has(t.id) && !t.isCompleted);
+      index = firstValidIdx >= 0 ? firstValidIdx : (allTasks.findIndex(t => t && !indentedIds.has(t.id)) || 0);
+      if (index < 0) index = 0;
       if (this.status === TimerStatus.IDLE) {
         this.activeTaskIndex = index;
       }

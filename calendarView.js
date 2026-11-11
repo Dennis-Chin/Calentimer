@@ -135,6 +135,7 @@ export class CalendarView {
       unscheduledSidebar: document.getElementById('calUnscheduledSidebar'),
       sidebarBackdrop: document.getElementById('calSidebarBackdrop'),
       btnCloseSidebar: document.getElementById('btnCloseCalSidebar'),
+      btnReelAllTasks: document.getElementById('btnReelAllTasks'),
       sidebarBody: document.getElementById('calSidebarBody'),
       mainLayout: document.getElementById('fullCalendarMainLayout')
     };
@@ -361,6 +362,13 @@ export class CalendarView {
       el.btnCloseSidebar.addEventListener('click', (e) => {
         e.stopPropagation();
         this.closeUnscheduledSidebar();
+      });
+    }
+
+    if (el.btnReelAllTasks) {
+      el.btnReelAllTasks.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._confirmAndReelAllTasks();
       });
     }
 
@@ -1928,11 +1936,11 @@ export class CalendarView {
     const bd = this.elements.sidebarBackdrop || document.getElementById('calSidebarBackdrop');
     if (!sb) return;
     sb.classList.remove('hidden');
-    sb.classList.add('open');
+    void sb.offsetWidth; // Force reflow to guarantee CSS transition from translateX(-100%)
+    requestAnimationFrame(() => {
+      if (sb) sb.classList.add('open');
+    });
     if (bd) bd.classList.remove('hidden');
-    if (this.elements.btnToggleTasks) {
-      this.elements.btnToggleTasks.classList.add('is-active');
-    }
     mobileServices.hapticTap();
     this._renderUnscheduledSidebar();
   }
@@ -1943,9 +1951,6 @@ export class CalendarView {
     if (!sb) return;
     sb.classList.remove('open');
     if (bd) bd.classList.add('hidden');
-    if (this.elements.btnToggleTasks) {
-      this.elements.btnToggleTasks.classList.remove('is-active');
-    }
     setTimeout(() => {
       if (sb && !sb.classList.contains('open')) {
         sb.classList.add('hidden');
@@ -2059,6 +2064,164 @@ export class CalendarView {
       }
     } catch (_) {}
     return dateStr;
+  }
+
+  _confirmAndReelAllTasks() {
+    const items = (typeof taskStore !== 'undefined' && typeof taskStore.getUnscheduledSessionsAndTodos === 'function')
+      ? taskStore.getUnscheduledSessionsAndTodos()
+      : [];
+    const scheduledItems = items.filter(it => it.isScheduled && !it.isCompleted);
+    if (scheduledItems.length === 0) {
+      this._showToast('No scheduled tasks to return');
+      return;
+    }
+
+    const skip = (typeof taskStore !== 'undefined' && typeof taskStore.getSkipReelAllConfirm === 'function')
+      ? taskStore.getSkipReelAllConfirm()
+      : false;
+
+    if (skip) {
+      this._executeReelAllTasks(scheduledItems);
+      return;
+    }
+
+    const backdrop = document.getElementById('confirmReelAllTasksModalBackdrop');
+    const chkDontAsk = document.getElementById('chkDontAskReelAllTasks');
+    const btnCancel = document.getElementById('btnCancelReelAllTasks');
+    const btnConfirm = document.getElementById('btnConfirmReelAllTasks');
+
+    if (!backdrop || !btnConfirm || !btnCancel) {
+      this._executeReelAllTasks(scheduledItems);
+      return;
+    }
+
+    if (chkDontAsk) chkDontAsk.checked = false;
+    backdrop.classList.remove('hidden');
+    mobileServices.hapticWarning();
+
+    const cleanup = () => {
+      backdrop.classList.add('hidden');
+      btnCancel.removeEventListener('click', onCancel);
+      btnConfirm.removeEventListener('click', onConfirm);
+      backdrop.removeEventListener('click', onBackdrop);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      mobileServices.hapticTap();
+    };
+
+    const onConfirm = () => {
+      if (chkDontAsk && chkDontAsk.checked) {
+        if (typeof taskStore !== 'undefined' && typeof taskStore.setSkipReelAllConfirm === 'function') {
+          taskStore.setSkipReelAllConfirm(true);
+        }
+      }
+      cleanup();
+      this._executeReelAllTasks(scheduledItems);
+    };
+
+    const onBackdrop = (e) => {
+      if (e.target === backdrop) onCancel();
+    };
+
+    btnCancel.addEventListener('click', onCancel);
+    btnConfirm.addEventListener('click', onConfirm);
+    backdrop.addEventListener('click', onBackdrop);
+  }
+
+  _executeReelAllTasks(scheduledItems) {
+    if (!scheduledItems || scheduledItems.length === 0) return;
+
+    const calContainer = this.elements.dayTimelineBody || this.elements.weekGridBody || document.querySelector('.calendar-view-container') || document.body;
+    const cRect = calContainer ? calContainer.getBoundingClientRect() : { left: 100, top: 100, width: 300, height: 400 };
+
+    const sidebarBody = this.elements.sidebarBody;
+    const sbRect = sidebarBody ? sidebarBody.getBoundingClientRect() : { left: 20, top: 100, width: 200, height: 300 };
+
+    scheduledItems.forEach((item, idx) => {
+      const cardEl = sidebarBody ? sidebarBody.querySelector(`[data-id="${item.id}"]`) : null;
+      let targetRect = cardEl ? cardEl.getBoundingClientRect() : null;
+      if (!targetRect || targetRect.width === 0) {
+        targetRect = {
+          left: sbRect.left + 10,
+          top: sbRect.top + 20 + (idx * 55),
+          width: 220,
+          height: 50
+        };
+      }
+
+      const evCard = calContainer.querySelector(`[data-event-id="${item.id}"]`);
+      let originRect = null;
+      if (evCard) {
+        originRect = evCard.getBoundingClientRect();
+      } else {
+        originRect = {
+          left: cRect.left + (cRect.width * 0.5) + ((idx % 3) * 20),
+          top: cRect.top + (cRect.height * 0.3) + (idx * 30),
+          width: 140,
+          height: 42
+        };
+      }
+
+      // Launch flying clone and splash
+      const splash = document.createElement('div');
+      splash.className = 'cal-water-splash';
+      splash.style.left = (originRect.left + (originRect.width / 2)) + 'px';
+      splash.style.top = (originRect.top + (originRect.height / 2)) + 'px';
+      document.body.appendChild(splash);
+
+      const flyingClone = document.createElement('div');
+      flyingClone.className = 'cal-fish-reel-clone';
+      flyingClone.innerHTML = `<span style="font-size:1.1rem;">${item.emoji || '📌'}</span> <span>${this._escapeHtml(item.displayTitle || item.title)}</span>`;
+      flyingClone.style.left = originRect.left + 'px';
+      flyingClone.style.top = originRect.top + 'px';
+
+      const dx = targetRect.left - originRect.left;
+      const dy = targetRect.top - originRect.top;
+      flyingClone.style.setProperty('--fish-dx', `${dx}px`);
+      flyingClone.style.setProperty('--fish-dy', `${dy}px`);
+      document.body.appendChild(flyingClone);
+
+      setTimeout(() => {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+        if (flyingClone.parentNode) flyingClone.parentNode.removeChild(flyingClone);
+      }, 650);
+    });
+
+    mobileServices.hapticCelebration();
+
+    setTimeout(() => {
+      scheduledItems.forEach(item => {
+        taskStore.deleteCalendarEvent(item.id);
+        if (item.masterTaskId) {
+          taskStore.updateTodoTask(item.masterTaskId, {
+            date: '',
+            startTime: '',
+            endTime: ''
+          });
+        }
+      });
+
+      this.render();
+      this._renderUnscheduledSidebar();
+
+      setTimeout(() => {
+        if (this.elements.sidebarBody) {
+          scheduledItems.forEach(item => {
+            const newCard = this.elements.sidebarBody.querySelector(`[data-id="${item.id}"]`);
+            if (newCard) {
+              newCard.classList.add('fish-landed-pulse');
+              setTimeout(() => {
+                if (newCard) newCard.classList.remove('fish-landed-pulse');
+              }, 800);
+            }
+          });
+        }
+      }, 50);
+
+      this._showToast(`🎣 Returned ${scheduledItems.length} task${scheduledItems.length > 1 ? 's' : ''} to unscheduled list`);
+    }, 650);
   }
 
   _confirmAndReelBackTask(item, cardEl) {
@@ -2193,9 +2356,10 @@ export class CalendarView {
     let startY = 0;
     let lastClientX = 0;
     let lastClientY = 0;
-    let ghost = null;
-    let snapPreview = null;
-    let activePointerId = null;
+    let grabOffsetX = 0;
+    let grabOffsetY = 0;
+    let ghostCard = null;
+    let silhouette = null;
     let holdTimer = null;
     let autoScrollRaf = null;
     let dayNavTimer = null;
@@ -2247,7 +2411,7 @@ export class CalendarView {
           container.scrollTop = Math.max(0, container.scrollTop + scrollDelta);
           const actualScrolled = container.scrollTop - oldScroll;
           if (actualScrolled !== 0) {
-            updateDragSnap(lastClientX, lastClientY);
+            updateDragPosition(lastClientX, lastClientY);
           }
         }
 
@@ -2352,7 +2516,7 @@ export class CalendarView {
         self._showToast(direction > 0 ? '📅 Next day' : '📅 Previous day');
 
         if (isDragging) {
-          updateDragSnap(lastClientX, lastClientY);
+          updateDragPosition(lastClientX, lastClientY);
         }
 
         setTimeout(() => {
@@ -2364,13 +2528,14 @@ export class CalendarView {
       }, 320);
     };
 
-    const updateDragSnap = (clientX, clientY) => {
+    const updateDragPosition = (clientX, clientY) => {
       lastClientX = clientX;
       lastClientY = clientY;
 
-      if (ghost) {
-        ghost.style.left = (clientX + 12) + 'px';
-        ghost.style.top = (clientY + 12) + 'px';
+      if (ghostCard) {
+        ghostCard.style.left = `${clientX - grabOffsetX}px`;
+        ghostCard.style.top = `${clientY - grabOffsetY}px`;
+        ghostCard.style.transform = 'scale(1.05)';
       }
 
       checkDayEdgePull(clientX);
@@ -2382,22 +2547,36 @@ export class CalendarView {
       if (self.activeView === 'day' && dayBody && container) {
         const contRect = container.getBoundingClientRect();
         const hourHeight = self.dayHourHeight || 56;
-        const relY = (clientY - contRect.top) + container.scrollTop - 14;
-        const mins = ((relY / hourHeight) * 60) + (startHour * 60);
-        const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(mins / resolution) * resolution));
-        const topPx = 14 + (((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
-        const heightPx = Math.max(14, Math.round(((durMin / 60) * hourHeight) - 1));
+        const cardTopY = (clientY - grabOffsetY) - contRect.top + container.scrollTop - 14;
+        const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
+        const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+        const snappedTopPx = 14 + (((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
+        const durHeight = Math.max(4, Math.round(((durMin / 60) * hourHeight) - 1));
 
-        if (!snapPreview) {
-          snapPreview = document.createElement('div');
-          snapPreview.className = 'cal-drop-snap-preview';
-          dayBody.appendChild(snapPreview);
-        } else if (snapPreview.parentNode !== dayBody) {
-          dayBody.appendChild(snapPreview);
+        if (!silhouette) {
+          silhouette = document.createElement('div');
+          silhouette.className = 'day-drop-preview-silhouette';
+          dayBody.appendChild(silhouette);
+        } else if (silhouette.parentNode !== dayBody) {
+          dayBody.appendChild(silhouette);
         }
-        snapPreview.style.top = topPx + 'px';
-        snapPreview.style.height = heightPx + 'px';
-        snapPreview.textContent = self._formatMinutesToTime(snappedStartMin) + ' - ' + self._formatMinutesToTime((snappedStartMin + durMin) % 1440);
+
+        silhouette.style.top = `${snappedTopPx}px`;
+        silhouette.style.height = `${durHeight}px`;
+        silhouette.style.display = 'block';
+
+        const previewStartH = Math.floor(snappedMinutes / 60);
+        const previewStartM = snappedMinutes % 60;
+        const previewEndTotal = snappedMinutes + durMin;
+        const previewEndH = Math.min(23, Math.floor(previewEndTotal / 60));
+        const previewEndM = previewEndTotal % 60;
+
+        if (ghostCard) {
+          const timeRangeEl = ghostCard.querySelector('.event-time-range');
+          if (timeRangeEl) {
+            timeRangeEl.textContent = `${String(previewStartH).padStart(2, '0')}:${String(previewStartM).padStart(2, '0')} - ${String(previewEndH).padStart(2, '0')}:${String(previewEndM).padStart(2, '0')}`;
+          }
+        }
       } else if (self.activeView === 'week' && weekBody && container) {
         const dayCols = Array.from(weekBody.querySelectorAll('.week-day-col'));
         let matchedCol = null;
@@ -2416,166 +2595,259 @@ export class CalendarView {
         if (matchedCol) {
           const hourHeight = self.weekHourHeight || 50;
           const cRect = matchedCol.getBoundingClientRect();
-          const relY = (clientY - cRect.top) + container.scrollTop;
-          const mins = ((relY / hourHeight) * 60) + (startHour * 60);
-          const snappedStartMin = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(mins / resolution) * resolution));
-          const topPx = Math.max(0, ((snappedStartMin - (startHour * 60)) / 60) * hourHeight);
+          const cardTopY = (clientY - grabOffsetY) - cRect.top + container.scrollTop;
+          const rawMinutes = (startHour * 60) + ((Math.max(0, cardTopY) / hourHeight) * 60);
+          const snappedMinutes = Math.max(startHour * 60, Math.min((endHour * 60) - durMin, Math.round(rawMinutes / resolution) * resolution));
+          const topPx = Math.max(0, ((snappedMinutes - (startHour * 60)) / 60) * hourHeight);
           const heightPx = Math.max(14, Math.round(((durMin / 60) * hourHeight) - 2));
 
-          if (!snapPreview || snapPreview.parentNode !== matchedCol) {
-            if (snapPreview && snapPreview.parentNode) {
-              snapPreview.parentNode.removeChild(snapPreview);
+          if (!silhouette || silhouette.parentNode !== matchedCol) {
+            if (silhouette && silhouette.parentNode) {
+              silhouette.parentNode.removeChild(silhouette);
             }
-            snapPreview = document.createElement('div');
-            snapPreview.className = 'cal-drop-snap-preview';
-            snapPreview.style.left = '4px';
-            snapPreview.style.right = '4px';
-            matchedCol.appendChild(snapPreview);
+            silhouette = document.createElement('div');
+            silhouette.className = 'cal-drop-snap-preview';
+            silhouette.style.left = '4px';
+            silhouette.style.right = '4px';
+            matchedCol.appendChild(silhouette);
           }
-          snapPreview.style.top = topPx + 'px';
-          snapPreview.style.height = heightPx + 'px';
-          snapPreview.textContent = self._formatMinutesToTime(snappedStartMin);
+          silhouette.style.top = `${topPx}px`;
+          silhouette.style.height = `${heightPx}px`;
+          silhouette.style.display = 'flex';
+          silhouette.textContent = self._formatMinutesToTime(snappedMinutes);
         }
       }
     };
 
-    const onPointerDown = (e) => {
-      if (e.button !== undefined && e.button !== 0) return;
+    const startDragMode = (initialClientX, initialClientY) => {
+      if (isDragging) return;
+      isDragging = true;
+      self.isDraggingEvent = true;
 
-      activePointerId = e.pointerId;
-      startX = e.clientX;
-      startY = e.clientY;
-      lastClientX = e.clientX;
-      lastClientY = e.clientY;
+      self.closeUnscheduledSidebar();
+
+      const eventColor = self._getCategoryColor(item.category);
+      const catBadgeStyle = `background:${self._hexToRgba(eventColor, 0.2)};color:${eventColor};border:1px solid ${self._hexToRgba(eventColor, 0.45)};`;
+
+      ghostCard = document.createElement('div');
+      ghostCard.className = 'day-event-card is-dragging-cal-event';
+      ghostCard.style.borderLeftColor = eventColor;
+      ghostCard.innerHTML = `
+        <span class="day-event-emoji">${item.emoji || '📌'}</span>
+        <div class="day-event-content">
+          <div class="day-event-title-line">
+            <span class="day-event-title">${self._escapeHtml(item.displayTitle || item.title)}</span>
+          </div>
+          <div class="day-event-meta-line">
+            <span class="event-time-range">${durMin}m</span>
+            <span class="event-duration-pill">(${durMin}m)</span>
+            <span class="event-cat-pill" style="${catBadgeStyle}">${self._escapeHtml(item.category || 'General')}</span>
+          </div>
+        </div>
+      `;
+
+      const timelineScroll = self.elements.dayTimelineScroll;
+      const fullTimelineWidth = timelineScroll ? Math.max(220, timelineScroll.clientWidth - 50) : 260;
+      const cardHeight = Math.max(38, Math.round(((durMin / 60) * (self.dayHourHeight || 56)) - 1));
+
+      ghostCard.style.position = 'fixed';
+      ghostCard.style.width = `${fullTimelineWidth}px`;
+      ghostCard.style.height = `${cardHeight}px`;
+      ghostCard.style.zIndex = '99999';
+      ghostCard.style.pointerEvents = 'none';
+      ghostCard.style.transition = 'none';
+      ghostCard.style.transform = 'scale(1.05)';
+      grabOffsetX = fullTimelineWidth / 2;
+      grabOffsetY = cardHeight / 2;
+
+      ghostCard.style.left = `${initialClientX - grabOffsetX}px`;
+      ghostCard.style.top = `${initialClientY - grabOffsetY}px`;
+
+      document.body.appendChild(ghostCard);
+
+      if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+        mobileServices.hapticBuzz();
+      }
+
+      updateDragPosition(initialClientX, initialClientY);
+      startAutoScrollLoop();
+    };
+
+    const finishDrag = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+
+      card.classList.remove('is-pressing');
+
+      if (autoScrollRaf) {
+        cancelAnimationFrame(autoScrollRaf);
+        autoScrollRaf = null;
+      }
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
+      isDayPanCooldown = false;
+
+      window.removeEventListener('touchmove', onWindowTouchMove);
+      window.removeEventListener('touchend', onWindowTouchEnd);
+      window.removeEventListener('touchcancel', onWindowTouchEnd);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
+
+      if (ghostCard && ghostCard.parentNode) {
+        ghostCard.parentNode.removeChild(ghostCard);
+        ghostCard = null;
+      }
+
+      const hadSnap = Boolean(silhouette);
+      let targetDateStr = null;
+      let targetStartMin = null;
+
+      if (silhouette) {
+        const parentCol = silhouette.closest('.week-day-col');
+        if (parentCol) {
+          targetDateStr = parentCol.getAttribute('data-date');
+        } else {
+          const targetDate = self.selectedDate || self.currentDate || new Date();
+          targetDateStr = self._formatDateISO(targetDate);
+        }
+
+        const topVal = parseFloat(silhouette.style.top || '0');
+        const isWeek = Boolean(parentCol);
+        const hourHeight = isWeek ? (self.weekHourHeight || 50) : (self.dayHourHeight || 56);
+        const baseOffset = isWeek ? 0 : 14;
+        const mins = (((topVal - baseOffset) / hourHeight) * 60) + (startHour * 60);
+        targetStartMin = Math.round(mins);
+
+        if (silhouette.parentNode) {
+          silhouette.parentNode.removeChild(silhouette);
+          silhouette = null;
+        }
+      }
+
+      const wasDragging = isDragging;
+      isDragging = false;
+      self.isDraggingEvent = false;
+
+      if (wasDragging && hadSnap && targetDateStr && typeof targetStartMin === 'number') {
+        const startTime = self._formatMinutesToTime(targetStartMin);
+        taskStore.scheduleSessionBlock({
+          masterTaskId: item.masterTaskId,
+          sessionIndex: item.sessionIndex,
+          totalSessions: item.totalSessions,
+          date: targetDateStr,
+          startTime: startTime,
+          duration: durMin,
+          title: item.title,
+          emoji: item.emoji,
+          category: item.category
+        });
+
+        if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+          mobileServices.hapticBuzz();
+        }
+        self._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
+        self.render();
+        self._renderUnscheduledSidebar();
+      }
+    };
+
+    const onWindowTouchMove = (moveEv) => {
+      if (!moveEv.touches || moveEv.touches.length !== 1) return;
+      const curX = moveEv.touches[0].clientX;
+      const curY = moveEv.touches[0].clientY;
+
+      if (!isDragging) {
+        if (Math.hypot(curX - startX, curY - startY) > 8) {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          startDragMode(curX, curY);
+        } else {
+          return;
+        }
+      }
+
+      if (moveEv.cancelable) moveEv.preventDefault();
+      updateDragPosition(curX, curY);
+    };
+
+    const onWindowTouchEnd = () => {
+      finishDrag();
+    };
+
+    const onWindowMouseMove = (moveEv) => {
+      const curX = moveEv.clientX;
+      const curY = moveEv.clientY;
+
+      if (!isDragging) {
+        if (Math.hypot(curX - startX, curY - startY) > 8) {
+          if (holdTimer) {
+            clearTimeout(holdTimer);
+            holdTimer = null;
+          }
+          startDragMode(curX, curY);
+        } else {
+          return;
+        }
+      }
+
+      moveEv.preventDefault();
+      updateDragPosition(curX, curY);
+    };
+
+    const onWindowMouseUp = () => {
+      finishDrag();
+    };
+
+    // Touch initiation (for mobile)
+    card.addEventListener('touchstart', (e) => {
+      if (e.target && e.target.closest && e.target.closest('[data-action="reel-back"]')) return;
+      if (!e.touches || e.touches.length !== 1) return;
+
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      lastClientX = startX;
+      lastClientY = startY;
       isDragging = false;
 
       card.classList.add('is-pressing');
 
       holdTimer = setTimeout(() => {
         holdTimer = null;
-        if (!isDragging) {
-          if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
-            mobileServices.hapticBuzz();
-          }
-        }
-      }, 180);
+        startDragMode(lastClientX, lastClientY);
+      }, 200);
 
-      const onPointerMove = (moveEv) => {
-        if (moveEv.pointerId !== activePointerId) return;
+      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', onWindowTouchEnd, { passive: true });
+    }, { passive: true });
 
-        if (!isDragging) {
-          if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
-            isDragging = true;
-            self.isDraggingEvent = true;
-            if (holdTimer) {
-              clearTimeout(holdTimer);
-              holdTimer = null;
-            }
+    // Mouse initiation (for desktop)
+    card.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest('[data-action="reel-back"]')) return;
 
-            self.closeUnscheduledSidebar();
+      startX = e.clientX;
+      startY = e.clientY;
+      lastClientX = startX;
+      lastClientY = startY;
+      isDragging = false;
 
-            ghost = document.createElement('div');
-            ghost.className = 'cal-drag-sidebar-ghost';
-            ghost.innerHTML = `<span style="font-size:1.1rem;">${item.emoji || '📌'}</span> <span>${self._escapeHtml(item.displayTitle || item.title)}</span> <span style="font-size:0.75rem;opacity:0.8;font-family:var(--font-mono, monospace);">${durMin}m</span>`;
-            document.body.appendChild(ghost);
+      card.classList.add('is-pressing');
 
-            if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
-              mobileServices.hapticBuzz();
-            }
-            startAutoScrollLoop();
-          } else {
-            return;
-          }
-        }
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        startDragMode(lastClientX, lastClientY);
+      }, 200);
 
-        if (moveEv.cancelable) moveEv.preventDefault();
-        updateDragSnap(moveEv.clientX, moveEv.clientY);
-      };
-
-      const onPointerUp = (upEv) => {
-        if (upEv.pointerId !== activePointerId) return;
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
-        window.removeEventListener('pointercancel', onPointerUp);
-
-        if (autoScrollRaf) {
-          cancelAnimationFrame(autoScrollRaf);
-          autoScrollRaf = null;
-        }
-        if (dayNavTimer) {
-          clearTimeout(dayNavTimer);
-          dayNavTimer = null;
-        }
-        isDayPanCooldown = false;
-
-        card.classList.remove('is-pressing');
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-
-        if (ghost && ghost.parentNode) {
-          ghost.parentNode.removeChild(ghost);
-          ghost = null;
-        }
-
-        const hadSnap = Boolean(snapPreview);
-        let targetDateStr = null;
-        let targetStartMin = null;
-
-        if (snapPreview) {
-          const parentCol = snapPreview.closest('.week-day-col');
-          if (parentCol) {
-            targetDateStr = parentCol.getAttribute('data-date');
-          } else {
-            const targetDate = self.selectedDate || self.currentDate || new Date();
-            targetDateStr = self._formatDateISO(targetDate);
-          }
-
-          const topVal = parseFloat(snapPreview.style.top || '0');
-          const isWeek = Boolean(parentCol);
-          const hourHeight = isWeek ? (self.weekHourHeight || 50) : (self.dayHourHeight || 56);
-          const baseOffset = isWeek ? 0 : 14;
-          const mins = (((topVal - baseOffset) / hourHeight) * 60) + (startHour * 60);
-          targetStartMin = Math.round(mins);
-
-          if (snapPreview.parentNode) {
-            snapPreview.parentNode.removeChild(snapPreview);
-            snapPreview = null;
-          }
-        }
-
-        self.isDraggingEvent = false;
-
-        if (isDragging && hadSnap && targetDateStr && typeof targetStartMin === 'number') {
-          const startTime = self._formatMinutesToTime(targetStartMin);
-          taskStore.scheduleSessionBlock({
-            masterTaskId: item.masterTaskId,
-            sessionIndex: item.sessionIndex,
-            totalSessions: item.totalSessions,
-            date: targetDateStr,
-            startTime: startTime,
-            duration: durMin,
-            title: item.title,
-            emoji: item.emoji,
-            category: item.category
-          });
-
-          if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
-            mobileServices.hapticBuzz();
-          }
-          self._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
-          self.render();
-          self._renderUnscheduledSidebar();
-        }
-      };
-
-      window.addEventListener('pointermove', onPointerMove, { passive: false });
-      window.addEventListener('pointerup', onPointerUp);
-      window.addEventListener('pointercancel', onPointerUp);
-    };
-
-    card.addEventListener('pointerdown', onPointerDown);
+      window.addEventListener('mousemove', onWindowMouseMove);
+      window.addEventListener('mouseup', onWindowMouseUp);
+    });
   }
 
   _populateResolutionOptions(options, selectedVal) {
@@ -2971,6 +3243,9 @@ export class CalendarView {
       if (diff !== 0) return diff;
       const endDiff = this._parseTimeToMinutes(a.endTime) - this._parseTimeToMinutes(b.endTime);
       if (endDiff !== 0) return endDiff;
+      const oA = eventsForDay.indexOf(a);
+      const oB = eventsForDay.indexOf(b);
+      if (oA !== -1 && oB !== -1 && oA !== oB) return oA - oB;
       return String(a.id || '').localeCompare(String(b.id || ''));
     });
 

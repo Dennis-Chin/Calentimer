@@ -10816,6 +10816,7 @@ function setupNavigationAndModals() {
 
     // 8. Recalculate schedule & refresh active timer screen UI elements immediately
     runtime.recalculate();
+    syncDynamicScheduleTimesToCalendar();
     updateScheduleUI(runtime.currentSchedule);
     updateActiveTaskDisplay();
     updateTotalMinutesDisplay();
@@ -11034,14 +11035,96 @@ function setupNavigationAndModals() {
           }
         }
 
-        const generated = (typeof taskStore.generatePresetTasks === 'function')
-          ? taskStore.generatePresetTasks(selectedPresetKey, customCfg)
+        const todayStr = (typeof taskStore.getTodayDateString === 'function')
+          ? taskStore.getTodayDateString()
+          : new Date().toISOString().split('T')[0];
+
+        // 1. Check existing Simple Mode tasks and calendar events for completed items
+        const existingSimpleTasks = (typeof taskStore.getSimpleTasks === 'function')
+          ? taskStore.getSimpleTasks()
           : [];
+        const completedTasks = existingSimpleTasks.filter(t => Boolean(t.isCompleted));
+
+        const allCalEvents = (typeof taskStore.getCalendarEvents === 'function')
+          ? taskStore.getCalendarEvents()
+          : [];
+        const todayCalEvents = allCalEvents.filter(e => e.date === todayStr);
+        const otherCalEvents = allCalEvents.filter(e => e.date !== todayStr);
+
+        // Find base start time for new tasks:
+        // After the last completed task's end time, or current time (whichever is later)
+        const now = new Date();
+        const nowMin = (now.getHours() * 60) + now.getMinutes();
+        let baseStartMin = nowMin;
+
+        if (completedTasks.length > 0) {
+          let latestEndMin = 0;
+          completedTasks.forEach(ct => {
+            const endStr = ct.endTime;
+            if (endStr) {
+              const parts = endStr.split(':');
+              const em = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+              if (em > latestEndMin) latestEndMin = em;
+            }
+          });
+          if (latestEndMin > 0) {
+            baseStartMin = Math.max(latestEndMin, nowMin);
+          }
+        }
+
+        // 2. Generate new preset tasks starting from baseStartMin
+        const generated = (typeof taskStore.generatePresetTasks === 'function')
+          ? taskStore.generatePresetTasks(selectedPresetKey, customCfg, baseStartMin)
+          : [];
+
+        // 3. Final task list for Simple Mode: completed tasks remain, followed by new preset tasks
+        const finalTasks = completedTasks.concat(generated);
         if (typeof taskStore.saveSimpleTasks === 'function') {
-          taskStore.saveSimpleTasks(generated);
+          taskStore.saveSimpleTasks(finalTasks);
         }
         if (typeof taskStore.setSimpleConfigured === 'function') {
           taskStore.setSimpleConfigured(true);
+        }
+
+        // 4. Update Calendar Events for Today:
+        // - Retain all completed events for today (user requirement: completed tasks stay on calendar)
+        // - Retain external or non-simple events
+        // - Remove uncompleted simple events
+        // - Add new generated simple preset tasks to calendar
+        const unfinishedSimpleIds = new Set(existingSimpleTasks.filter(t => !t.isCompleted).map(t => t.id));
+        const retainedTodayEvents = todayCalEvents.filter(e => {
+          if (e.isCompleted) return true;
+          if (unfinishedSimpleIds.has(e.id)) return false;
+          if (e.id && String(e.id).indexOf('simple-') === 0) return false;
+          return true;
+        });
+
+        const newEventsForCalendar = generated.map(t => ({
+          id: t.id,
+          title: t.title || 'Focus',
+          date: todayStr,
+          startTime: t.startTime || '09:00',
+          endTime: t.endTime || '09:25',
+          plannedDuration: t.plannedDuration || 25,
+          isLocked: false,
+          isCompleted: false,
+          completedDate: null,
+          manualCompleted: null,
+          useTimeBank: false,
+          emoji: t.emoji || (t.category === 'Rest' ? '☕' : '🎯'),
+          category: t.category || 'Focus',
+          color: t.color || (typeof classifierGetCategoryColor === 'function' ? classifierGetCategoryColor(t.category) : (t.category === 'Rest' ? '#f59e0b' : '#3b82f6')),
+          colorId: t.colorId || null,
+          source: 'local',
+          origin: 'local',
+          createdInApp: true,
+          provider: 'local',
+          lastModified: Date.now()
+        }));
+
+        const finalCalEvents = otherCalEvents.concat(retainedTodayEvents).concat(newEventsForCalendar);
+        if (typeof taskStore.saveCalendarEvents === 'function') {
+          taskStore.saveCalendarEvents(finalCalEvents);
         }
 
         closeSimplePresetsModal();
@@ -11049,17 +11132,22 @@ function setupNavigationAndModals() {
         const curMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
         if (curMode === 'simple') {
           if (runtime) {
-            runtime.initialTasks = taskStore.getTasks();
+            runtime.initialTasks = finalTasks;
             runtime.reset();
+            runtime.activeTaskIndex = completedTasks.length;
             runtime.setLoopEnabled(loopVal);
             runtime.recalculate();
+            syncDynamicScheduleTimesToCalendar();
             updateActiveTaskDisplay();
-            renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || generated);
+            renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || finalTasks);
             renderCalendarModal();
             updateScheduleUI(runtime.currentSchedule);
             renderClockTime(runtime.getRemainingSeconds());
             updateWheelProgress(0);
             updateFinishEarlyButtonText(runtime.getRemainingSeconds());
+            if (calendarView && typeof calendarView.render === 'function') {
+              calendarView.render();
+            }
           }
           mobileServices.hapticTap();
           showToastNotification('✓ Applied Simple Focus Preset');
@@ -11391,6 +11479,7 @@ function setupNavigationAndModals() {
       'installAppModalBackdrop',
       'confirmDeleteTodoModalBackdrop',
       'confirmFishUnscheduleModalBackdrop',
+      'confirmReelAllTasksModalBackdrop',
       'durationDialModalBackdrop',
       'emojiPickerModalBackdrop',
       'timeBankInfoModalBackdrop',
