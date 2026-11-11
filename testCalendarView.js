@@ -212,6 +212,16 @@ function getOrCreateMockElement(id) {
     if (id && id.endsWith('Backdrop')) {
       elementRegistry[id].classList.add('hidden');
     }
+    if (id === 'btnToggleCalTasksSidebar') {
+      elementRegistry[id].getBoundingClientRect = () => ({
+        top: 540,
+        bottom: 588,
+        left: 14,
+        right: 94,
+        width: 80,
+        height: 48
+      });
+    }
   }
   return elementRegistry[id];
 }

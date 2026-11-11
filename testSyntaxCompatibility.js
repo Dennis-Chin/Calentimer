@@ -476,7 +476,14 @@ assert(latestStoreContent.includes('getTelemetryEnabled') && latestStoreContent.
 assert(indexHtmlContent.includes('id="navItemInsights"') && indexHtmlContent.includes('id="insightsModalBackdrop"'), 'index.html includes Insights nav item and modal backdrop');
 assert(latestAppContent.includes('openInsights') && latestAppContent.includes('renderInsightsModal'), 'app.js implements openInsights and renderInsightsModal');
 
-
+console.log('\n--- 18. Testing Unscheduled Sidebar UI, Floating Tasks Button & 2-Sliders Icon ---');
+const styleCssContent = fs.readFileSync(path.resolve(process.cwd(), 'style.css'), 'utf8');
+assert(indexHtmlContent.includes('id="btnToggleCalTasksSidebar"') && indexHtmlContent.includes('cal-tasks-floating-btn'), 'index.html has floating Tasks button opposite + button');
+assert(indexHtmlContent.includes('id="calSidebarBackdrop"'), 'index.html has #calSidebarBackdrop for calendar tap dismiss');
+assert(latestAppContent.includes('btn-todo-advanced') && latestAppContent.includes('data-action="edit-todo-advanced"'), 'app.js renders 2-sliders button in To-Do list');
+assert(styleCssContent.includes('.cal-tasks-floating-btn') && styleCssContent.includes('.drop-target-active'), 'style.css styles floating Tasks button with drop target state');
+assert(styleCssContent.includes('.cal-sidebar-backdrop'), 'style.css styles sidebar backdrop');
+assert(styleCssContent.includes('.btn-todo-advanced'), 'style.css styles 2-sliders advanced options button');
 
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

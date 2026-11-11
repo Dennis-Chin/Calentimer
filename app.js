@@ -7558,10 +7558,32 @@ function renderTodoList() {
           <span class="todo-title">${escapeHtml(todo.title)}</span>
           ${pillBadgeHtml}
         </div>
-        ${checkOrEarnedHtml}
+        <div class="todo-block-right" style="display: flex; align-items: center; gap: 4px;">
+          <button type="button" class="btn-todo-advanced" data-action="edit-todo-advanced" data-id="${todo.id}" title="Advanced task options">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="8" x2="20" y2="8"></line>
+              <line x1="4" y1="16" x2="20" y2="16"></line>
+              <circle cx="9" cy="8" r="3" fill="currentColor"></circle>
+              <circle cx="15" cy="16" r="3" fill="currentColor"></circle>
+            </svg>
+          </button>
+          ${checkOrEarnedHtml}
+        </div>
       </div>
       ${drawerHtml}
     `;
+
+    // Advanced options 2-sliders button click
+    const advBtn = item.querySelector('[data-action="edit-todo-advanced"]');
+    if (advBtn) {
+      advBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mobileServices.hapticTap();
+        if (typeof calendarView !== 'undefined' && calendarView && typeof calendarView.openEventInspector === 'function') {
+          calendarView.openEventInspector(todo, null, null, null, { isTodo: true });
+        }
+      });
+    }
 
     // Checkbox toggle on whole task
     const checkBtn = item.querySelector('[data-action="toggle-todo"]');
@@ -7691,8 +7713,8 @@ function renderTodoList() {
     let currentShiftPct = 0;
 
     item.addEventListener('touchstart', (e) => {
-      // Ignore interactions originating directly from the drag handle, left zone, emoji/checkbox buttons, or subtask drawer
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
+      // Ignore interactions originating directly from the drag handle, left zone, emoji/checkbox buttons, advanced options, or subtask drawer
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .btn-todo-advanced, [data-action="edit-todo-advanced"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
         return;
       }
       const rect = item.getBoundingClientRect();
@@ -7718,7 +7740,7 @@ function renderTodoList() {
     }, { passive: true });
 
     item.addEventListener('touchmove', (e) => {
-      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
+      if (e.target.closest('[data-action="drag-handle"], .drag-handle-compact, .todo-block-left, [data-action="pick-todo-emoji"], [data-action="toggle-todo"], .btn-todo-advanced, [data-action="edit-todo-advanced"], .todo-subtask-drawer, .todo-subtask-toggle-btn, .todo-subtask-add-pill-btn, .subtask-row, .subtask-add-row, .subtask-add-input')) {
         if (holdTimer) {
           clearTimeout(holdTimer);
           holdTimer = null;

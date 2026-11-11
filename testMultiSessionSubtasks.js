@@ -125,6 +125,19 @@ const unscheduledAfter = taskStore.getUnscheduledSessionsAndTodos();
 const examSession1 = unscheduledAfter.find(item => item.masterTaskId === todoMaster.id && item.sessionIndex === 1);
 assert(examSession1.isScheduled === true, 'Session 1 marked as scheduled');
 
+// Check that scheduleSessionBlock synced timespan and duration back to master To-Do item
+const updatedMaster = taskStore.getTodoTasks().find(t => t.id === todoMaster.id);
+assert(updatedMaster !== null && updatedMaster.startTime === '14:00', 'Master To-Do item synced startTime from scheduled session');
+assert(updatedMaster.endTime === '15:00', 'Master To-Do item synced endTime from scheduled session');
+assert(updatedMaster.plannedDuration === 60, 'Master To-Do item synced plannedDuration from scheduled session');
+
+// Test unscheduling an event back to unscheduled tasks pool
+taskStore.deleteCalendarEvent(scheduledEvent.id);
+taskStore.updateTodoTask(todoMaster.id, { startTime: '', endTime: '' });
+const unscheduledReturned = taskStore.getUnscheduledSessionsAndTodos();
+const examSessionReturned = unscheduledReturned.find(item => item.masterTaskId === todoMaster.id && item.sessionIndex === 1);
+assert(examSessionReturned.isScheduled === false, 'Session returned to unscheduled after removing calendar event');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================\n');

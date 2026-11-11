@@ -1016,13 +1016,6 @@
               <option value="month">Month</option>
             </select>
           </div>
-
-          <!-- Unscheduled Tasks & Multi-Session Blocks Sidebar Toggle -->
-          <button type="button" class="cal-tasks-toggle-btn" id="btnToggleCalTasksSidebar" title="Toggle unscheduled tasks & sessions sidebar">
-            <span class="cal-tasks-icon">📋</span>
-            <span class="cal-tasks-label">Tasks</span>
-            <span class="cal-tasks-badge" id="calTasksBadge">0</span>
-          </button>
         </div>
 
         <div class="cal-sub-center">
@@ -1070,6 +1063,9 @@
 
       <!-- Main Calendar Layout (Sidebar + Views Container) -->
       <div class="full-calendar-main-layout" id="fullCalendarMainLayout">
+        <!-- Sidebar Backdrop Overlay -->
+        <div class="cal-sidebar-backdrop hidden" id="calSidebarBackdrop"></div>
+
         <!-- Unscheduled Tasks & Multi-Session Blocks Sidebar -->
         <aside class="cal-unscheduled-sidebar hidden" id="calUnscheduledSidebar">
           <div class="cal-sidebar-header">
@@ -1119,6 +1115,13 @@
 
           <!-- Bottom Fade Overlay for Smooth Edge Falloff -->
           <div class="calendar-bottom-fade" aria-hidden="true"></div>
+
+          <!-- Bottom Floating Tasks Button (Far Bottom Left, opposite +) -->
+          <button type="button" class="cal-tasks-toggle-btn cal-tasks-floating-btn" id="btnToggleCalTasksSidebar" title="Toggle unscheduled tasks & sessions sidebar">
+            <span class="cal-tasks-icon">📋</span>
+            <span class="cal-tasks-label">Tasks</span>
+            <span class="cal-tasks-badge" id="calTasksBadge">0</span>
+          </button>
 
           <!-- Bottom Floating Controls: Interval (Left of +) & Add Event Button (+) -->
           <div class="cal-bottom-bar" id="calBottomBar">

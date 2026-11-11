@@ -133,6 +133,7 @@ export class CalendarView {
       btnToggleTasks: document.getElementById('btnToggleCalTasksSidebar'),
       calTasksBadge: document.getElementById('calTasksBadge'),
       unscheduledSidebar: document.getElementById('calUnscheduledSidebar'),
+      sidebarBackdrop: document.getElementById('calSidebarBackdrop'),
       btnCloseSidebar: document.getElementById('btnCloseCalSidebar'),
       sidebarBody: document.getElementById('calSidebarBody'),
       mainLayout: document.getElementById('fullCalendarMainLayout')
@@ -351,14 +352,51 @@ export class CalendarView {
 
     // Unscheduled Tasks Sidebar Toggle & Close
     if (el.btnToggleTasks) {
-      el.btnToggleTasks.addEventListener('click', () => {
+      el.btnToggleTasks.addEventListener('click', (e) => {
+        e.stopPropagation();
         this.toggleUnscheduledSidebar();
       });
     }
     if (el.btnCloseSidebar) {
-      el.btnCloseSidebar.addEventListener('click', () => {
+      el.btnCloseSidebar.addEventListener('click', (e) => {
+        e.stopPropagation();
         this.closeUnscheduledSidebar();
       });
+    }
+
+    // Tapping backdrop (visible calendar on right) smoothly closes sidebar
+    const bd = el.sidebarBackdrop || document.getElementById('calSidebarBackdrop');
+    if (bd) {
+      bd.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeUnscheduledSidebar();
+      });
+      bd.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeUnscheduledSidebar();
+      }, { passive: false });
+    }
+
+    // Swipe left gesture on sidebar to smoothly minimise it
+    if (el.unscheduledSidebar) {
+      let sbTouchStartX = 0;
+      let sbTouchStartY = 0;
+      el.unscheduledSidebar.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length === 1) {
+          sbTouchStartX = e.touches[0].clientX;
+          sbTouchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+      el.unscheduledSidebar.addEventListener('touchmove', (e) => {
+        if (!e.touches || e.touches.length !== 1) return;
+        const diffX = e.touches[0].clientX - sbTouchStartX;
+        const diffY = e.touches[0].clientY - sbTouchStartY;
+        if (diffX < -32 && Math.abs(diffX) > Math.abs(diffY)) {
+          this.closeUnscheduledSidebar();
+        }
+      }, { passive: true });
     }
 
     // Event Inspector Handlers
@@ -525,6 +563,19 @@ export class CalendarView {
     if (el.btnDeleteEvent) {
       el.btnDeleteEvent.addEventListener('click', () => {
         if (this.selectedEvent && this.selectedEvent.id) {
+          if (this._isEditingTodo || (this.selectedEvent.id && this.selectedEvent.id.indexOf('todo-') === 0)) {
+            const todoId = this.selectedEvent.id;
+            taskStore.deleteTodoTask(todoId);
+            const calEvents = taskStore.getCalendarEvents().filter(e => e.id === todoId || e.masterTaskId === todoId);
+            calEvents.forEach(cev => taskStore.deleteCalendarEvent(cev.id));
+            if (typeof renderTodoList === 'function') renderTodoList();
+            this._renderUnscheduledSidebar();
+            this.closeEventInspector();
+            this.render();
+            mobileServices.hapticTap();
+            this._showToast('🗑️ To-Do task deleted');
+            return;
+          }
           const evToDelete = this.selectedEvent;
           const googleCalentimerId = (typeof taskStore !== 'undefined' && typeof taskStore.getGoogleCalentimerCalendarId === 'function')
             ? taskStore.getGoogleCalentimerCalendarId()
@@ -1844,20 +1895,26 @@ export class CalendarView {
   // Unscheduled Tasks & Multi-Session Sidebar
   // ==========================================
 
-  toggleUnscheduledSidebar() {
+  isSidebarOpen() {
     const sb = this.elements.unscheduledSidebar;
-    if (!sb) return;
-    if (sb.classList.contains('hidden')) {
-      this.openUnscheduledSidebar();
-    } else {
+    return Boolean(sb && sb.classList.contains('open'));
+  }
+
+  toggleUnscheduledSidebar() {
+    if (this.isSidebarOpen()) {
       this.closeUnscheduledSidebar();
+    } else {
+      this.openUnscheduledSidebar();
     }
   }
 
   openUnscheduledSidebar() {
     const sb = this.elements.unscheduledSidebar;
+    const bd = this.elements.sidebarBackdrop || document.getElementById('calSidebarBackdrop');
     if (!sb) return;
     sb.classList.remove('hidden');
+    sb.classList.add('open');
+    if (bd) bd.classList.remove('hidden');
     if (this.elements.btnToggleTasks) {
       this.elements.btnToggleTasks.classList.add('is-active');
     }
@@ -1867,11 +1924,18 @@ export class CalendarView {
 
   closeUnscheduledSidebar() {
     const sb = this.elements.unscheduledSidebar;
+    const bd = this.elements.sidebarBackdrop || document.getElementById('calSidebarBackdrop');
     if (!sb) return;
-    sb.classList.add('hidden');
+    sb.classList.remove('open');
+    if (bd) bd.classList.add('hidden');
     if (this.elements.btnToggleTasks) {
       this.elements.btnToggleTasks.classList.remove('is-active');
     }
+    setTimeout(() => {
+      if (sb && !sb.classList.contains('open')) {
+        sb.classList.add('hidden');
+      }
+    }, 280);
   }
 
   _renderUnscheduledSidebar() {
@@ -1915,11 +1979,16 @@ export class CalendarView {
         ? `<span class="cal-sidebar-subtask-count">✓ ${item.subtasks.filter(s => s.completed).length}/${item.subtasks.length}</span>`
         : '';
 
-      const statusText = item.isCompleted
-        ? '<span class="cal-sidebar-status-sched" style="color:#10b981;">✓ Finished</span>'
-        : (item.isScheduled ? `<span class="cal-sidebar-status-sched">📅 ${item.scheduledDate ? item.scheduledDate.slice(5) : ''} ${item.scheduledTime || ''}</span>` : '');
-
-      const placeBtnText = item.isScheduled ? 'Move' : 'Place';
+      let statusText = '';
+      if (item.isCompleted) {
+        statusText = '<span class="cal-sidebar-status-sched" style="color:#10b981;">✓ Finished</span>';
+      } else if (item.isScheduled) {
+        const dStr = item.scheduledDate ? item.scheduledDate.slice(5) : '';
+        const tStr = item.scheduledTime ? (item.endTime ? `${item.scheduledTime} - ${item.endTime}` : item.scheduledTime) : '';
+        statusText = `<span class="cal-sidebar-status-sched">📅 ${dStr} ${tStr}</span>`;
+      } else {
+        statusText = '<span class="cal-sidebar-status-sched" style="color:var(--text-muted, #94a3b8);">Unscheduled</span>';
+      }
 
       card.innerHTML = `
         <div class="cal-sidebar-card-top">
@@ -1930,72 +1999,25 @@ export class CalendarView {
           <span class="cal-sidebar-card-dur">${item.duration || 45}m</span>
           ${subCount}
           ${statusText}
-          <button type="button" class="cal-sidebar-card-btn-place" data-action="place-session" title="Place onto calendar timeline">${placeBtnText}</button>
         </div>
       `;
 
-      // 1-Tap Place Button
-      const btnPlace = card.querySelector('[data-action="place-session"]');
-      if (btnPlace) {
-        btnPlace.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this._placeSidebarTaskDirectly(item);
-        });
-      }
+      // Tap card to open edit modal
+      card.addEventListener('click', (e) => {
+        if (this.isDraggingEvent) return;
+        const masterId = item.masterTaskId || item.id;
+        const match = (typeof taskStore !== 'undefined' && typeof taskStore.findTaskAnywhere === 'function')
+          ? taskStore.findTaskAnywhere(masterId)
+          : null;
+        const targetObj = (match && match.task) ? match.task : item;
+        this.openEventInspector(targetObj, targetObj.date || item.scheduledDate, targetObj.startTime || item.scheduledTime, targetObj.endTime, { isTodo: true });
+      });
 
       // Pointer Drag-and-drop onto Day & Week timeline
       this._setupSidebarCardDrag(card, item);
 
       body.appendChild(card);
     });
-  }
-
-  _placeSidebarTaskDirectly(item) {
-    const targetDate = this.selectedDate || this.currentDate || new Date();
-    const dateStr = this._formatDateISO(targetDate);
-    const dur = item.duration || 45;
-
-    const allEvents = taskStore.getCalendarEvents().filter(e => e.date === dateStr);
-    let candidateMin = 600; // 10:00 AM default
-    const now = new Date();
-    if (dateStr === this._formatDateISO(now)) {
-      const nowMin = (now.getHours() * 60) + now.getMinutes();
-      candidateMin = Math.ceil((nowMin + 15) / 15) * 15;
-    }
-
-    for (let attempt = 0; attempt < 48; attempt++) {
-      const testStart = candidateMin;
-      const testEnd = candidateMin + dur;
-      if (testEnd > 1440) break;
-      const hasConflict = allEvents.some(ev => {
-        const s = this._parseTimeToMinutes(ev.startTime);
-        const e = this._parseTimeToMinutes(ev.endTime);
-        return testStart < e && testEnd > s;
-      });
-      if (!hasConflict) {
-        break;
-      }
-      candidateMin += 15;
-    }
-
-    const startTime = this._formatMinutesToTime(candidateMin % 1440);
-
-    taskStore.scheduleSessionBlock({
-      masterTaskId: item.masterTaskId,
-      sessionIndex: item.sessionIndex,
-      totalSessions: item.totalSessions,
-      date: dateStr,
-      startTime: startTime,
-      duration: dur,
-      title: item.title,
-      emoji: item.emoji,
-      category: item.category
-    });
-
-    mobileServices.hapticBuzz();
-    this._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
-    this.render();
-    this._renderUnscheduledSidebar();
   }
 
   _setupSidebarCardDrag(card, item) {
@@ -2005,16 +2027,28 @@ export class CalendarView {
     let ghost = null;
     let snapPreview = null;
     let activePointerId = null;
+    let holdTimer = null;
     const durMin = item.duration || 45;
 
     const onPointerDown = (e) => {
-      if (e.target.closest('[data-action="place-session"]')) return;
       if (e.button !== undefined && e.button !== 0) return;
 
       activePointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
       isDragging = false;
+
+      // Add press hovering animation immediately
+      card.classList.add('is-pressing');
+
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (!isDragging) {
+          if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
+            mobileServices.hapticBuzz();
+          }
+        }
+      }, 180);
 
       const onPointerMove = (moveEv) => {
         if (moveEv.pointerId !== activePointerId) return;
@@ -2023,10 +2057,17 @@ export class CalendarView {
           if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) > 8) {
             isDragging = true;
             this.isDraggingEvent = true;
+            if (holdTimer) {
+              clearTimeout(holdTimer);
+              holdTimer = null;
+            }
+
+            // Smoothly minimise sidebar so full calendar is visible
+            this.closeUnscheduledSidebar();
 
             ghost = document.createElement('div');
             ghost.className = 'cal-drag-sidebar-ghost';
-            ghost.textContent = (item.emoji || '📌') + ' ' + (item.displayTitle || item.title);
+            ghost.innerHTML = `<span style="font-size:1.1rem;">${item.emoji || '📌'}</span> <span>${this._escapeHtml(item.displayTitle || item.title)}</span> <span style="font-size:0.75rem;opacity:0.8;font-family:var(--font-mono, monospace);">${durMin}m</span>`;
             document.body.appendChild(ghost);
 
             if (typeof mobileServices !== 'undefined' && mobileServices.hapticBuzz) {
@@ -2134,6 +2175,12 @@ export class CalendarView {
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('pointercancel', onPointerUp);
+
+        card.classList.remove('is-pressing');
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
 
         if (ghost && ghost.parentNode) {
           ghost.parentNode.removeChild(ghost);
@@ -2544,6 +2591,7 @@ export class CalendarView {
 
       // Clicking empty slot creates a new event starting at that hour
       slotContent.addEventListener('click', (e) => {
+        if (this.isSidebarOpen()) return;
         if (e.target.closest('.day-event-card')) return;
         const rect = slotContent.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
@@ -2938,6 +2986,7 @@ export class CalendarView {
 
       // Quick add on clicking empty space in week view
       dayCol.addEventListener('click', (e) => {
+        if (this.isSidebarOpen()) return;
         if (e.target.closest('.week-event-card')) return;
         const rect = dayCol.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
@@ -3686,6 +3735,15 @@ export class CalendarView {
       card.style.top = `${clientY - grabOffsetY}px`;
       card.style.transform = 'scale(1.05)';
 
+      // Check if dragging over the bottom-left Tasks toggle button
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      if (btnTasks) {
+        const bRect = btnTasks.getBoundingClientRect();
+        const isOver = clientX >= bRect.left - 15 && clientX <= bRect.right + 15 &&
+                       clientY >= bRect.top - 15 && clientY <= bRect.bottom + 15;
+        btnTasks.classList.toggle('drop-target-active', isOver);
+      }
+
       checkDayEdgePull(clientX);
 
       // Trigger day pan only when the user intentionally pulls towards far left or far right edge with resistance
@@ -3788,6 +3846,9 @@ export class CalendarView {
       if (container) {
         container.style.removeProperty('overflow-y');
       }
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      if (btnTasks) btnTasks.classList.remove('drop-target-active');
+
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
       card.style.removeProperty('position');
@@ -3907,6 +3968,10 @@ export class CalendarView {
       if (container) {
         container.style.removeProperty('overflow-y');
       }
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      const wasOverTasks = Boolean(btnTasks && btnTasks.classList.contains('drop-target-active'));
+      if (btnTasks) btnTasks.classList.remove('drop-target-active');
+
       card.classList.remove('is-dragging-cal-event');
       card.style.removeProperty('transform');
       card.style.removeProperty('position');
@@ -3917,6 +3982,46 @@ export class CalendarView {
       card.style.removeProperty('z-index');
       card.style.removeProperty('pointer-events');
       card.style.removeProperty('transition');
+
+      // Dropped onto bottom-left Tasks button -> Unschedule and return to tasks pool
+      if (wasOverTasks) {
+        this.isDraggingEvent = false;
+        if (card.parentNode && card.parentNode === document.body) {
+          document.body.removeChild(card);
+        }
+        if (silhouette && silhouette.parentNode) {
+          silhouette.parentNode.removeChild(silhouette);
+          silhouette = null;
+        }
+
+        taskStore.deleteCalendarEvent(ev.id);
+
+        if (ev.masterTaskId) {
+          taskStore.updateTodoTask(ev.masterTaskId, {
+            date: '',
+            startTime: '',
+            endTime: ''
+          });
+        } else {
+          const existingTodo = taskStore.getTodoTasks().find(t => t.id === ev.id || t.title === ev.title);
+          if (!existingTodo) {
+            taskStore.addTodoTask({
+              title: ev.title,
+              emoji: ev.emoji || '📌',
+              category: ev.category || 'General',
+              plannedDuration: ev.plannedDuration || 45,
+              completed: false
+            });
+          }
+        }
+
+        mobileServices.hapticTap();
+        this._showToast(`✓ Returned "${ev.title}" to Unscheduled Tasks`);
+        const savedScrollTop = container ? container.scrollTop : 0;
+        this.render(savedScrollTop);
+        this._renderUnscheduledSidebar();
+        return;
+      }
 
       const hourHeight = this.dayHourHeight || 56;
       let contRect = container ? container.getBoundingClientRect() : { top: 0 };
@@ -4354,6 +4459,8 @@ export class CalendarView {
       if (container) {
         container.style.removeProperty('overflow-y');
       }
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      if (btnTasks) btnTasks.classList.remove('drop-target-active');
       if (card.parentElement) {
         card.parentElement.style.removeProperty('z-index');
       }
@@ -4447,6 +4554,16 @@ export class CalendarView {
       card.style.left = `${clientX - grabOffsetX}px`;
       card.style.top = `${clientY - grabOffsetY}px`;
       card.style.transform = 'scale(1.05)';
+
+      // Check if dragging over the bottom-left Tasks toggle button
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      if (btnTasks) {
+        const bRect = btnTasks.getBoundingClientRect();
+        const isOver = clientX >= bRect.left - 15 && clientX <= bRect.right + 15 &&
+                       clientY >= bRect.top - 15 && clientY <= bRect.bottom + 15;
+        btnTasks.classList.toggle('drop-target-active', isOver);
+      }
+
       checkWeekEdgePull(clientX);
 
       const cRect = card.getBoundingClientRect();
@@ -4536,6 +4653,9 @@ export class CalendarView {
       if (container) {
         container.style.removeProperty('overflow-y');
       }
+      const btnTasks = this.elements.btnToggleTasks || document.getElementById('btnToggleCalTasksSidebar');
+      const wasOverTasks = Boolean(btnTasks && btnTasks.classList.contains('drop-target-active'));
+      if (btnTasks) btnTasks.classList.remove('drop-target-active');
       if (card.parentElement) {
         card.parentElement.style.removeProperty('z-index');
       }
@@ -4555,6 +4675,38 @@ export class CalendarView {
 
       if (currentOverCol) {
         currentOverCol.classList.remove('drag-target-over');
+      }
+      currentOverCol = null;
+
+      // Dropped onto bottom-left Tasks button -> Unschedule and return to tasks pool
+      if (wasOverTasks) {
+        this.isDraggingEvent = false;
+        taskStore.deleteCalendarEvent(ev.id);
+
+        if (ev.masterTaskId) {
+          taskStore.updateTodoTask(ev.masterTaskId, {
+            date: '',
+            startTime: '',
+            endTime: ''
+          });
+        } else {
+          const existingTodo = taskStore.getTodoTasks().find(t => t.id === ev.id || t.title === ev.title);
+          if (!existingTodo) {
+            taskStore.addTodoTask({
+              title: ev.title,
+              emoji: ev.emoji || '📌',
+              category: ev.category || 'General',
+              plannedDuration: ev.plannedDuration || 45,
+              completed: false
+            });
+          }
+        }
+
+        mobileServices.hapticTap();
+        this._showToast(`✓ Returned "${ev.title}" to Unscheduled Tasks`);
+        this.render();
+        this._renderUnscheduledSidebar();
+        return;
       }
       currentOverCol = null;
 
@@ -5277,7 +5429,7 @@ export class CalendarView {
     if (this.refreshCategoryChips) this.refreshCategoryChips();
   }
 
-  openEventInspector(eventObj, defaultDateStr, defaultStartTime, defaultEndTime) {
+  openEventInspector(eventObj, defaultDateStr, defaultStartTime, defaultEndTime, options) {
     if (typeof window !== 'undefined' && typeof window.ensureHistoryBuffer === 'function') {
       window.ensureHistoryBuffer();
     }
@@ -5286,11 +5438,13 @@ export class CalendarView {
     const el = this.elements;
 
     const isNew = !eventObj;
+    const isTodo = Boolean((options && options.isTodo) || (eventObj && eventObj.id && eventObj.id.indexOf('todo-') === 0));
+    this._isEditingTodo = isTodo;
     const isBreakEvent = eventObj ? (eventObj.category === 'Break' || (eventObj.title && eventObj.title.toLowerCase() === 'break')) : false;
 
     const titleModal = document.getElementById('calEventModalTitle');
     if (titleModal) {
-      titleModal.textContent = isNew ? 'Add Event' : (isBreakEvent ? 'Break Details' : 'Event Details');
+      titleModal.textContent = isNew ? 'Add Event' : (isTodo ? 'Edit To-Do' : (isBreakEvent ? 'Break Details' : 'Event Details'));
     }
 
     if (isNew) {
@@ -5346,6 +5500,9 @@ export class CalendarView {
         if (isBreakEvent) {
           el.btnSaveCalEvent.classList.add('is-break-btn');
           el.btnSaveCalEvent.textContent = 'Save Break';
+        } else if (isTodo) {
+          el.btnSaveCalEvent.classList.remove('is-break-btn');
+          el.btnSaveCalEvent.textContent = 'Save To-Do';
         } else {
           el.btnSaveCalEvent.classList.remove('is-break-btn');
           el.btnSaveCalEvent.textContent = 'Save Event';
@@ -5355,11 +5512,15 @@ export class CalendarView {
       if (el.eventIdInput) el.eventIdInput.value = eventObj.id || '';
       if (el.eventTitleInput) el.eventTitleInput.value = eventObj.title || '';
       if (el.eventDateInput) el.eventDateInput.value = eventObj.date || (defaultDateStr || this._formatDateISO(new Date()));
-      if (el.eventStartTimeInput) el.eventStartTimeInput.value = eventObj.startTime || (defaultStartTime || '10:00');
-      if (el.eventEndTimeInput) el.eventEndTimeInput.value = eventObj.endTime || (defaultEndTime || '11:00');
+      if (el.eventStartTimeInput) el.eventStartTimeInput.value = eventObj.startTime || (defaultStartTime || (isTodo ? '' : '10:00'));
+      if (el.eventEndTimeInput) el.eventEndTimeInput.value = eventObj.endTime || (defaultEndTime || (isTodo ? '' : '11:00'));
 
-      const dur = eventObj.plannedDuration || 60;
+      const dur = eventObj.plannedDuration || eventObj.sessionDuration || 30;
       if (el.eventDurationInput) el.eventDurationInput.value = String(dur);
+
+      if (el.eventStartTimeInput.value && !el.eventEndTimeInput.value) {
+        this.updateEndTimeFromDuration();
+      }
 
       this.currentEmoji = eventObj.emoji || (isBreakEvent ? '☕' : '💼');
       if (el.eventHeaderEmoji) el.eventHeaderEmoji.textContent = this.currentEmoji;
@@ -5537,6 +5698,48 @@ export class CalendarView {
 
     if (category) {
       taskStore.addCategory(category);
+    }
+
+    // Check if saving an edited To-Do task
+    if (this._isEditingTodo || (eventId && eventId.indexOf('todo-') === 0)) {
+      taskStore.updateTodoTask(eventId, {
+        title: title,
+        emoji: this.currentEmoji,
+        category: category,
+        plannedDuration: durationMin,
+        sessionDuration: durationMin,
+        date: date,
+        startTime: startTime,
+        endTime: endTime,
+        isLocked: isLocked,
+        useTimeBank: useTimeBank
+      });
+
+      // Also update any scheduled calendar event linked to this task
+      const calEvents = taskStore.getCalendarEvents().filter(e => e.id === eventId || e.masterTaskId === eventId);
+      calEvents.forEach(cev => {
+        taskStore.updateCalendarEvent(cev.id, {
+          title: title,
+          emoji: this.currentEmoji,
+          category: category,
+          plannedDuration: durationMin,
+          date: date || cev.date,
+          startTime: startTime || cev.startTime,
+          endTime: endTime || cev.endTime,
+          isLocked: isLocked,
+          useTimeBank: useTimeBank
+        });
+      });
+
+      if (typeof renderTodoList === 'function') {
+        renderTodoList();
+      }
+      this._renderUnscheduledSidebar();
+      this.render();
+      this.closeEventInspector();
+      mobileServices.hapticTap();
+      this._showToast(`✓ Saved To-Do "${title}"`);
+      return;
     }
 
     const isSyncGoogle = el.calEventSyncGoogle ? Boolean(el.calEventSyncGoogle.checked) : false;

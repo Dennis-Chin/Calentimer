@@ -1295,6 +1295,12 @@ export class TaskStore {
     if (updates.sessionDuration !== undefined) item.sessionDuration = Math.max(1, parseInt(updates.sessionDuration, 10) || 30);
     if (updates.completedMinutes !== undefined) item.completedMinutes = Math.max(0, parseInt(updates.completedMinutes, 10) || 0);
     if (updates.subtasks !== undefined && Array.isArray(updates.subtasks)) item.subtasks = updates.subtasks;
+    if (updates.date !== undefined) item.date = updates.date;
+    if (updates.startTime !== undefined) item.startTime = updates.startTime;
+    if (updates.endTime !== undefined) item.endTime = updates.endTime;
+    if (updates.isLocked !== undefined) item.isLocked = Boolean(updates.isLocked);
+    if (updates.useTimeBank !== undefined) item.useTimeBank = Boolean(updates.useTimeBank);
+    if (updates.color !== undefined) item.color = updates.color;
 
     current[index] = item;
     this.saveTodoTasks(current);
@@ -1695,6 +1701,17 @@ export class TaskStore {
       this.saveCalendarEvents(calEvents);
     } else {
       this.addCalendarEvent(newEvent);
+    }
+
+    // Automatically sync allocated duration & timespan to the master To-Do item
+    if (masterTaskId) {
+      this.updateTodoTask(masterTaskId, {
+        plannedDuration: duration,
+        sessionDuration: duration,
+        date: date,
+        startTime: startTime,
+        endTime: endTime
+      });
     }
 
     // If scheduled for today, ensure it is represented in today's task schedule
