@@ -2133,36 +2133,32 @@ export class CalendarView {
   _executeReelAllTasks(scheduledItems) {
     if (!scheduledItems || scheduledItems.length === 0) return;
 
-    const calContainer = this.elements.dayTimelineBody || this.elements.weekGridBody || document.querySelector('.calendar-view-container') || document.body;
-    const cRect = calContainer ? calContainer.getBoundingClientRect() : { left: 100, top: 100, width: 300, height: 400 };
-
     const sidebarBody = this.elements.sidebarBody;
     const sbRect = sidebarBody ? sidebarBody.getBoundingClientRect() : { left: 20, top: 100, width: 200, height: 300 };
+    const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 380;
+    const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 600;
 
     scheduledItems.forEach((item, idx) => {
       const cardEl = sidebarBody ? sidebarBody.querySelector(`[data-id="${item.id}"]`) : null;
       let targetRect = cardEl ? cardEl.getBoundingClientRect() : null;
-      if (!targetRect || targetRect.width === 0) {
+      if (!targetRect || targetRect.width === 0 || targetRect.height === 0) {
         targetRect = {
           left: sbRect.left + 10,
           top: sbRect.top + 20 + (idx * 55),
-          width: 220,
-          height: 50
+          width: Math.max(180, sbRect.width - 20),
+          height: 46
         };
       }
 
-      const evCard = calContainer.querySelector(`[data-event-id="${item.id}"]`);
-      let originRect = null;
-      if (evCard) {
-        originRect = evCard.getBoundingClientRect();
-      } else {
-        originRect = {
-          left: cRect.left + (cRect.width * 0.5) + ((idx % 3) * 20),
-          top: cRect.top + (cRect.height * 0.3) + (idx * 30),
-          width: 140,
-          height: 42
-        };
-      }
+      // Heightwise relative to position on the sidebar:
+      const originLeft = Math.min(winW - 130, Math.max(targetRect.right + 20, winW * 0.72)) + ((idx % 2) * 10);
+      const originTop = Math.max(60, Math.min(winH - 70, targetRect.top));
+      const originRect = {
+        left: originLeft,
+        top: originTop,
+        width: Math.min(160, Math.max(120, targetRect.width || 140)),
+        height: targetRect.height || 42
+      };
 
       // Launch flying clone and splash
       const splash = document.createElement('div');
@@ -2280,25 +2276,31 @@ export class CalendarView {
   }
 
   _executeFishReelAnimation(item, cardEl) {
-    const calContainer = this.elements.dayTimelineBody || this.elements.weekGridBody || document.querySelector('.calendar-view-container') || document.body;
-    let originRect = null;
-    const evCard = calContainer.querySelector(`[data-event-id="${item.id}"]`);
-    if (evCard) {
-      originRect = evCard.getBoundingClientRect();
-    } else {
-      const cRect = calContainer.getBoundingClientRect();
-      originRect = {
-        left: cRect.left + (cRect.width * 0.65),
-        top: cRect.top + (cRect.height * 0.4),
-        width: 140,
-        height: 42
-      };
+    if (!cardEl && this.elements.sidebarBody) {
+      cardEl = this.elements.sidebarBody.querySelector(`[data-id="${item.id}"]`);
     }
 
     let targetRect = cardEl ? cardEl.getBoundingClientRect() : null;
-    if (!targetRect || targetRect.width === 0) {
-      targetRect = { left: 40, top: 120, width: 220, height: 50 };
+    const sb = this.elements.sidebarBody;
+    const sbRect = sb ? sb.getBoundingClientRect() : { left: 20, top: 100, width: 220, height: 300 };
+
+    if (!targetRect || targetRect.width === 0 || targetRect.height === 0) {
+      targetRect = { left: sbRect.left + 10, top: sbRect.top + 20, width: Math.max(180, sbRect.width - 20), height: 46 };
     }
+
+    const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 380;
+    const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 600;
+
+    // Origin is located in the visible calendar slice ("the water") on the right
+    // Align height-wise with the card's vertical position in the sidebar!
+    const originLeft = Math.min(winW - 130, Math.max(targetRect.right + 20, winW * 0.72));
+    const originTop = Math.max(60, Math.min(winH - 70, targetRect.top));
+    const originRect = {
+      left: originLeft,
+      top: originTop,
+      width: Math.min(160, Math.max(120, targetRect.width || 140)),
+      height: targetRect.height || 42
+    };
 
     const splash = document.createElement('div');
     splash.className = 'cal-water-splash';
@@ -2365,6 +2367,7 @@ export class CalendarView {
     let dayNavTimer = null;
     let isDayPanning = false;
     let isDayPanCooldown = false;
+    let isHoldingAtEdge = 0;
     const durMin = item.duration || 45;
     const resolution = this.activeView === 'week' ? (this.weekResolution || 15) : (this.currentResolution || 15);
     const self = this;
@@ -2432,20 +2435,27 @@ export class CalendarView {
       }
       const modalRect = modalBody.getBoundingClientRect();
       const diffX = clientX - startX;
+      const isAtLeftZone = (clientX <= modalRect.left + 36);
+      const isAtRightZone = (clientX >= modalRect.right - 36);
 
       const isLeft = (diffX < -35) && (clientX < modalRect.left + 32);
       const isRight = (diffX > 35) && (clientX > modalRect.right - 32);
 
-      if (isLeft || isRight) {
+      const canPanLeft = isLeft || (isHoldingAtEdge === -1 && isAtLeftZone);
+      const canPanRight = isRight || (isHoldingAtEdge === 1 && isAtRightZone);
+
+      if (canPanLeft || canPanRight) {
+        const navDir = canPanRight ? 1 : -1;
+        isHoldingAtEdge = navDir;
         if (!dayNavTimer) {
-          const navDir = isRight ? 1 : -1;
           dayNavTimer = setTimeout(() => {
             dayNavTimer = null;
             if (!isDragging) return;
             panToAdjacentDay(navDir);
-          }, 480);
+          }, 450);
         }
       } else {
+        isHoldingAtEdge = 0;
         if (dayNavTimer) {
           clearTimeout(dayNavTimer);
           dayNavTimer = null;
@@ -2457,6 +2467,11 @@ export class CalendarView {
       if (isDayPanning || isDayPanCooldown || !isDragging) return;
       isDayPanning = true;
       isDayPanCooldown = true;
+      isHoldingAtEdge = direction;
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
       startX = lastClientX;
 
       const modalBody = self.elements.modalBody || document.querySelector('.full-calendar-body');
@@ -2474,7 +2489,7 @@ export class CalendarView {
       const nextDate = new Date(self.selectedDate || self.currentDate);
       nextDate.setDate(nextDate.getDate() + direction);
 
-      const container = self.elements.dayTimelineScroll;
+      let container = self.elements.dayTimelineScroll;
       const currentScrollTop = container ? container.scrollTop : 0;
       const adjacentSlide = self._buildAdjacentPreviewSlide(nextDate, direction, currentScrollTop);
       if (!adjacentSlide) {
@@ -2511,6 +2526,9 @@ export class CalendarView {
           activeContainer.style.removeProperty('transition');
         }
 
+        container = self.elements.dayTimelineScroll;
+        if (container) container.style.overflowY = 'hidden';
+
         isDayPanning = false;
         mobileServices.hapticBuzz();
         self._showToast(direction > 0 ? '📅 Next day' : '📅 Previous day');
@@ -2519,9 +2537,27 @@ export class CalendarView {
           updateDragPosition(lastClientX, lastClientY);
         }
 
+        // Allow panning again after cooldown; if user continues holding near edge, repeat pan continuously!
         setTimeout(() => {
           isDayPanCooldown = false;
-          if (isDragging) {
+          if (!isDragging) return;
+
+          const modalBodyNow = self.elements.modalBody || document.querySelector('.full-calendar-body');
+          if (!modalBodyNow) return;
+          const rectNow = modalBodyNow.getBoundingClientRect();
+
+          const stillAtLeft = (direction < 0) && (lastClientX <= rectNow.left + 36);
+          const stillAtRight = (direction > 0) && (lastClientX >= rectNow.right - 36);
+
+          if (stillAtLeft) {
+            isHoldingAtEdge = -1;
+            panToAdjacentDay(-1);
+          } else if (stillAtRight) {
+            isHoldingAtEdge = 1;
+            panToAdjacentDay(1);
+          } else {
+            isHoldingAtEdge = 0;
+            startX = lastClientX;
             checkDayEdgePull(lastClientX);
           }
         }, 450);
@@ -2690,6 +2726,8 @@ export class CalendarView {
         dayNavTimer = null;
       }
       isDayPanCooldown = false;
+      isDayPanning = false;
+      isHoldingAtEdge = 0;
 
       window.removeEventListener('touchmove', onWindowTouchMove);
       window.removeEventListener('touchend', onWindowTouchEnd);
@@ -4167,6 +4205,7 @@ export class CalendarView {
     let dayNavTimer = null;
     let isDayPanning = false;
     let isDayPanCooldown = false;
+    let isHoldingAtEdge = 0;
     const resolution = this.currentResolution || 15;
     const durMin = ev.plannedDuration || 60;
     let container = this.elements.dayTimelineScroll;
@@ -4231,22 +4270,27 @@ export class CalendarView {
       }
       const modalRect = modalBody.getBoundingClientRect();
       const diffX = clientX - startX;
+      const isAtLeftZone = (clientX <= modalRect.left + 36);
+      const isAtRightZone = (clientX >= modalRect.right - 36);
 
-      // Only trigger edge panning when the user has intentionally dragged horizontally towards that edge
-      // and their finger / touch point is close to the modal boundary
       const isLeft = (diffX < -35) && (clientX < modalRect.left + 32);
       const isRight = (diffX > 35) && (clientX > modalRect.right - 32);
 
-      if (isLeft || isRight) {
+      const canPanLeft = isLeft || (isHoldingAtEdge === -1 && isAtLeftZone);
+      const canPanRight = isRight || (isHoldingAtEdge === 1 && isAtRightZone);
+
+      if (canPanLeft || canPanRight) {
+        const navDir = canPanRight ? 1 : -1;
+        isHoldingAtEdge = navDir;
         if (!dayNavTimer) {
-          const navDir = isRight ? 1 : -1;
           dayNavTimer = setTimeout(() => {
             dayNavTimer = null;
             if (!isDragging) return;
             panToAdjacentDay(navDir);
-          }, 480);
+          }, 450);
         }
       } else {
+        isHoldingAtEdge = 0;
         if (dayNavTimer) {
           clearTimeout(dayNavTimer);
           dayNavTimer = null;
@@ -4258,6 +4302,11 @@ export class CalendarView {
       if (isDayPanning || isDayPanCooldown || !isDragging) return;
       isDayPanning = true;
       isDayPanCooldown = true;
+      isHoldingAtEdge = direction;
+      if (dayNavTimer) {
+        clearTimeout(dayNavTimer);
+        dayNavTimer = null;
+      }
       startX = lastClientX;
 
       const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
@@ -4326,10 +4375,27 @@ export class CalendarView {
           updateDayDragPosition(lastClientX, lastClientY);
         }
 
-        // Allow panning again after short cooldown; if user continues holding near edge, repeat pan!
+        // Allow panning again after short cooldown; if user continues holding near edge, repeat pan continuously!
         setTimeout(() => {
           isDayPanCooldown = false;
-          if (isDragging) {
+          if (!isDragging) return;
+
+          const modalBodyNow = this.elements.modalBody || document.querySelector('.full-calendar-body');
+          if (!modalBodyNow) return;
+          const rectNow = modalBodyNow.getBoundingClientRect();
+
+          const stillAtLeft = (direction < 0) && (lastClientX <= rectNow.left + 36);
+          const stillAtRight = (direction > 0) && (lastClientX >= rectNow.right - 36);
+
+          if (stillAtLeft) {
+            isHoldingAtEdge = -1;
+            panToAdjacentDay(-1);
+          } else if (stillAtRight) {
+            isHoldingAtEdge = 1;
+            panToAdjacentDay(1);
+          } else {
+            isHoldingAtEdge = 0;
+            startX = lastClientX;
             checkDayEdgePull(lastClientX);
           }
         }, 450);
@@ -4356,29 +4422,6 @@ export class CalendarView {
       }
 
       checkDayEdgePull(clientX);
-
-      // Trigger day pan only when the user intentionally pulls towards far left or far right edge with resistance
-      const modalBody = this.elements.modalBody || document.querySelector('.full-calendar-body');
-      const modalRect = modalBody ? modalBody.getBoundingClientRect() : {
-        left: 0,
-        right: (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 360,
-        width: 360
-      };
-      if (!isDayPanning && !isDayPanCooldown) {
-        const diffX = clientX - startX;
-
-        // Transition to previous day when touch point is pulled to far left edge with resistance
-        const isFarLeft = (diffX < -45) && (clientX < modalRect.left + 32);
-        if (isFarLeft) {
-          panToAdjacentDay(-1);
-        } else {
-          // Transition to next day when touch point is pulled to far right edge with resistance
-          const isFarRight = (diffX > 45) && (clientX > modalRect.right - 32);
-          if (isFarRight) {
-            panToAdjacentDay(1);
-          }
-        }
-      }
 
       // Update silhouette in active day timeline
       const newBody = this.elements.dayTimelineBody;
@@ -4446,6 +4489,8 @@ export class CalendarView {
         dayNavTimer = null;
       }
       isDayPanCooldown = false;
+      isDayPanning = false;
+      isHoldingAtEdge = 0;
       window.removeEventListener('touchmove', onWindowTouchMove);
       window.removeEventListener('touchend', onWindowTouchEnd);
       window.removeEventListener('touchcancel', onWindowTouchCancel);
@@ -4568,6 +4613,8 @@ export class CalendarView {
         dayNavTimer = null;
       }
       isDayPanCooldown = false;
+      isDayPanning = false;
+      isHoldingAtEdge = 0;
       window.removeEventListener('touchmove', onWindowTouchMove);
       window.removeEventListener('touchend', onWindowTouchEnd);
       window.removeEventListener('touchcancel', onWindowTouchCancel);
