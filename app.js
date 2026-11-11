@@ -1310,27 +1310,23 @@ function setupRotaryWheel() {
   // Strictly used to reduce time. Dragging to a location leaves it in that position.
   // -------------------------------------------------------------
   function onScrubStart(e) {
+    if (isNavSwiping) return;
     const activeTask = runtime ? runtime.getActiveTask() : null;
     if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
-      if (e) {
-        e.stopPropagation();
-        if (e.preventDefault) e.preventDefault();
+      if (e && e.type === 'mousedown') {
+        mobileServices.hapticWarning();
+        showToastNotification('Please create a task first before adjusting the timer.');
       }
-      mobileServices.hapticWarning();
-      showToastNotification('Please create a task first before adjusting the timer.');
       return;
     }
     if (activeTask && activeTask.isLocked) {
-      if (e) {
-        e.stopPropagation();
-        if (e.preventDefault) e.preventDefault();
+      if (e && e.type === 'mousedown') {
+        mobileServices.hapticWarning();
+        showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
       }
-      mobileServices.hapticWarning();
-      showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
       return;
     }
 
-    e.stopPropagation();
     isScrubbingGreenLine = true;
     document.body.classList.add('is-scrubbing');
 
@@ -1355,7 +1351,7 @@ function setupRotaryWheel() {
   }
 
   function handleScrubMove(e) {
-    if (!isScrubbingGreenLine) return;
+    if (!isScrubbingGreenLine || isNavSwiping) return;
 
     const currentAngleRad = getAngleFromEvent(e);
     let delta = (currentAngleRad - scrubStartAngleRad) * (180 / Math.PI);
@@ -1431,26 +1427,22 @@ function setupRotaryWheel() {
   // Adjusts the timer live so you can see what the next time would be if applied!
   // -------------------------------------------------------------
   function onDialStart(e) {
-    if (isScrubbingGreenLine) return;
-    if (!rotaryConfirmPill.classList.contains('hidden')) return;
+    if (isScrubbingGreenLine || isNavSwiping) return;
+    if (rotaryConfirmPill && !rotaryConfirmPill.classList.contains('hidden')) return;
 
     const activeTask = runtime ? runtime.getActiveTask() : null;
     if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
-      if (e) {
-        e.stopPropagation();
-        if (e.preventDefault) e.preventDefault();
+      if (e && e.type === 'mousedown') {
+        mobileServices.hapticWarning();
+        showToastNotification('Please create a task first before adjusting the timer.');
       }
-      mobileServices.hapticWarning();
-      showToastNotification('Please create a task first before adjusting the timer.');
       return;
     }
     if (activeTask && activeTask.isLocked) {
-      if (e) {
-        e.stopPropagation();
-        if (e.preventDefault) e.preventDefault();
+      if (e && e.type === 'mousedown') {
+        mobileServices.hapticWarning();
+        showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
       }
-      mobileServices.hapticWarning();
-      showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
       return;
     }
 
@@ -1469,7 +1461,7 @@ function setupRotaryWheel() {
   }
 
   function handleDialMove(e) {
-    if (!isDraggingOuterDial) return;
+    if (!isDraggingOuterDial || isNavSwiping) return;
 
     const currentAngleRad = getAngleFromEvent(e);
     let diff = (currentAngleRad - dialStartAngleRad) * (180 / Math.PI);
@@ -1480,6 +1472,11 @@ function setupRotaryWheel() {
     dialStartAngleRad = currentAngleRad;
     accumulatedDialAngleDeltaDeg += diff;
     currentDialRotationDeg += diff;
+
+    if (Math.abs(accumulatedDialAngleDeltaDeg) > 4) {
+      navTouchStartX = null;
+      navTouchStartY = null;
+    }
 
     // Physically rotate outer bezel dial
     if (rotaryDialGroup) {
@@ -9262,7 +9259,7 @@ function setupNavigationAndModals() {
       // We define the protected dial rotation zone between innerGreenBorderRadius (~0.68 * wheelRadius) and dialSafeRadius (1.02 * wheelRadius).
       const dialSafeRadius = wheelRadius * 1.02;
       const innerGreenBorderRadius = wheelRadius * 0.68;
-      if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius) {
+      if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius && isDraggingOuterDial && Math.abs(accumulatedDialAngleDeltaDeg) > 5) {
         navTouchStartX = null;
         navTouchStartY = null;
         return;
@@ -9280,12 +9277,12 @@ function setupNavigationAndModals() {
     navTouchStartX = touch.clientX;
     navTouchStartY = touch.clientY;
     isNavSwiping = false;
-  }, { passive: true });
+  }, { capture: true, passive: true });
 
   window.addEventListener('touchmove', (e) => {
     if (!navDrawer || !navDrawerBackdrop) return;
     if (navTouchStartX === null || navTouchStartY === null) return;
-    if (isDraggingOuterDial || isScrubbingGreenLine || isDrawerPullingUp || isDrawerPullingDown) {
+    if (isDrawerPullingUp || isDrawerPullingDown) {
       if (isNavSwiping) {
         isNavSwiping = false;
         closeDrawer();
@@ -9302,7 +9299,8 @@ function setupNavigationAndModals() {
       return;
     }
 
-    const touch = e.touches[0];
+    const touch = e.touches && e.touches[0];
+    if (!touch) return;
     const diffX = touch.clientX - navTouchStartX;
     const diffY = touch.clientY - navTouchStartY;
     const drawerW = navDrawer.offsetWidth || 280;
@@ -9316,6 +9314,21 @@ function setupNavigationAndModals() {
       // This strictly prevents steep upward swipes or dial thumb gestures from opening the menu
       const maxAllowedVertical = diffY < 0 ? (diffX / 1.85) : (diffX / 1.5);
       if (diffX > 22 && Math.abs(diffY) <= maxAllowedVertical) {
+        // Deliberate horizontal swipe right: cancel any dial dragging/scrubbing
+        if (isDraggingOuterDial || isScrubbingGreenLine) {
+          isDraggingOuterDial = false;
+          isScrubbingGreenLine = false;
+          document.body.classList.remove('is-dragging-dial', 'is-scrubbing');
+          if (rotaryDialGroup) {
+            rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
+          }
+          if (rotaryPreviewBadge) {
+            rotaryPreviewBadge.classList.add('hidden');
+          }
+          currentDialRotationDeg = 0;
+          accumulatedDialAngleDeltaDeg = 0;
+        }
+
         if (!isNavSwiping) {
           syncNavActiveState();
         }
@@ -9329,6 +9342,9 @@ function setupNavigationAndModals() {
         const currentX = -drawerW * (1 - progress);
         navDrawer.style.transform = `translateX(${currentX}px)`;
         navDrawerBackdrop.style.opacity = progress.toString();
+      } else if (isDraggingOuterDial || isScrubbingGreenLine) {
+        // User is actually turning dial or scrubbing, do not trigger nav swipe
+        return;
       }
     } else if (isDrawerOpenAtTouchStart && diffX < -15) {
       // Swiping left from open state: smoothly slide menu back left
@@ -9341,7 +9357,7 @@ function setupNavigationAndModals() {
       navDrawer.style.transform = `translateX(${currentX}px)`;
       navDrawerBackdrop.style.opacity = progress.toString();
     }
-  }, { passive: true });
+  }, { capture: true, passive: true });
 
   window.addEventListener('touchend', (e) => {
     if (!isNavSwiping || !navDrawer || !navDrawerBackdrop) {
@@ -9371,7 +9387,7 @@ function setupNavigationAndModals() {
         openDrawer();
       }
     }
-  });
+  }, { capture: true, passive: true });
 
   // Bind interactive live drag reordering to calendar timeline
   setupInteractiveTaskDrag(calendarTimelineList);
@@ -11444,12 +11460,14 @@ function setupNavigationAndModals() {
   function primeHistoryStack() {
     if (isHistoryPrimed) return;
     isHistoryPrimed = true;
-    try {
-      if (window.history && typeof window.history.pushState === 'function') {
-        window.history.replaceState({ appState: 'root' }, '');
-        window.history.pushState({ appState: 'app' }, '');
-      }
-    } catch (_) {}
+    setTimeout(() => {
+      try {
+        if (window.history && typeof window.history.pushState === 'function') {
+          window.history.replaceState({ appState: 'root' }, '');
+          window.history.pushState({ appState: 'app' }, '');
+        }
+      } catch (_) {}
+    }, 250);
   }
 
   window.addEventListener('pointerdown', primeHistoryStack, { capture: true, once: true });
