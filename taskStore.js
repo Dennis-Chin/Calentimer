@@ -244,11 +244,14 @@ export class TaskStore {
   /**
    * Sets active application mode ('advanced' or 'simple').
    * @param {string} mode
+   * @param {boolean} [silent] If true, skips notifying store listeners (e.g. during coordinated mode switch).
    */
-  setAppMode(mode) {
+  setAppMode(mode, silent) {
     const cleanMode = mode === 'simple' ? 'simple' : 'advanced';
     safeSetItem(STORAGE_KEYS.APP_MODE, cleanMode);
-    this._notify();
+    if (!silent) {
+      this._notify();
+    }
   }
 
   /**

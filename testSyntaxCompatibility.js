@@ -485,6 +485,12 @@ assert(styleCssContent.includes('.cal-tasks-floating-btn') && styleCssContent.in
 assert(styleCssContent.includes('.cal-sidebar-backdrop'), 'style.css styles sidebar backdrop');
 assert(styleCssContent.includes('.btn-todo-advanced'), 'style.css styles 2-sliders advanced options button');
 
+console.log('\n--- 19. Testing Mode Toggle Performance & Shimmer Optimization ---');
+assert(styleCssContent.includes('will-change: background-position') && styleCssContent.includes('contain: layout paint'), 'style.css isolates .app-brand shimmer with will-change and contain');
+assert(styleCssContent.includes('translate3d(18px, 0, 0)') && styleCssContent.includes('will-change: transform'), 'style.css hardware-accelerates .mode-slider-thumb with translate3d and will-change');
+assert(latestAppContent.includes('taskStore.setAppMode(targetMode, true)'), 'app.js switches mode silently without firing duplicate listener re-renders');
+assert(latestAppContent.includes('requestAnimationFrame') && latestAppContent.includes('isDrawerOpen'), 'app.js defers non-visible task drawer and calendar modal DOM updates during mode toggle');
+
 console.log(`\n========================================`);
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log(`========================================`);

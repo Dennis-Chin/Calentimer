@@ -399,6 +399,12 @@ body {
   display: inline-block;
   line-height: 1.1;
   animation: brandShimmer 5s linear infinite;
+  will-change: background-position;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout paint;
 }
 
 @keyframes brandShimmer {
@@ -8308,6 +8314,9 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
   position: absolute;
   left: 2px;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  will-change: transform;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.22s ease, box-shadow 0.22s ease;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
 }
@@ -8319,7 +8328,8 @@ body {
 }
 
 .mode-slider-track.is-simple .mode-slider-thumb {
-  transform: translateX(18px);
+  transform: translate3d(18px, 0, 0);
+  -webkit-transform: translate3d(18px, 0, 0);
   background: var(--primary);
   border-color: #ffffff;
   box-shadow: 0 0 10px rgba(0, 255, 136, 0.7);

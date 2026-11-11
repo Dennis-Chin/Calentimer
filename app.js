@@ -10727,7 +10727,16 @@ function setupNavigationAndModals() {
   function switchAppMode(targetMode) {
     if (!runtime) return;
 
-    // 1. Snapshot current mode's active timer session
+    const isSimple = targetMode === 'simple';
+
+    // 1. Immediately animate toggle slider & trigger haptic tap with 0ms latency
+    updateSliderDisplay(targetMode);
+    mobileServices.hapticTap();
+    if (document.body) {
+      document.body.classList.toggle('simple-mode-active', isSimple);
+    }
+
+    // 2. Snapshot current mode's active timer session
     const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
       ? taskStore.getAppMode()
       : 'advanced';
@@ -10744,20 +10753,13 @@ function setupNavigationAndModals() {
       }
     }
 
-    // 2. Stop running wheel animation and alarms for outgoing mode
+    // 3. Stop running wheel animation and alarms for outgoing mode
     stopContinuousWheelAnimation();
 
-    // 3. Update store mode
+    // 4. Update store mode silently so taskStore.onChange doesn't trigger redundant duplicate re-renders
     if (typeof taskStore.setAppMode === 'function') {
-      taskStore.setAppMode(targetMode);
+      taskStore.setAppMode(targetMode, true);
     }
-    const isSimple = targetMode === 'simple';
-
-    // 4. Update body class and header slider
-    if (document.body) {
-      document.body.classList.toggle('simple-mode-active', isSimple);
-    }
-    updateSliderDisplay(targetMode);
 
     // 5. Update runtime mode-specific configurations
     if (isSimple) {
@@ -10790,11 +10792,9 @@ function setupNavigationAndModals() {
       restored = runtime.restoreSessionState(savedTargetSession);
     }
 
-    // 8. Recalculate schedule & refresh all UI elements
+    // 8. Recalculate schedule & refresh active timer screen UI elements immediately
     runtime.recalculate();
     updateScheduleUI(runtime.currentSchedule);
-    renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || newTasks);
-    renderCalendarModal();
     updateActiveTaskDisplay();
     updateTotalMinutesDisplay();
     updateResetButtonUI();
@@ -10822,18 +10822,52 @@ function setupNavigationAndModals() {
       stopContinuousWheelAnimation();
     }
 
+    if (typeof updateSimpleLoopUI === 'function') updateSimpleLoopUI();
+
+    // 9. Optimize secondary modal & drawer DOM rendering:
+    // Only rebuild DOM synchronously if the view is currently visible on screen.
+    // When hidden, defer via requestAnimationFrame so the main thread never hitches.
+    const isDrawerOpen = Boolean(taskDrawer && !taskDrawer.classList.contains('collapsed'));
+    const isCalModalOpen = Boolean(calendarModalBackdrop && !calendarModalBackdrop.classList.contains('hidden'));
+
+    if (isDrawerOpen) {
+      renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || newTasks);
+    }
+    if (isCalModalOpen) {
+      renderCalendarModal();
+    }
+
+    if (!isDrawerOpen || !isCalModalOpen) {
+      const scheduleTasks = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || newTasks;
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          if (!runtime) return;
+          if (!isDrawerOpen) renderTaskList(scheduleTasks);
+          if (!isCalModalOpen) renderCalendarModal();
+        });
+      } else {
+        setTimeout(() => {
+          if (!runtime) return;
+          if (!isDrawerOpen) renderTaskList(scheduleTasks);
+          if (!isCalModalOpen) renderCalendarModal();
+        }, 0);
+      }
+    }
+
     if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
       calendarView.render();
     }
 
-    // 9. Sync profile to cloud if connected
-    if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.saveCloudProfile === 'function') {
-      calendarSyncService.saveCloudProfile().catch(() => {});
-    }
-
-    mobileServices.hapticTap();
+    // 10. Defer background cloud profile sync and display toast
     showToastNotification(isSimple ? '⚡ Switched to Simple Mode' : '⏱️ Switched to Standard Mode');
-    if (typeof updateSimpleLoopUI === 'function') updateSimpleLoopUI();
+
+    if (typeof calendarSyncService !== 'undefined' && calendarSyncService && typeof calendarSyncService.saveCloudProfile === 'function') {
+      setTimeout(() => {
+        try {
+          calendarSyncService.saveCloudProfile().catch(() => {});
+        } catch (_) {}
+      }, 300);
+    }
   }
   window.switchAppMode = switchAppMode;
 

@@ -35,6 +35,24 @@ console.log('--- 1. Simple Mode Configuration & Store Keys ---');
 taskStore.setAppMode('advanced');
 assert(taskStore.getAppMode() === 'advanced', 'Initial mode is advanced');
 
+let modeListenerNotified = false;
+const unbindModeListener = taskStore.onChange(() => {
+  modeListenerNotified = true;
+});
+
+// Silent mode switch should NOT notify store listeners
+modeListenerNotified = false;
+taskStore.setAppMode('simple', true);
+assert(taskStore.getAppMode() === 'simple', 'setAppMode sets mode to simple silently');
+assert(modeListenerNotified === false, 'setAppMode with silent=true does not fire onChange listeners');
+
+// Non-silent mode switch SHOULD notify store listeners
+modeListenerNotified = false;
+taskStore.setAppMode('advanced', false);
+assert(taskStore.getAppMode() === 'advanced', 'setAppMode sets mode to advanced non-silently');
+assert(modeListenerNotified === true, 'setAppMode with silent=false fires onChange listeners');
+unbindModeListener();
+
 taskStore.setAppMode('simple');
 assert(taskStore.getAppMode() === 'simple', 'setAppMode sets mode to simple');
 
