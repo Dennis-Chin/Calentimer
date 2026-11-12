@@ -95,6 +95,7 @@ const CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS; // ~816.81
 let isScrubbingGreenLine = false;
 let isDraggingOuterDial = false;
 let currentDialRotationDeg = 0;
+let accumulatedDialAngleDeltaDeg = 0;
 let pendingMinuteAdjustment = 0;
 let baseDialSeconds = 0;
 let lastAudibleMinuteTick = 0;
@@ -115,6 +116,65 @@ let isDrawerPullingUp = false;
 let openTaskDrawer = null;
 let closeTaskDrawer = null;
 let toggleTaskDrawer = null;
+
+// Universal Lifecycle Gesture & Transient State Reset
+// Resets all touch, swipe, pull, and dial interaction flags on app launch, blur, backgrounding, or BFCache restore
+function resetTransientGestureState() {
+  navTouchStartX = null;
+  navTouchStartY = null;
+  isNavSwiping = false;
+  isDrawerTouching = false;
+  isDrawerPullingUp = false;
+  isDrawerPullingDown = false;
+  isDraggingOuterDial = false;
+  isScrubbingGreenLine = false;
+  isDraggingTask = false;
+  isSwipingCardToDelete = false;
+  isCalendarModalPullingDown = false;
+
+  const drawer = document.getElementById('taskDrawer');
+  const drawerBackdrop = document.getElementById('taskDrawerBackdrop');
+  if (drawer && drawer.classList.contains('collapsed')) {
+    drawer.classList.remove('will-minimise', 'will-open');
+    drawer.style.removeProperty('transform');
+    drawer.style.removeProperty('transition');
+    if (drawerBackdrop) drawerBackdrop.classList.add('hidden');
+  }
+
+  const nav = document.getElementById('navDrawer');
+  const navBackdrop = document.getElementById('navDrawerBackdrop');
+  if (nav && !nav.classList.contains('open')) {
+    nav.style.removeProperty('transform');
+    nav.style.removeProperty('transition');
+    nav.style.removeProperty('visibility');
+    if (navBackdrop) {
+      navBackdrop.style.removeProperty('opacity');
+      navBackdrop.style.removeProperty('transition');
+      navBackdrop.classList.add('hidden');
+    }
+  }
+
+  if (document.body) {
+    document.body.classList.remove('is-dragging-dial', 'is-scrubbing');
+  }
+  const previewBadge = document.getElementById('rotaryPreviewBadge');
+  if (previewBadge) {
+    previewBadge.classList.add('hidden');
+  }
+  const rotaryDial = document.getElementById('rotaryDialGroup');
+  if (rotaryDial) {
+    rotaryDial.setAttribute('transform', 'rotate(0 160 160)');
+  }
+  accumulatedDialAngleDeltaDeg = 0;
+  currentDialRotationDeg = 0;
+  pendingMinuteAdjustment = 0;
+
+  const exitModal = document.getElementById('confirmExitAppModalBackdrop');
+  if (exitModal && !exitModal.classList.contains('hidden')) {
+    exitModal.classList.add('hidden');
+  }
+}
+window.resetTransientGestureState = resetTransientGestureState;
 
 // Schedule Mode & Timespans Toggle UI (Module Scope to prevent ReferenceErrors on openCalendar)
 let updateTimespansButtonUI = function() {
@@ -225,6 +285,7 @@ window.refreshAppScheduleFromStore = refreshAppScheduleFromStore;
 
 function initApp() {
   try {
+    resetTransientGestureState();
     const currentMode = (typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function')
       ? taskStore.getAppMode()
       : 'advanced';
@@ -388,6 +449,8 @@ function initApp() {
         stopContinuousWheelAnimation();
       }
     }
+
+    resetTransientGestureState();
   } catch (err) {
     console.error('Fatal initialization error in initApp:', err);
     showToastNotification('⚠️ Init Error: ' + err.message);
@@ -2683,16 +2746,33 @@ function setupControls() {
     isDrawerPullingUp = false;
   }
 
+  function onDrawerTouchCancel() {
+    if (taskDrawer) {
+      taskDrawer.classList.remove('will-minimise', 'will-open');
+      taskDrawer.style.removeProperty('transform');
+      taskDrawer.style.removeProperty('transition');
+      if (taskDrawer.classList.contains('collapsed') && taskDrawerBackdrop) {
+        taskDrawerBackdrop.classList.add('hidden');
+      }
+    }
+    isDrawerTouching = false;
+    isDrawerPullingDown = false;
+    isDrawerPullingUp = false;
+  }
+  window.onDrawerTouchCancel = onDrawerTouchCancel;
+
   if (drawerHeader) {
     drawerHeader.addEventListener('touchstart', onDrawerTouchStart, { passive: true });
     drawerHeader.addEventListener('touchmove', onDrawerTouchMove, { passive: true });
     drawerHeader.addEventListener('touchend', onDrawerTouchEnd, { passive: true });
+    drawerHeader.addEventListener('touchcancel', onDrawerTouchCancel, { passive: true });
   }
 
   if (taskDrawer) {
     taskDrawer.addEventListener('touchstart', onDrawerTouchStart, { passive: true });
     taskDrawer.addEventListener('touchmove', onDrawerTouchMove, { passive: true });
     taskDrawer.addEventListener('touchend', onDrawerTouchEnd, { passive: true });
+    taskDrawer.addEventListener('touchcancel', onDrawerTouchCancel, { passive: true });
   }
 }
 
@@ -9224,6 +9304,17 @@ function setupNavigationAndModals() {
     if (!navDrawer || !navDrawerBackdrop) return;
     const target = e.target;
 
+    // Reset stale drawer pull state if no finger is currently touching the bottom drawer
+    if (!isDrawerTouching) {
+      isDrawerPullingUp = false;
+      isDrawerPullingDown = false;
+    }
+
+    // Ensure stale nav swiping flag is cleared when a new single-finger gesture starts
+    if (e.touches && e.touches.length === 1 && (!navDrawer || !navDrawer.classList.contains('open'))) {
+      isNavSwiping = false;
+    }
+
     // Guard: Never open side menu if ANY modal is currently open
     const openModal = document.querySelector('.modal-backdrop:not(.hidden)');
     if (openModal) {
@@ -9264,6 +9355,12 @@ function setupNavigationAndModals() {
         navTouchStartY = null;
         return;
       }
+    }
+
+    // Clear stale dial states if body does not have active dragging classes
+    if (document.body && !document.body.classList.contains('is-dragging-dial') && !document.body.classList.contains('is-scrubbing')) {
+      isDraggingOuterDial = false;
+      isScrubbingGreenLine = false;
     }
 
     // Never start nav menu swipe if Today's Tasks drawer is open or actively pulling up/down
@@ -9386,6 +9483,23 @@ function setupNavigationAndModals() {
       } else {
         openDrawer();
       }
+    }
+  }, { capture: true, passive: true });
+
+  window.addEventListener('touchcancel', () => {
+    if (isNavSwiping && navDrawer && navDrawerBackdrop) {
+      isNavSwiping = false;
+      closeDrawer();
+    }
+    navTouchStartX = null;
+    navTouchStartY = null;
+    isNavSwiping = false;
+    if (typeof onDrawerTouchCancel === 'function') {
+      onDrawerTouchCancel();
+    } else {
+      isDrawerTouching = false;
+      isDrawerPullingDown = false;
+      isDrawerPullingUp = false;
     }
   }, { capture: true, passive: true });
 
@@ -11633,9 +11747,10 @@ function setupNavigationAndModals() {
   }, false);
 }
 
-// Track visibility changes (app backgrounding during active session)
+// Track visibility changes and page lifecycle (app backgrounding, BFCache restore, blur)
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
+    resetTransientGestureState();
     if (document.visibilityState === 'hidden') {
       if (runtime && (runtime.status === TimerStatus.RUNNING || runtime.status === TimerStatus.PAUSED)) {
         analytics.recordSessionEvent('visibility_loss');
@@ -11652,6 +11767,18 @@ if (typeof document !== 'undefined') {
         }
       }
     }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pageshow', () => {
+    resetTransientGestureState();
+  });
+  window.addEventListener('pagehide', () => {
+    resetTransientGestureState();
+  });
+  window.addEventListener('blur', () => {
+    resetTransientGestureState();
   });
 }
 

@@ -197,6 +197,9 @@ function createMockElement(tagName = 'div', id = '') {
       };
       fns.forEach(fn => fn(ev));
     },
+    dispatchEvent: (ev) => {
+      el.dispatchSimulatedEvent(ev.type, ev);
+    },
     children
   };
 
@@ -684,6 +687,89 @@ try {
   console.error('Dial move threw error:', err);
 }
 assert(!dialMoveThrew, 'Rotating outer dial does not throw ReferenceError (navTouchStartX is in scope)');
+
+console.log('\n--- 11. Testing Immediate Swipe Right After App Close & Reopen (Lifecycle Recovery) ---');
+
+// Test 1: Simulating home gesture from bottom (touch on drawerHeader interrupted by app exit / touchcancel)
+drawerHeader.dispatchEvent({
+  type: 'touchstart',
+  target: drawerHeader,
+  touches: [{ clientX: 180, clientY: 580 }]
+});
+drawerHeader.dispatchEvent({
+  type: 'touchmove',
+  target: drawerHeader,
+  touches: [{ clientX: 180, clientY: 500 }]
+});
+
+// User leaves app (touch cancelled, page hides / visibility changes to hidden)
+drawerHeader.dispatchEvent({ type: 'touchcancel', target: drawerHeader });
+window.dispatchSimulatedEvent('touchcancel');
+document.visibilityState = 'hidden';
+document.dispatchSimulatedEvent('visibilitychange');
+window.dispatchSimulatedEvent('pagehide');
+
+// User immediately reopens app (pageshow / visibility returns to visible)
+document.visibilityState = 'visible';
+document.dispatchSimulatedEvent('visibilitychange');
+window.dispatchSimulatedEvent('pageshow');
+
+// Immediate swipe right without tapping anything first
+window.dispatchSimulatedEvent('touchstart', {
+  target: mockDocBody,
+  touches: [{ clientX: 30, clientY: 250 }]
+});
+window.dispatchSimulatedEvent('touchmove', {
+  target: mockDocBody,
+  touches: [{ clientX: 120, clientY: 252 }]
+});
+window.dispatchSimulatedEvent('touchend', {
+  target: mockDocBody,
+  changedTouches: [{ clientX: 120, clientY: 252 }]
+});
+assert(navDrawer.classList.contains('open'), 'Swipe right opens nav menu immediately after app reopen without requiring tap or bottom swipe');
+assert(!navDrawerBackdrop.classList.contains('hidden'), 'Nav backdrop is visible after reopening');
+
+// Close nav drawer
+navDrawer.classList.remove('open');
+navDrawerBackdrop.classList.add('hidden');
+
+// Test 2: Simulating Android back gesture from left edge interrupted by exit, then reopen
+window.dispatchSimulatedEvent('touchstart', {
+  target: mockDocBody,
+  touches: [{ clientX: 8, clientY: 240 }]
+});
+window.dispatchSimulatedEvent('touchmove', {
+  target: mockDocBody,
+  touches: [{ clientX: 60, clientY: 242 }]
+});
+
+// Touch cancelled by OS back action, app hidden and resumed
+window.dispatchSimulatedEvent('touchcancel');
+document.visibilityState = 'hidden';
+document.dispatchSimulatedEvent('visibilitychange');
+document.visibilityState = 'visible';
+document.dispatchSimulatedEvent('visibilitychange');
+window.dispatchSimulatedEvent('pageshow');
+
+// Immediate swipe right without tapping anything first
+window.dispatchSimulatedEvent('touchstart', {
+  target: mockDocBody,
+  touches: [{ clientX: 30, clientY: 250 }]
+});
+window.dispatchSimulatedEvent('touchmove', {
+  target: mockDocBody,
+  touches: [{ clientX: 120, clientY: 252 }]
+});
+window.dispatchSimulatedEvent('touchend', {
+  target: mockDocBody,
+  changedTouches: [{ clientX: 120, clientY: 252 }]
+});
+assert(navDrawer.classList.contains('open'), 'Swipe right opens nav menu cleanly after interrupted edge back gesture and reopen');
+
+// Reset drawer closed
+navDrawer.classList.remove('open');
+navDrawerBackdrop.classList.add('hidden');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
