@@ -664,6 +664,27 @@ window.dispatchSimulatedEvent('touchend', {
 });
 assert(!navDrawer.classList.contains('open'), 'Swiping left smoothly closes open nav drawer');
 
+// Test 4: Rotating outer rotary dial does not throw ReferenceError (navTouchStartX is properly defined in scope)
+let dialMoveThrew = false;
+try {
+  window.dispatchSimulatedEvent('touchstart', {
+    target: dialHitRing,
+    touches: [{ clientX: 280, clientY: 160 }]
+  });
+  window.dispatchSimulatedEvent('touchmove', {
+    target: dialHitRing,
+    touches: [{ clientX: 270, clientY: 190 }]
+  });
+  window.dispatchSimulatedEvent('touchend', {
+    target: dialHitRing,
+    changedTouches: [{ clientX: 270, clientY: 190 }]
+  });
+} catch (err) {
+  dialMoveThrew = true;
+  console.error('Dial move threw error:', err);
+}
+assert(!dialMoveThrew, 'Rotating outer dial does not throw ReferenceError (navTouchStartX is in scope)');
+
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
 console.log('========================================');

@@ -289,6 +289,24 @@ assert(hasNewHourTask === true, 'New 1-hour preset tasks are present on calendar
 const oldUnfinishedRemoved = verifiedCal.every(e => !unfinishedIds.has(e.id));
 assert(oldUnfinishedRemoved === true, 'Old unfinished Pomodoro tasks removed from calendar upon reconfig');
 
+// 7. Silent Save Operations (Mode Switch Performance)
+console.log('--- 7. Silent Save Operations for Instant Mode Switching ---');
+
+let silentNotifyFired = false;
+const unbindSilentWatcher = taskStore.onChange(() => {
+  silentNotifyFired = true;
+});
+
+silentNotifyFired = false;
+taskStore.saveTasks(taskStore.getTasks(), true);
+assert(silentNotifyFired === false, 'saveTasks with silent=true does not fire onChange listeners');
+
+silentNotifyFired = false;
+taskStore.saveCalendarEvents(taskStore.getCalendarEvents(), true);
+assert(silentNotifyFired === false, 'saveCalendarEvents with silent=true does not fire onChange listeners');
+
+unbindSilentWatcher();
+
 // Cleanup
 taskStore.setAppMode('advanced');
 

@@ -477,11 +477,14 @@ export class TaskStore {
   /**
    * Persists Simple Mode tasks.
    * @param {Array<object>} tasks
+   * @param {boolean} [silent]
    */
-  saveSimpleTasks(tasks) {
+  saveSimpleTasks(tasks, silent) {
     try {
       safeSetItem(STORAGE_KEYS.SIMPLE_TASKS, JSON.stringify(tasks));
-      this._notify();
+      if (!silent) {
+        this._notify();
+      }
     } catch (e) {
       console.error('Could not save simple tasks:', e);
     }
@@ -509,11 +512,14 @@ export class TaskStore {
   /**
    * Persists Advanced Mode tasks.
    * @param {Array<object>} tasks
+   * @param {boolean} [silent]
    */
-  saveAdvancedTasks(tasks) {
+  saveAdvancedTasks(tasks, silent) {
     try {
       safeSetItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
-      this._notify();
+      if (!silent) {
+        this._notify();
+      }
     } catch (e) {
       console.error('Could not save advanced tasks to localStorage:', e);
     }
@@ -534,12 +540,13 @@ export class TaskStore {
   /**
    * Persists tasks for the currently active mode ('advanced' or 'simple').
    * @param {Array<object>} tasks 
+   * @param {boolean} [silent]
    */
-  saveTasks(tasks) {
+  saveTasks(tasks, silent) {
     if (this.getAppMode() === 'simple') {
-      return this.saveSimpleTasks(tasks);
+      return this.saveSimpleTasks(tasks, silent);
     }
-    return this.saveAdvancedTasks(tasks);
+    return this.saveAdvancedTasks(tasks, silent);
   }
 
   /**
@@ -1832,12 +1839,15 @@ export class TaskStore {
   /**
    * Saves calendar events list to storage.
    * @param {Array<object>} events 
+   * @param {boolean} [silent]
    */
-  saveCalendarEvents(events) {
+  saveCalendarEvents(events, silent) {
     try {
       const serialized = JSON.stringify(events || []);
       safeSetItem(STORAGE_KEYS.CALENDAR_EVENTS, serialized);
-      this._notify();
+      if (!silent) {
+        this._notify();
+      }
     } catch (e) {
       console.error('TaskStore: Failed to save calendar events', e);
     }

@@ -101,8 +101,10 @@ let lastAudibleMinuteTick = 0;
 
 window.isUserInteracting = () => Boolean(isDraggingTask || isDraggingOuterDial);
 
-// Navigation Drawer Swipe State (Shared across nav drawer and task drawer handlers)
+// Navigation Drawer Swipe State (Shared across nav drawer and rotary dial handlers)
 let isNavSwiping = false;
+let navTouchStartX = null;
+let navTouchStartY = null;
 
 // Today's Tasks Drawer Touch/Pull State (Global so nav menu gestures can inspect drawer interaction)
 let isDrawerTouching = false;
@@ -3757,10 +3759,10 @@ function syncDynamicScheduleTimesToCalendar() {
   });
 
   if (updatedAnyTask) {
-    taskStore.saveTasks(storeTasks);
+    taskStore.saveTasks(storeTasks, true);
   }
   if (updatedAnyCal) {
-    taskStore.saveCalendarEvents(calEvents);
+    taskStore.saveCalendarEvents(calEvents, true);
     if (calendarView && typeof calendarView.render === 'function' && typeof calendarView.isOpen === 'function' && calendarView.isOpen()) {
       calendarView.render();
     }
@@ -4959,8 +4961,12 @@ window.toggleTaskDoneStatus = toggleTaskDoneStatus;
  * Evaluates tasks against current time:
  * - Once current time is past a task's end time, marks it as completed (unless manually unmarked by user: manualCompleted === false).
  * - If moved/rescheduled into future (current time < endTime), automatically unmarks it (isCompleted: false, manualCompleted: null).
+ * - Simple Mode is strictly sequential and excluded from auto past-time completion.
  */
 function syncPastTasksCompletion() {
+  const isSimple = Boolean(typeof taskStore !== 'undefined' && typeof taskStore.getAppMode === 'function' && taskStore.getAppMode() === 'simple');
+  if (isSimple) return;
+
   const tasks = taskStore.getTasks();
   if (!Array.isArray(tasks) || tasks.length === 0) return;
 
@@ -4989,7 +4995,6 @@ function syncPastTasksCompletion() {
       if (!t.isCompleted && t.manualCompleted !== false) {
         t.isCompleted = true;
         t.completedDate = todayStr;
-        taskStore.updateTask(t.id, { isCompleted: true, completedDate: todayStr });
         hasUpdates = true;
       }
     } else if (!isPast) {
@@ -4997,22 +5002,17 @@ function syncPastTasksCompletion() {
       if (t.isCompleted && t.manualCompleted !== true && (typeof t.manualCompleted === 'undefined' || t.manualCompleted === null)) {
         t.isCompleted = false;
         t.completedDate = null;
-        taskStore.updateTask(t.id, { isCompleted: false, completedDate: null });
         hasUpdates = true;
       }
     }
   }
 
   if (hasUpdates) {
+    taskStore.saveTasks(tasks, true);
     if (runtime && runtime.initialTasks) {
-      runtime.initialTasks = taskStore.getTasks();
+      runtime.initialTasks = tasks;
     }
-    renderTaskList(((runtime && runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || taskStore.getTasks());
-    renderCalendarModal();
     updateTotalMinutesDisplay();
-    if (calendarView && typeof calendarView.render === 'function' && calendarView.isOpen && calendarView.isOpen()) {
-      calendarView.render();
-    }
   }
 }
 window.syncPastTasksCompletion = syncPastTasksCompletion;
@@ -9215,8 +9215,8 @@ function setupNavigationAndModals() {
   }
 
   // Swipe right on screen to smoothly open nav menu; swipe left to smoothly close
-  let navTouchStartX = null;
-  let navTouchStartY = null;
+  navTouchStartX = null;
+  navTouchStartY = null;
   isNavSwiping = false;
   let isDrawerOpenAtTouchStart = false;
 
@@ -10762,8 +10762,11 @@ function setupNavigationAndModals() {
   }
   window.updateSliderDisplay = updateSliderDisplay;
 
+  let isModeSwitching = false;
+
   function switchAppMode(targetMode) {
-    if (!runtime) return;
+    if (!runtime || isModeSwitching) return;
+    isModeSwitching = true;
 
     const isSimple = targetMode === 'simple';
 
@@ -10905,8 +10908,12 @@ function setupNavigationAndModals() {
         try {
           calendarSyncService.saveCloudProfile().catch(() => {});
         } catch (_) {}
-      }, 300);
+      }, 500);
     }
+
+    setTimeout(() => {
+      isModeSwitching = false;
+    }, 250);
   }
   window.switchAppMode = switchAppMode;
 
@@ -11239,6 +11246,16 @@ function setupNavigationAndModals() {
       let touchStartX = 0;
       let touchStartY = 0;
       let isSliderSwiping = false;
+      let lastToggleTimestamp = 0;
+
+      function triggerModeSliderSwitch() {
+        const now = Date.now();
+        if (now - lastToggleTimestamp < 350) return;
+        lastToggleTimestamp = now;
+        const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
+        const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
+        requestModeSwitch(targetMode);
+      }
 
       modeSliderWrap.addEventListener('touchstart', (e) => {
         if (!e.touches || e.touches.length !== 1) return;
@@ -11257,28 +11274,22 @@ function setupNavigationAndModals() {
       }, { passive: true });
 
       modeSliderWrap.addEventListener('touchend', (e) => {
-        const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
-        const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
         if (isSliderSwiping) {
-          requestModeSwitch(targetMode);
+          triggerModeSliderSwitch();
           isSliderSwiping = false;
-          e.preventDefault();
+          if (e.cancelable) e.preventDefault();
         }
       });
 
       modeSliderWrap.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
-        const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
-        requestModeSwitch(targetMode);
+        triggerModeSliderSwitch();
       });
 
       modeSliderWrap.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          const currentMode = (typeof taskStore.getAppMode === 'function') ? taskStore.getAppMode() : 'advanced';
-          const targetMode = currentMode === 'simple' ? 'advanced' : 'simple';
-          requestModeSwitch(targetMode);
+          triggerModeSliderSwitch();
         }
       });
     }
