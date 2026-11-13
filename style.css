@@ -3843,7 +3843,7 @@ body.is-timer-standby .schedule-control-bar {
 }
 
 body.is-timer-standby .app-brand {
-  transform: translate3d(var(--brand-standby-shift, -42px), 0, 0);
+  transform: translate3d(var(--brand-standby-shift, -48px), 0, 0);
 }
 
 body.is-timer-standby #btnOpenNav,

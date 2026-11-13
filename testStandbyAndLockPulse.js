@@ -359,6 +359,8 @@ const emptySpaceEl = createMockElement('div', 'emptySpaceArea');
 emptySpaceEl.closest = () => null;
 window.dispatchSimulatedEvent('click', { target: emptySpaceEl });
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space immediately minimizes to standby');
+const shiftVal = parseInt(mockDocElement.style['--brand-standby-shift'] || '-48', 10);
+assert(shiftVal <= -20, `Logo moves back to far left on re-minimise (shift: ${shiftVal}px)`);
 
 console.log('\n--- 6. Testing Exit Standby Mode on Pause, Stop & Drawer Open ---');
 window.enterTimerStandbyMode();
@@ -388,6 +390,9 @@ assert(cssContent.indexOf('body.is-timer-standby #btnOpenNav') !== -1, 'style.cs
 assert(cssContent.indexOf('body.is-timer-standby #modeSliderWrap') !== -1, 'style.css defines fading simple mode toggle in standby');
 assert(cssContent.indexOf('body.is-timer-standby .app-brand') !== -1, 'style.css defines logo slide left in standby');
 assert(cssContent.indexOf('body.is-waking-standby') !== -1, 'style.css defines pointer-events: none button guards during wake transition');
+
+const manifestContent = readFileSync(path.resolve(process.cwd(), 'manifest.json'), 'utf8');
+assert(manifestContent.indexOf('"display": "fullscreen"') !== -1, 'manifest.json defines display: fullscreen to hide notification bar natively without browser popup');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

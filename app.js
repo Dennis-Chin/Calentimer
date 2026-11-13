@@ -584,6 +584,26 @@ window.triggerLockPulseWarning = triggerLockPulseWarning;
 let timerStandbyInactivityTimer = null;
 let isSuppressingWakeTap = false;
 let wakeSuppressTimer = null;
+let cachedBrandStandbyShift = null;
+
+function getBrandStandbyShift() {
+  if (cachedBrandStandbyShift !== null) {
+    return cachedBrandStandbyShift;
+  }
+  const brandEl = document.querySelector('.app-brand');
+  const btnMenu = document.querySelector('.btn-menu') || document.getElementById('btnOpenNav');
+  if (brandEl && btnMenu && typeof brandEl.getBoundingClientRect === 'function' && typeof btnMenu.getBoundingClientRect === 'function') {
+    const menuRect = btnMenu.getBoundingClientRect();
+    const brandRect = brandEl.getBoundingClientRect();
+    const diff = Math.round(menuRect.left - brandRect.left);
+    if (diff < -20) {
+      cachedBrandStandbyShift = diff;
+      return cachedBrandStandbyShift;
+    }
+  }
+  cachedBrandStandbyShift = -48;
+  return cachedBrandStandbyShift;
+}
 
 function enterTimerStandbyMode() {
   const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
@@ -601,19 +621,9 @@ function enterTimerStandbyMode() {
     timerStandbyInactivityTimer = null;
   }
 
-  // Calculate brand shift so distance from its top to top of app equals distance from left to screen edge
-  const brandEl = document.querySelector('.app-brand');
-  if (brandEl && typeof brandEl.getBoundingClientRect === 'function') {
-    const rect = brandEl.getBoundingClientRect();
-    const appContainer = document.querySelector('.app-container');
-    const containerTop = (appContainer && typeof appContainer.getBoundingClientRect === 'function')
-      ? appContainer.getBoundingClientRect().top
-      : 0;
-    const distFromTop = Math.max(12, rect.top - containerTop);
-    const distFromLeft = rect.left;
-    const shiftX = Math.round(distFromTop - distFromLeft);
-    document.documentElement.style.setProperty('--brand-standby-shift', `${shiftX}px`);
-  }
+  // Slide brand logo to the far-left position (where the menu button was)
+  const shiftX = getBrandStandbyShift();
+  document.documentElement.style.setProperty('--brand-standby-shift', `${shiftX}px`);
 
   if (document.body) {
     document.body.classList.add('is-timer-standby');
@@ -981,15 +991,6 @@ function setupRuntimeEvents() {
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
-      try {
-        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
-          const exitPromise = exitFs.call(document);
-          if (exitPromise && typeof exitPromise.catch === 'function') {
-            exitPromise.catch(() => {});
-          }
-        }
-      } catch (_) {}
       const activeTask = runtime.getActiveTask();
       const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
       mobileServices.updateLiveNotification({
@@ -1004,15 +1005,6 @@ function setupRuntimeEvents() {
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
-      try {
-        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-        if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
-          const exitPromise = exitFs.call(document);
-          if (exitPromise && typeof exitPromise.catch === 'function') {
-            exitPromise.catch(() => {});
-          }
-        }
-      } catch (_) {}
       mobileServices.clearLiveNotification();
     }
     updateResetButtonUI();
@@ -2084,16 +2076,6 @@ function setupControls() {
       if ('Notification' in window && Notification.permission === 'default' && taskStore.getAlertsEnabled()) {
         mobileServices.requestNotificationPermission();
       }
-      try {
-        const docEl = document.documentElement;
-        const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
-        if (requestFs && !document.fullscreenElement && !document.webkitFullscreenElement) {
-          const fsPromise = requestFs.call(docEl, { navigationUI: 'hide' });
-          if (fsPromise && typeof fsPromise.catch === 'function') {
-            fsPromise.catch(() => {});
-          }
-        }
-      } catch (_) {}
       runtime.start();
     }
   });
@@ -2103,15 +2085,6 @@ function setupControls() {
   // - While timer is not running -> Reset button: resets the whole day of events
   btnStopTime.addEventListener('click', () => {
     exitTimerStandbyMode(false);
-    try {
-      const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-      if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
-        const exitPromise = exitFs.call(document);
-        if (exitPromise && typeof exitPromise.catch === 'function') {
-          exitPromise.catch(() => {});
-        }
-      }
-    } catch (_) {}
     mobileServices.hapticTap();
     analytics.trackInteraction('btn_click', 'btnStopTime', { isRunning: runtime.status === TimerStatus.RUNNING });
     if (runtime.status === TimerStatus.RUNNING) {
