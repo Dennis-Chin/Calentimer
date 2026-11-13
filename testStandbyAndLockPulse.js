@@ -252,6 +252,7 @@ global.document = {
   querySelector: (sel) => {
     if (sel.startsWith('#')) return getOrCreateMockElement(sel.substring(1));
     if (sel === '.timer-center-display') return getOrCreateMockElement('timerCenterDisplay');
+    if (sel === '.app-brand') return getOrCreateMockElement('appBrand');
     return null;
   },
   querySelectorAll: () => [],
@@ -334,12 +335,14 @@ if (testRuntime) {
 window.enterTimerStandbyMode();
 assert(mockDocBody.classList.contains('is-timer-standby'), 'document.body gains .is-timer-standby when timer is running');
 
-console.log('\n--- 4. Testing Waking Up on User Activity (Tap or Movement) ---');
+console.log('\n--- 4. Testing Waking Up on User Activity & Guarding Button Clicks ---');
 // Simulating user touch or pointerdown
 window.dispatchSimulatedEvent('pointerdown');
 assert(!mockDocBody.classList.contains('is-timer-standby'), 'document.body exits .is-timer-standby immediately on pointerdown');
+assert(mockDocBody.classList.contains('is-waking-standby'), 'document.body gains .is-waking-standby during wake animation to guard buttons');
 
 // Test re-entry into standby
+mockDocBody.classList.remove('is-waking-standby');
 window.enterTimerStandbyMode();
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Standby mode re-entered');
 
@@ -347,7 +350,17 @@ assert(mockDocBody.classList.contains('is-timer-standby'), 'Standby mode re-ente
 window.dispatchSimulatedEvent('mousemove');
 assert(!mockDocBody.classList.contains('is-timer-standby'), 'document.body exits .is-timer-standby smoothly on mousemove');
 
-console.log('\n--- 5. Testing Exit Standby Mode on Pause, Stop & Drawer Open ---');
+console.log('\n--- 5. Testing Tap Empty Space to Minimise to Standby ---');
+// Wait for wake suppression timer to finish
+await new Promise(r => setTimeout(r, 450));
+mockDocBody.classList.remove('is-waking-standby');
+// Tapping empty space (simulated by clicking an element with no interactive ancestors)
+const emptySpaceEl = createMockElement('div', 'emptySpaceArea');
+emptySpaceEl.closest = () => null;
+window.dispatchSimulatedEvent('click', { target: emptySpaceEl });
+assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space immediately minimizes to standby');
+
+console.log('\n--- 6. Testing Exit Standby Mode on Pause, Stop & Drawer Open ---');
 window.enterTimerStandbyMode();
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Standby active before drawer open');
 
@@ -362,7 +375,7 @@ window.enterTimerStandbyMode();
 window.exitTimerStandbyMode(false);
 assert(!mockDocBody.classList.contains('is-timer-standby'), 'Standby exits when timer pauses or stops');
 
-console.log('\n--- 6. Verifying CSS Keyframes & Rules for Standby & Padlock Pulse ---');
+console.log('\n--- 7. Verifying CSS Keyframes & Rules for Standby & Padlock Pulse ---');
 const cssContent = readFileSync(path.resolve(process.cwd(), 'style.css'), 'utf8');
 
 assert(cssContent.indexOf('.timer-lock-indicator.pulse-locked') !== -1, 'style.css contains .timer-lock-indicator.pulse-locked');
@@ -373,6 +386,8 @@ assert(cssContent.indexOf('body.is-timer-standby .timer-controls') !== -1, 'styl
 assert(cssContent.indexOf('body.is-timer-standby .secondary-actions') !== -1, 'style.css defines fading finish early action in standby');
 assert(cssContent.indexOf('body.is-timer-standby #btnOpenNav') !== -1, 'style.css defines fading hamburger menu in standby');
 assert(cssContent.indexOf('body.is-timer-standby #modeSliderWrap') !== -1, 'style.css defines fading simple mode toggle in standby');
+assert(cssContent.indexOf('body.is-timer-standby .app-brand') !== -1, 'style.css defines logo slide left in standby');
+assert(cssContent.indexOf('body.is-waking-standby') !== -1, 'style.css defines pointer-events: none button guards during wake transition');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

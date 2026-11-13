@@ -1952,13 +1952,14 @@ export class CalendarView {
     sb.classList.remove('open');
     if (bd) bd.classList.add('hidden');
     setTimeout(() => {
-      if (sb && !sb.classList.contains('open')) {
+      if (sb && !sb.classList.contains('open') && !this.isDraggingEvent) {
         sb.classList.add('hidden');
       }
     }, 280);
   }
 
   _renderUnscheduledSidebar() {
+    if (this.isDraggingEvent) return;
     const body = this.elements.sidebarBody;
     const badge = this.elements.calTasksBadge;
     if (!body) return;
@@ -2365,6 +2366,8 @@ export class CalendarView {
     let holdTimer = null;
     let autoScrollRaf = null;
     let dayNavTimer = null;
+    let dayPanAnimTimer = null;
+    let dayPanCooldownTimer = null;
     let isDayPanning = false;
     let isDayPanCooldown = false;
     let isHoldingAtEdge = 0;
@@ -2515,7 +2518,20 @@ export class CalendarView {
       activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
       adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
 
-      setTimeout(() => {
+      dayPanAnimTimer = setTimeout(() => {
+        dayPanAnimTimer = null;
+        if (!isDragging) {
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+          }
+          if (activeContainer) {
+            activeContainer.style.removeProperty('transform');
+            activeContainer.style.removeProperty('transition');
+          }
+          isDayPanning = false;
+          return;
+        }
+
         const savedScrollTop = container ? container.scrollTop : 0;
         self.navigate(direction, savedScrollTop);
         if (adjacentSlide && adjacentSlide.parentNode) {
@@ -2538,7 +2554,8 @@ export class CalendarView {
         }
 
         // Allow panning again after cooldown; if user continues holding near edge, repeat pan continuously!
-        setTimeout(() => {
+        dayPanCooldownTimer = setTimeout(() => {
+          dayPanCooldownTimer = null;
           isDayPanCooldown = false;
           if (!isDragging) return;
 
@@ -2725,15 +2742,35 @@ export class CalendarView {
         clearTimeout(dayNavTimer);
         dayNavTimer = null;
       }
+      if (dayPanAnimTimer) {
+        clearTimeout(dayPanAnimTimer);
+        dayPanAnimTimer = null;
+      }
+      if (dayPanCooldownTimer) {
+        clearTimeout(dayPanCooldownTimer);
+        dayPanCooldownTimer = null;
+      }
       isDayPanCooldown = false;
       isDayPanning = false;
       isHoldingAtEdge = 0;
 
-      window.removeEventListener('touchmove', onWindowTouchMove);
-      window.removeEventListener('touchend', onWindowTouchEnd);
-      window.removeEventListener('touchcancel', onWindowTouchEnd);
-      window.removeEventListener('mousemove', onWindowMouseMove);
-      window.removeEventListener('mouseup', onWindowMouseUp);
+      // Always restore vertical scrolling on both day and week scroll containers!
+      if (self.elements.dayTimelineScroll) {
+        self.elements.dayTimelineScroll.style.removeProperty('overflow-y');
+      }
+      if (self.elements.weekGridScroll) {
+        self.elements.weekGridScroll.style.removeProperty('overflow-y');
+      }
+
+      window.removeEventListener('touchmove', onWindowTouchMove, { capture: true });
+      window.removeEventListener('touchend', onWindowTouchEnd, { capture: true });
+      window.removeEventListener('touchcancel', onWindowTouchEnd, { capture: true });
+      window.removeEventListener('pointermove', onWindowPointerMove, { capture: true });
+      window.removeEventListener('pointerup', onWindowPointerUp, { capture: true });
+      window.removeEventListener('pointercancel', onWindowPointerUp, { capture: true });
+      window.removeEventListener('mousemove', onWindowMouseMove, { capture: true });
+      window.removeEventListener('mouseup', onWindowMouseUp, { capture: true });
+      window.removeEventListener('blur', onWindowBlur);
 
       if (ghostCard && ghostCard.parentNode) {
         ghostCard.parentNode.removeChild(ghostCard);
@@ -2769,6 +2806,7 @@ export class CalendarView {
       const wasDragging = isDragging;
       isDragging = false;
       self.isDraggingEvent = false;
+      self._justFinishedDragUntil = Date.now() + 200;
 
       if (wasDragging && hadSnap && targetDateStr && typeof targetStartMin === 'number') {
         const startTime = self._formatMinutesToTime(targetStartMin);
@@ -2790,6 +2828,15 @@ export class CalendarView {
         self._showToast(`✓ Scheduled "${item.title}" at ${startTime}`);
         self.render();
         self._renderUnscheduledSidebar();
+      } else if (wasDragging) {
+        self.render();
+        self._renderUnscheduledSidebar();
+      }
+
+      // If sidebar was closing, ensure hidden state is cleanly restored
+      const sb = self.elements.unscheduledSidebar;
+      if (sb && !sb.classList.contains('open')) {
+        sb.classList.add('hidden');
       }
     };
 
@@ -2816,6 +2863,21 @@ export class CalendarView {
 
     const onWindowTouchEnd = () => {
       finishDrag();
+    };
+
+    const onWindowPointerMove = (pEv) => {
+      if (pEv.pointerType === 'touch') return;
+      onWindowMouseMove(pEv);
+    };
+
+    const onWindowPointerUp = () => {
+      finishDrag();
+    };
+
+    const onWindowBlur = () => {
+      if (isDragging) {
+        finishDrag();
+      }
     };
 
     const onWindowMouseMove = (moveEv) => {
@@ -2860,9 +2922,13 @@ export class CalendarView {
         startDragMode(lastClientX, lastClientY);
       }, 200);
 
-      window.addEventListener('touchmove', onWindowTouchMove, { passive: false });
-      window.addEventListener('touchend', onWindowTouchEnd, { passive: true });
-      window.addEventListener('touchcancel', onWindowTouchEnd, { passive: true });
+      window.addEventListener('touchmove', onWindowTouchMove, { capture: true, passive: false });
+      window.addEventListener('touchend', onWindowTouchEnd, { capture: true, passive: false });
+      window.addEventListener('touchcancel', onWindowTouchEnd, { capture: true, passive: false });
+      window.addEventListener('pointermove', onWindowPointerMove, { capture: true });
+      window.addEventListener('pointerup', onWindowPointerUp, { capture: true });
+      window.addEventListener('pointercancel', onWindowPointerUp, { capture: true });
+      window.addEventListener('blur', onWindowBlur);
     }, { passive: true });
 
     // Mouse initiation (for desktop)
@@ -2883,8 +2949,11 @@ export class CalendarView {
         startDragMode(lastClientX, lastClientY);
       }, 200);
 
-      window.addEventListener('mousemove', onWindowMouseMove);
-      window.addEventListener('mouseup', onWindowMouseUp);
+      window.addEventListener('mousemove', onWindowMouseMove, { capture: true });
+      window.addEventListener('mouseup', onWindowMouseUp, { capture: true });
+      window.addEventListener('pointerup', onWindowPointerUp, { capture: true });
+      window.addEventListener('pointercancel', onWindowPointerUp, { capture: true });
+      window.addEventListener('blur', onWindowBlur);
     });
   }
 
@@ -3228,6 +3297,8 @@ export class CalendarView {
       // Clicking empty slot creates a new event starting at that hour
       slotContent.addEventListener('click', (e) => {
         if (this.isSidebarOpen()) return;
+        if (this.isDraggingEvent) return;
+        if (this._justFinishedDragUntil && Date.now() < this._justFinishedDragUntil) return;
         if (e.target.closest('.day-event-card')) return;
         const rect = slotContent.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
@@ -3626,6 +3697,8 @@ export class CalendarView {
       // Quick add on clicking empty space in week view
       dayCol.addEventListener('click', (e) => {
         if (this.isSidebarOpen()) return;
+        if (this.isDraggingEvent) return;
+        if (this._justFinishedDragUntil && Date.now() < this._justFinishedDragUntil) return;
         if (e.target.closest('.week-event-card')) return;
         const rect = dayCol.getBoundingClientRect();
         const clickY = e.clientY - rect.top;
@@ -4203,6 +4276,8 @@ export class CalendarView {
     let silhouette = null;
     let autoScrollRaf = null;
     let dayNavTimer = null;
+    let dayPanAnimTimer = null;
+    let dayPanCooldownTimer = null;
     let isDayPanning = false;
     let isDayPanCooldown = false;
     let isHoldingAtEdge = 0;
@@ -4353,7 +4428,20 @@ export class CalendarView {
       activeContainer.style.transform = `translate3d(${exitX}px, 0, 0)`;
       adjacentSlide.style.transform = 'translate3d(0, 0, 0)';
 
-      setTimeout(() => {
+      dayPanAnimTimer = setTimeout(() => {
+        dayPanAnimTimer = null;
+        if (!isDragging) {
+          if (adjacentSlide && adjacentSlide.parentNode) {
+            adjacentSlide.parentNode.removeChild(adjacentSlide);
+          }
+          if (activeContainer) {
+            activeContainer.style.removeProperty('transform');
+            activeContainer.style.removeProperty('transition');
+          }
+          isDayPanning = false;
+          return;
+        }
+
         const savedScrollTop = container ? container.scrollTop : 0;
         this.navigate(direction, savedScrollTop);
         if (adjacentSlide && adjacentSlide.parentNode) {
@@ -4376,7 +4464,8 @@ export class CalendarView {
         }
 
         // Allow panning again after short cooldown; if user continues holding near edge, repeat pan continuously!
-        setTimeout(() => {
+        dayPanCooldownTimer = setTimeout(() => {
+          dayPanCooldownTimer = null;
           isDayPanCooldown = false;
           if (!isDragging) return;
 
@@ -4482,11 +4571,20 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
       this._activeDragCancelHandler = null;
 
       if (dayNavTimer) {
         clearTimeout(dayNavTimer);
         dayNavTimer = null;
+      }
+      if (dayPanAnimTimer) {
+        clearTimeout(dayPanAnimTimer);
+        dayPanAnimTimer = null;
+      }
+      if (dayPanCooldownTimer) {
+        clearTimeout(dayPanCooldownTimer);
+        dayPanCooldownTimer = null;
       }
       isDayPanCooldown = false;
       isDayPanning = false;
@@ -4612,6 +4710,14 @@ export class CalendarView {
         clearTimeout(dayNavTimer);
         dayNavTimer = null;
       }
+      if (dayPanAnimTimer) {
+        clearTimeout(dayPanAnimTimer);
+        dayPanAnimTimer = null;
+      }
+      if (dayPanCooldownTimer) {
+        clearTimeout(dayPanCooldownTimer);
+        dayPanCooldownTimer = null;
+      }
       isDayPanCooldown = false;
       isDayPanning = false;
       isHoldingAtEdge = 0;
@@ -4644,6 +4750,8 @@ export class CalendarView {
       // Dropped onto bottom-left Tasks button -> Unschedule and return to tasks pool
       if (wasOverTasks) {
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
+        this._justFinishedDragUntil = Date.now() + 200;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
         }
@@ -4693,6 +4801,7 @@ export class CalendarView {
 
       if (isHoldStill) {
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
         }
@@ -4760,6 +4869,7 @@ export class CalendarView {
       }
 
       this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
 
       mobileServices.hapticTap();
       this._showToast(`✓ Rescheduled to ${targetDateStr} (${newStartTime} - ${newEndTime})`);
@@ -5106,6 +5216,7 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
       this._activeDragCancelHandler = null;
 
       if (silhouette && silhouette.parentNode) {
@@ -5349,6 +5460,8 @@ export class CalendarView {
       // Dropped onto bottom-left Tasks button -> Unschedule and return to tasks pool
       if (wasOverTasks) {
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
+        this._justFinishedDragUntil = Date.now() + 200;
         taskStore.deleteCalendarEvent(ev.id);
 
         if (ev.masterTaskId) {
@@ -5383,6 +5496,7 @@ export class CalendarView {
 
       if (isHoldStill) {
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
         if (card.parentNode && card.parentNode === document.body) {
           document.body.removeChild(card);
         }
@@ -5439,11 +5553,13 @@ export class CalendarView {
         }
 
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
         mobileServices.hapticTap();
         this._showToast(`✓ Rescheduled to ${targetDate} (${dropTarget.startTime} - ${dropTarget.endTime})`);
         this.render();
       } else {
         this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
         this.render();
       }
     };
@@ -5723,6 +5839,7 @@ export class CalendarView {
       if (!isDragging) return;
       isDragging = false;
       this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
       this._activeDragCancelHandler = null;
 
       if (monthNavTimer) {
@@ -5892,6 +6009,7 @@ export class CalendarView {
             calendarSyncService.pushEventUpdate(updatedEv);
           }
           this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
           mobileServices.hapticTap();
           this._showToast(`✓ Moved to ${targetDateStr} (${ev.startTime} - ${ev.endTime})`);
           this.render();
@@ -5899,6 +6017,7 @@ export class CalendarView {
         }
       }
       this.isDraggingEvent = false;
+      this._justFinishedDragUntil = Date.now() + 200;
       this.render();
     };
 

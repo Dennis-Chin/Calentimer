@@ -406,12 +406,13 @@ body {
   display: inline-block;
   line-height: 1.1;
   animation: brandShimmer 5s linear infinite;
-  will-change: background-position;
+  will-change: background-position, transform;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   contain: layout paint;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes brandShimmer {
@@ -3841,6 +3842,10 @@ body.is-timer-standby .schedule-control-bar {
   pointer-events: none;
 }
 
+body.is-timer-standby .app-brand {
+  transform: translate3d(var(--brand-standby-shift, -42px), 0, 0);
+}
+
 body.is-timer-standby #btnOpenNav,
 body.is-timer-standby .btn-menu,
 body.is-timer-standby #modeSliderWrap,
@@ -3861,6 +3866,19 @@ body.is-timer-standby .task-drawer,
 body.is-timer-standby #taskDrawer {
   transform: translateY(100%) !important;
   box-shadow: none !important;
+  pointer-events: none !important;
+}
+
+/* Guard buttons while waking from standby mode so wake tap never accidentally presses buttons */
+body.is-waking-standby #btnOpenNav,
+body.is-waking-standby .btn-menu,
+body.is-waking-standby #modeSliderWrap,
+body.is-waking-standby #btnNotifToggle,
+body.is-waking-standby .timer-controls,
+body.is-waking-standby .timer-controls button,
+body.is-waking-standby .secondary-actions,
+body.is-waking-standby .secondary-actions button,
+body.is-waking-standby .task-drawer {
   pointer-events: none !important;
 }
 
@@ -5580,6 +5598,7 @@ body.is-timer-standby #taskDrawer {
 }
 
 .cal-sidebar-card.is-pressing {
+  touch-action: none !important;
   transform: scale(1.03) !important;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 2px var(--accent-cyan) !important;
   border-color: var(--accent-cyan) !important;

@@ -582,9 +582,12 @@ window.triggerLockPulseWarning = triggerLockPulseWarning;
 // Distraction-Free Standby Focus Mode
 // ==========================================
 let timerStandbyInactivityTimer = null;
+let isSuppressingWakeTap = false;
+let wakeSuppressTimer = null;
 
 function enterTimerStandbyMode() {
-  if (!runtime || runtime.status !== TimerStatus.RUNNING) return;
+  const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
+  if (!currentRuntime || currentRuntime.status !== TimerStatus.RUNNING) return;
   // Do not enter standby if any modal is visible or task drawer is expanded
   const drawerEl = document.getElementById('taskDrawer');
   if (drawerEl && !drawerEl.classList.contains('collapsed')) return;
@@ -597,8 +600,28 @@ function enterTimerStandbyMode() {
     clearTimeout(timerStandbyInactivityTimer);
     timerStandbyInactivityTimer = null;
   }
+
+  // Calculate brand shift so distance from its top to top of app equals distance from left to screen edge
+  const brandEl = document.querySelector('.app-brand');
+  if (brandEl && typeof brandEl.getBoundingClientRect === 'function') {
+    const rect = brandEl.getBoundingClientRect();
+    const appContainer = document.querySelector('.app-container');
+    const containerTop = (appContainer && typeof appContainer.getBoundingClientRect === 'function')
+      ? appContainer.getBoundingClientRect().top
+      : 0;
+    const distFromTop = Math.max(12, rect.top - containerTop);
+    const distFromLeft = rect.left;
+    const shiftX = Math.round(distFromTop - distFromLeft);
+    document.documentElement.style.setProperty('--brand-standby-shift', `${shiftX}px`);
+  }
+
   if (document.body) {
     document.body.classList.add('is-timer-standby');
+  }
+
+  // Keep screen on while timer is in standby mode
+  if (typeof mobileServices !== 'undefined' && typeof mobileServices.enableWakeLock === 'function') {
+    mobileServices.enableWakeLock();
   }
 }
 
@@ -612,8 +635,9 @@ function exitTimerStandbyMode(scheduleReentry) {
     document.body.classList.remove('is-timer-standby');
   }
 
+  const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
   // If timer is still running and scheduleReentry is true, re-enter standby after 5s of idle time
-  if (scheduleReentry && runtime && runtime.status === TimerStatus.RUNNING) {
+  if (scheduleReentry && currentRuntime && currentRuntime.status === TimerStatus.RUNNING) {
     timerStandbyInactivityTimer = setTimeout(() => {
       enterTimerStandbyMode();
     }, 5000);
@@ -622,10 +646,28 @@ function exitTimerStandbyMode(scheduleReentry) {
 window.enterTimerStandbyMode = enterTimerStandbyMode;
 window.exitTimerStandbyMode = exitTimerStandbyMode;
 
-function handleUserActivityWake() {
+function handleUserActivityWake(e) {
   if (document.body && document.body.classList.contains('is-timer-standby')) {
+    // Suppress the waking touch/pointer event so it never triggers clicks on hidden buttons underneath
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+    }
+    isSuppressingWakeTap = true;
+    document.body.classList.add('is-waking-standby');
+    if (wakeSuppressTimer) clearTimeout(wakeSuppressTimer);
+    wakeSuppressTimer = setTimeout(() => {
+      isSuppressingWakeTap = false;
+      if (document.body) document.body.classList.remove('is-waking-standby');
+      wakeSuppressTimer = null;
+    }, 380);
+
     exitTimerStandbyMode(true);
-  } else if (runtime && runtime.status === TimerStatus.RUNNING) {
+    return;
+  }
+
+  const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
+  if (currentRuntime && currentRuntime.status === TimerStatus.RUNNING) {
     if (timerStandbyInactivityTimer) {
       clearTimeout(timerStandbyInactivityTimer);
     }
@@ -635,10 +677,47 @@ function handleUserActivityWake() {
   }
 }
 
+function handleEmptySpaceMinimise(e) {
+  const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
+  if (!currentRuntime || currentRuntime.status !== TimerStatus.RUNNING) return;
+  if (!document.body || document.body.classList.contains('is-timer-standby') || document.body.classList.contains('is-waking-standby')) return;
+  if (isSuppressingWakeTap) return;
+
+  const target = e.target;
+  if (!target || typeof target.closest !== 'function') return;
+
+  // Check if target is an interactive button, dial, input, modal, or drawer
+  const isInteractive = target.closest(
+    'button, [role="button"], input, select, textarea, label, ' +
+    '.btn-menu, .mode-slider-wrap, .timer-quick-btn, .control-btn, .btn-finish-early, ' +
+    '#revolvingHitbox, #revolvingCircleGroup, #rotarySvg, .wheel-container, .timer-center-display, ' +
+    '.task-drawer, .modal-backdrop, .task-edit-modal-backdrop, .nav-sidebar, .cal-sidebar-card, ' +
+    '.day-event-card, .week-event-card, .time-bank-pill, .total-minutes-pill, .hard-stop-pill'
+  );
+
+  if (!isInteractive) {
+    enterTimerStandbyMode();
+  }
+}
+
 if (typeof window !== 'undefined') {
   ['pointerdown', 'touchstart', 'mousedown', 'pointermove', 'mousemove', 'touchmove', 'keydown'].forEach(evt => {
-    window.addEventListener(evt, handleUserActivityWake, { passive: true });
+    window.addEventListener(evt, handleUserActivityWake, { passive: false });
   });
+
+  const suppressClickDuringWake = (e) => {
+    if (isSuppressingWakeTap || (document.body && (document.body.classList.contains('is-timer-standby') || document.body.classList.contains('is-waking-standby')))) {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      }
+    }
+  };
+  window.addEventListener('click', suppressClickDuringWake, true);
+  window.addEventListener('touchend', suppressClickDuringWake, true);
+  window.addEventListener('pointerup', suppressClickDuringWake, true);
+
+  window.addEventListener('click', handleEmptySpaceMinimise, false);
 }
 
 // ==========================================
@@ -902,6 +981,15 @@ function setupRuntimeEvents() {
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
+      try {
+        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
+          const exitPromise = exitFs.call(document);
+          if (exitPromise && typeof exitPromise.catch === 'function') {
+            exitPromise.catch(() => {});
+          }
+        }
+      } catch (_) {}
       const activeTask = runtime.getActiveTask();
       const nextTask = ((runtime.currentSchedule && runtime.currentSchedule.tasks) || [])[runtime.activeTaskIndex + 1] || null;
       mobileServices.updateLiveNotification({
@@ -916,6 +1004,15 @@ function setupRuntimeEvents() {
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
       mobileServices.disableWakeLock();
+      try {
+        const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
+          const exitPromise = exitFs.call(document);
+          if (exitPromise && typeof exitPromise.catch === 'function') {
+            exitPromise.catch(() => {});
+          }
+        }
+      } catch (_) {}
       mobileServices.clearLiveNotification();
     }
     updateResetButtonUI();
@@ -1987,6 +2084,16 @@ function setupControls() {
       if ('Notification' in window && Notification.permission === 'default' && taskStore.getAlertsEnabled()) {
         mobileServices.requestNotificationPermission();
       }
+      try {
+        const docEl = document.documentElement;
+        const requestFs = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.msRequestFullscreen;
+        if (requestFs && !document.fullscreenElement && !document.webkitFullscreenElement) {
+          const fsPromise = requestFs.call(docEl, { navigationUI: 'hide' });
+          if (fsPromise && typeof fsPromise.catch === 'function') {
+            fsPromise.catch(() => {});
+          }
+        }
+      } catch (_) {}
       runtime.start();
     }
   });
@@ -1996,6 +2103,15 @@ function setupControls() {
   // - While timer is not running -> Reset button: resets the whole day of events
   btnStopTime.addEventListener('click', () => {
     exitTimerStandbyMode(false);
+    try {
+      const exitFs = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
+        const exitPromise = exitFs.call(document);
+        if (exitPromise && typeof exitPromise.catch === 'function') {
+          exitPromise.catch(() => {});
+        }
+      }
+    } catch (_) {}
     mobileServices.hapticTap();
     analytics.trackInteraction('btn_click', 'btnStopTime', { isRunning: runtime.status === TimerStatus.RUNNING });
     if (runtime.status === TimerStatus.RUNNING) {
