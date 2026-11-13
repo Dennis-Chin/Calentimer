@@ -403,6 +403,16 @@ assert(cssContent.indexOf('@keyframes lavaDriftOne') !== -1, 'style.css defines 
 assert(cssContent.indexOf('(orientation: landscape)') !== -1, 'style.css defines landscape media queries');
 assert(cssContent.indexOf('body.galaxy-theme-active') !== -1, 'style.css defines galaxy-theme-active easter egg styles');
 assert(cssContent.indexOf('background-image: none !important;') !== -1, 'style.css eliminates body radial gradient contour rings');
+assert(cssContent.indexOf('backdrop-filter: blur(80px)') === -1, 'style.css removes heavy backdrop-filter that caused GPU redraw flickering');
+assert(cssContent.indexOf('radial-gradient(rgba(255, 255, 255, 0.012)') === -1, 'style.css removes dot-grid texture to keep pure smooth matte look');
+assert(cssContent.indexOf('body.galaxy-theme-active .nav-item.active') !== -1, 'style.css styles active nav item dark purple in galaxy mode');
+assert(cssContent.indexOf('body.galaxy-theme-active .nav-install-item') !== -1, 'style.css styles install app button dark blue in galaxy mode');
+assert(cssContent.indexOf('animation: brandShimmer 5s linear infinite !important;') !== -1, 'style.css preserves continuous brand shimmer animation in galaxy mode');
+assert(cssContent.indexOf('translateX(calc(100% - 48px))') !== -1, 'style.css positions right-edge task drawer tab in landscape mode');
+
+const htmlContent = readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+assert(htmlContent.indexOf('id="settingRowGalaxyScheme"') !== -1, 'index.html defines #settingRowGalaxyScheme in Settings');
+assert(htmlContent.indexOf('id="btnSchemeGalaxy"') !== -1, 'index.html defines #btnSchemeGalaxy segmented button');
 
 console.log('\n--- 9. Testing Idle Tap Empty Space Minimise Before Timer Starts ---');
 taskDrawer.className = 'task-drawer collapsed';
@@ -416,7 +426,12 @@ emptySpaceBeforeStart.closest = () => null;
 window.dispatchSimulatedEvent('click', { target: emptySpaceBeforeStart });
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space minimizes to standby even before timer starts');
 
-console.log('\n--- 10. Testing Logo 3-Tap Easter Egg for Galaxy Theme ---');
+console.log('\n--- 10. Testing Logo 3-Tap Easter Egg for Galaxy Theme & Settings Unlocking ---');
+taskStore.setGalaxyThemeUnlocked(false);
+assert(taskStore.getGalaxyThemeUnlocked() === false, 'taskStore.getGalaxyThemeUnlocked returns false initially');
+taskStore.setGalaxyThemeUnlocked(true);
+assert(taskStore.getGalaxyThemeUnlocked() === true, 'taskStore.getGalaxyThemeUnlocked returns true after unlock');
+
 const brandLogoEl = getOrCreateMockElement('appBrand');
 brandLogoEl.className = 'app-brand';
 // Trigger 3 taps

@@ -352,7 +352,8 @@ body {
 /* ==========================================================================
    Dynamic Lava Lamp Ambient Background (Hardware-accelerated, zero CPU jank)
    Frosted glass backdrop with ultra-soft organic gradients & smooth matte texture
-   Micro-dithering completely eliminates 8-bit color quantization banding
+   Frosted glass backdrop with ultra-soft organic gradients
+   Silky smooth matte finish with zero dot texture, zero grain, and zero flickering
    ========================================================================== */
 .ambient-lava-bg {
   position: fixed;
@@ -365,10 +366,6 @@ body {
   z-index: 0;
   opacity: 0;
   transition: opacity 1.2s ease-in-out;
-  backdrop-filter: blur(80px);
-  -webkit-backdrop-filter: blur(80px);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px);
-  background-size: 4px 4px;
 }
 
 body.has-lava-lamp .ambient-lava-bg,
@@ -379,53 +376,53 @@ body.galaxy-theme-active .ambient-lava-bg {
 .lava-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(140px);
-  -webkit-filter: blur(140px);
+  filter: blur(90px);
+  -webkit-filter: blur(90px);
   will-change: transform;
   transform: translate3d(0, 0, 0);
   pointer-events: none;
 }
 
-/* Orb 1: Primary Emerald Glow (or Galaxy Dark Blue) */
+/* Orb 1: Primary Emerald Glow */
 .lava-orb-1 {
   width: min(650px, 90vw);
   height: min(650px, 90vw);
   top: 5%;
   left: 10%;
-  background: linear-gradient(135deg, rgba(0, 255, 136, 0.075), rgba(16, 185, 129, 0.02));
+  background: radial-gradient(circle, rgba(0, 255, 136, 0.22) 0%, rgba(16, 185, 129, 0.08) 50%, transparent 75%);
   animation: lavaDriftOne 32s ease-in-out infinite alternate;
 }
 
-/* Orb 2: Electric Cyan Glow (or Galaxy Indigo / Purple) */
+/* Orb 2: Electric Cyan Glow */
 .lava-orb-2 {
   width: min(700px, 95vw);
   height: min(700px, 95vw);
   top: 30%;
   right: 5%;
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.06), rgba(6, 182, 212, 0.015));
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.18) 0%, rgba(6, 182, 212, 0.06) 50%, transparent 75%);
   animation: lavaDriftTwo 40s ease-in-out infinite alternate;
 }
 
-/* Orb 3: Soft Lower Ambient Glow (or Galaxy Deep Violet) */
+/* Orb 3: Soft Lower Ambient Glow */
 .lava-orb-3 {
   width: min(750px, 100vw);
   height: min(750px, 100vw);
   bottom: 0%;
   left: 20%;
-  background: linear-gradient(135deg, rgba(0, 255, 136, 0.045), rgba(0, 240, 255, 0.015));
+  background: radial-gradient(circle, rgba(0, 255, 136, 0.14) 0%, rgba(0, 240, 255, 0.05) 50%, transparent 75%);
   animation: lavaDriftThree 48s ease-in-out infinite alternate;
 }
 
 [data-theme="light"] .lava-orb-1 {
-  background: linear-gradient(135deg, rgba(5, 150, 105, 0.065), rgba(16, 185, 129, 0.015));
+  background: radial-gradient(circle, rgba(5, 150, 105, 0.16) 0%, rgba(16, 185, 129, 0.05) 50%, transparent 75%);
 }
 
 [data-theme="light"] .lava-orb-2 {
-  background: linear-gradient(135deg, rgba(2, 132, 199, 0.055), rgba(14, 165, 233, 0.01));
+  background: radial-gradient(circle, rgba(2, 132, 199, 0.14) 0%, rgba(14, 165, 233, 0.04) 50%, transparent 75%);
 }
 
 [data-theme="light"] .lava-orb-3 {
-  background: linear-gradient(135deg, rgba(5, 150, 105, 0.04), rgba(2, 132, 199, 0.01));
+  background: radial-gradient(circle, rgba(5, 150, 105, 0.1) 0%, rgba(2, 132, 199, 0.03) 50%, transparent 75%);
 }
 
 /* ==========================================================================
@@ -437,23 +434,23 @@ body.galaxy-theme-active {
 }
 
 body.galaxy-theme-active .lava-orb-1 {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(29, 78, 216, 0.035)) !important;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.32) 0%, rgba(37, 99, 235, 0.12) 50%, transparent 75%) !important;
 }
 
 body.galaxy-theme-active .lava-orb-2 {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.11), rgba(126, 34, 206, 0.03)) !important;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.28) 0%, rgba(147, 51, 234, 0.1) 50%, transparent 75%) !important;
 }
 
 body.galaxy-theme-active .lava-orb-3 {
-  background: linear-gradient(135deg, rgba(192, 132, 252, 0.08), rgba(99, 102, 241, 0.025)) !important;
+  background: radial-gradient(circle, rgba(192, 132, 252, 0.22) 0%, rgba(99, 102, 241, 0.08) 50%, transparent 75%) !important;
 }
 
 body.galaxy-theme-active .app-brand {
-  background: linear-gradient(
+  background-image: linear-gradient(
     90deg,
     #3b82f6 0%,
     #8b5cf6 22%,
-    #e9d5ff 45%,
+    #ffffff 45%,
     #ffffff 55%,
     #a855f7 78%,
     #2563eb 100%
@@ -463,6 +460,47 @@ body.galaxy-theme-active .app-brand {
   background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   color: transparent !important;
+  animation: brandShimmer 5s linear infinite !important;
+}
+
+/* Galaxy Sidebar UI: Selected item highlighted dark purple */
+body.galaxy-theme-active .nav-item.active {
+  background: rgba(147, 51, 234, 0.2) !important;
+  color: #c084fc !important;
+  border: 1px solid rgba(168, 85, 247, 0.45) !important;
+}
+
+body.galaxy-theme-active .nav-item.active svg {
+  color: #c084fc !important;
+  stroke: #c084fc !important;
+}
+
+/* Galaxy Sidebar UI: Drawer logo at top changes to cosmic gradient */
+body.galaxy-theme-active .app-brand-drawer {
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #c084fc 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* Galaxy Sidebar UI: Install app button at bottom turns dark blue */
+body.galaxy-theme-active .nav-install-item,
+body.galaxy-theme-active .nav-install-item svg {
+  color: #3b82f6 !important;
+  stroke: #3b82f6 !important;
+}
+
+body.galaxy-theme-active .nav-install-item:hover,
+body.galaxy-theme-active .nav-install-item:active {
+  background: rgba(59, 130, 246, 0.12) !important;
+}
+
+/* Galaxy Settings Segmented Control Active State */
+.theme-segmented-control #btnSchemeGalaxy.active {
+  background: rgba(147, 51, 234, 0.28) !important;
+  border-color: rgba(168, 85, 247, 0.55) !important;
+  color: #c084fc !important;
+  box-shadow: 0 2px 10px rgba(168, 85, 247, 0.3) !important;
 }
 
 @keyframes lavaDriftOne {
@@ -9356,25 +9394,39 @@ body.simple-mode-active #calendarSimpleActions {
     margin-left: 0;
   }
 
-  /* Center the timer dial horizontally and vertically */
+  /* Timer Viewport full-bleed so flank controls are positioned relative to screen edges */
   .timer-viewport {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(84vh, 84vw, 360px);
-    height: min(84vh, 84vw, 360px);
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    transform: none;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     justify-content: center;
     align-items: center;
     padding: 0;
     margin: 0;
+    pointer-events: none;
     z-index: 10;
   }
 
+  /* Center the timer dial horizontally and vertically */
   .wheel-container {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(82vh, 44vw, 360px);
+    height: min(82vh, 44vw, 360px);
     margin-top: 0;
+    pointer-events: auto;
   }
 
   .schedule-concept-bar {
@@ -9392,39 +9444,97 @@ body.simple-mode-active #calendarSimpleActions {
     gap: 12px;
     width: auto;
     margin: 0;
+    pointer-events: auto;
     z-index: 20;
     transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Primary control buttons placed elegantly on right side */
+  /* Primary control buttons placed cleanly on the right side of the dial */
   .timer-controls {
     position: absolute;
-    right: calc(env(safe-area-inset-right, 0px) + 28px);
+    right: calc(env(safe-area-inset-right, 0px) + 32px);
     top: 50%;
     transform: translateY(-50%);
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
     width: auto;
     margin: 0;
+    pointer-events: auto;
     z-index: 20;
     transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Finish Early action button sits on right side below controls or under schedule bar */
+  /* Finish Early action button sits at bottom center (where Today's Schedule tab was in portrait) */
   .secondary-actions {
     position: absolute;
-    left: calc(env(safe-area-inset-left, 0px) + 24px);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    left: 50%;
+    transform: translateX(-50%);
     width: auto;
-    max-width: 220px;
+    max-width: 340px;
     margin: 0;
+    pointer-events: auto;
     z-index: 20;
     transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .btn-finish-early {
-    padding: 6px 12px;
-    font-size: 0.72rem;
+    padding: 7px 16px;
+    font-size: 0.74rem;
+  }
+
+  /* In landscape, Today's Schedule transforms into a right-side tab drawer */
+  .task-drawer {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    left: auto;
+    margin: 0;
+    width: min(440px, 80vw);
+    max-width: 440px;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 20px 0 0 20px;
+    border: 1px solid var(--border-subtle);
+    border-right: none;
+    box-shadow: -8px 0 36px rgba(0, 0, 0, 0.55);
+    transform: translateX(0);
+    transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease;
+  }
+
+  .task-drawer.collapsed {
+    transform: translateX(calc(100% - 48px));
+    box-shadow: -3px 0 18px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+  }
+
+  .task-drawer .drawer-header {
+    border-top-left-radius: 20px;
+    border-top-right-radius: 0;
+  }
+
+  .task-drawer.collapsed .drawer-header {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  /* Point arrow left when collapsed in landscape, point right when open */
+  .task-drawer.collapsed .drawer-arrow-icon {
+    transform: rotate(90deg);
+  }
+
+  .task-drawer:not(.collapsed) .drawer-arrow-icon {
+    transform: rotate(-90deg);
+  }
+
+  .task-drawer.collapsed.will-open .drawer-arrow-icon {
+    transform: rotate(-90deg);
+  }
+
+  .task-drawer:not(.collapsed).will-minimise .drawer-arrow-icon {
+    transform: rotate(90deg);
   }
 
   /* Standby mode transitions in horizontal landscape orientation */
@@ -9443,19 +9553,16 @@ body.simple-mode-active #calendarSimpleActions {
   body.is-timer-standby .secondary-actions {
     opacity: 0;
     pointer-events: none;
-    transform: translateY(18px);
+    transform: translateX(-50%) translateY(20px);
+  }
+
+  body.is-timer-standby .task-drawer {
+    transform: translateX(100%) !important;
   }
 
   /* Standby logo positioning in landscape: keep it far left with standard top margin */
   body.is-timer-standby .app-brand {
-    transform: translate3d(var(--brand-standby-shift, -14px), 0, 0);
-  }
-
-  /* Bottom drawer adapts to landscape */
-  .task-drawer {
-    max-width: min(560px, 92vw);
-    height: 90vh;
-    max-height: 90vh;
+    transform: translate3d(var(--brand-standby-shift, -36px), 0, 0);
   }
 }
 

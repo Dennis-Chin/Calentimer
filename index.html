@@ -106,7 +106,7 @@
   <link rel="apple-touch-icon" sizes="192x192" href="icon.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=20">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -574,6 +574,18 @@
                 <button type="button" class="theme-segment-btn" data-theme-val="dark">Dark</button>
                 <button type="button" class="theme-segment-btn" data-theme-val="light">Light</button>
                 <button type="button" class="theme-segment-btn" data-theme-val="system">Default</button>
+              </div>
+            </div>
+
+            <!-- Galaxy Colour Scheme Toggle (Unlocked via Easter Egg) -->
+            <div class="setting-row hidden" id="settingRowGalaxyScheme">
+              <div class="setting-info">
+                <span class="setting-label">Colour Scheme</span>
+                <span class="setting-desc">Standard Emerald or Cosmic Galaxy 🌌</span>
+              </div>
+              <div class="theme-segmented-control" id="schemeSegmented">
+                <button type="button" class="theme-segment-btn active" id="btnSchemeStandard" data-scheme-val="standard">Standard</button>
+                <button type="button" class="theme-segment-btn" id="btnSchemeGalaxy" data-scheme-val="galaxy">Galaxy 🌌</button>
               </div>
             </div>
 
@@ -2642,6 +2654,6 @@
       });
     }
   </script>
-  <script type="module" src="app.js?v=18"></script>
+  <script type="module" src="app.js?v=20"></script>
 </body>
 </html>

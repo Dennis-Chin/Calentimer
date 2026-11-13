@@ -599,23 +599,27 @@ let wakeSuppressTimer = null;
 let cachedBrandStandbyShift = null;
 
 function getBrandStandbyShift() {
-  if (cachedBrandStandbyShift !== null) {
+  const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight;
+  if (isLandscape) {
+    return -36;
+  }
+  if (cachedBrandStandbyShift !== null && cachedBrandStandbyShift <= -18) {
     return cachedBrandStandbyShift;
   }
   const brandEl = document.querySelector('.app-brand');
   const btnMenu = document.querySelector('.btn-menu') || document.getElementById('btnOpenNav');
-  if (brandEl && btnMenu && typeof brandEl.getBoundingClientRect === 'function' && typeof btnMenu.getBoundingClientRect === 'function') {
+  const wasStandby = document.body && document.body.classList.contains('is-timer-standby');
+  if (!wasStandby && brandEl && btnMenu && typeof brandEl.getBoundingClientRect === 'function' && typeof btnMenu.getBoundingClientRect === 'function') {
     const menuRect = btnMenu.getBoundingClientRect();
     const brandRect = brandEl.getBoundingClientRect();
     // Offset by +34px (~1cm) rightward from the far-left edge so it doesn't hug the screen bezel
     const diff = Math.round(menuRect.left - brandRect.left) + 34;
-    if (diff < -5) {
+    if (diff <= -18) {
       cachedBrandStandbyShift = diff;
       return cachedBrandStandbyShift;
     }
   }
-  cachedBrandStandbyShift = -14;
-  return cachedBrandStandbyShift;
+  return -36;
 }
 
 function enterTimerStandbyMode(allowIdleManual) {
@@ -2799,13 +2803,15 @@ function setupControls() {
   }
   if (taskDrawerBackdrop) taskDrawerBackdrop.addEventListener('click', closeTaskDrawer);
 
-  // Swipe up to open Today's Tasks tab; swipe down to minimise it (with live rubberband)
+  // Swipe up/down (portrait) or left/right (landscape) to open/minimise Today's Tasks tab
   let drawerTouchStartY = 0;
   let drawerTouchStartX = 0;
   let drawerTouchStartTime = 0;
   isDrawerTouching = false;
   isDrawerPullingDown = false;
   isDrawerPullingUp = false;
+  let isDrawerPullingLeft = false;
+  let isDrawerPullingRight = false;
 
   function onDrawerTouchStart(e) {
     if (isNavSwiping) return;
@@ -2813,6 +2819,8 @@ function setupControls() {
       isDrawerTouching = false;
       isDrawerPullingDown = false;
       isDrawerPullingUp = false;
+      isDrawerPullingLeft = false;
+      isDrawerPullingRight = false;
       return;
     }
     if (!e.touches || e.touches.length !== 1) return;
@@ -2822,48 +2830,52 @@ function setupControls() {
     isDrawerTouching = true;
     isDrawerPullingDown = false;
     isDrawerPullingUp = false;
+    isDrawerPullingLeft = false;
+    isDrawerPullingRight = false;
   }
 
   function onDrawerTouchMove(e) {
     if (isNavSwiping) {
-      if (isDrawerPullingDown || isDrawerPullingUp) {
+      if (isDrawerPullingDown || isDrawerPullingUp || isDrawerPullingLeft || isDrawerPullingRight) {
         taskDrawer.style.removeProperty('transform');
         taskDrawer.classList.remove('will-minimise', 'will-open');
         isDrawerPullingDown = false;
         isDrawerPullingUp = false;
+        isDrawerPullingLeft = false;
+        isDrawerPullingRight = false;
       }
       isDrawerTouching = false;
       return;
     }
     if (isDraggingTask) {
       isDrawerTouching = false;
-      if (isDrawerPullingDown || isDrawerPullingUp) {
+      if (isDrawerPullingDown || isDrawerPullingUp || isDrawerPullingLeft || isDrawerPullingRight) {
         taskDrawer.style.removeProperty('transform');
         taskDrawer.classList.remove('will-minimise', 'will-open');
         isDrawerPullingDown = false;
         isDrawerPullingUp = false;
+        isDrawerPullingLeft = false;
+        isDrawerPullingRight = false;
       }
       return;
     }
     if (!isDrawerTouching || !e.touches || e.touches.length !== 1) return;
     const currentY = e.touches[0].clientY;
     const currentX = e.touches[0].clientX;
+    const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight;
 
     if (!taskDrawer.classList.contains('collapsed')) {
       const drawerContentEl = document.getElementById('drawerContent');
       const isHeaderTouch = Boolean(e.target.closest('#drawerHeader, .drawer-header'));
       const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
 
-      // If user is scrolling inside drawer content and not yet at the top, continually anchor
-      // the touch start position to current finger position. When they finally reach the top,
-      // downward pull resistance starts fresh from that exact point (requiring the full 65px drag
-      // rather than jumping directly into minimisation).
       if (!isHeaderTouch && !isAtTop) {
         drawerTouchStartY = currentY;
         drawerTouchStartX = currentX;
         drawerTouchStartTime = Date.now();
-        if (isDrawerPullingDown) {
+        if (isDrawerPullingDown || isDrawerPullingRight) {
           isDrawerPullingDown = false;
+          isDrawerPullingRight = false;
           taskDrawer.classList.remove('will-minimise');
           taskDrawer.style.removeProperty('transform');
         }
@@ -2874,89 +2886,148 @@ function setupControls() {
     const deltaY = currentY - drawerTouchStartY;
     const deltaX = currentX - drawerTouchStartX;
 
-    // Only respond to predominantly vertical swipes
-    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
-      if (taskDrawer.classList.contains('collapsed')) {
-        // Swiping UP when collapsed with resistance and 180 deg rotating arrow
-        if (deltaY < 0) {
-          isDrawerPullingUp = true;
-          // Live rubberband upward pull with resistance (0.45 damping)
-          const rubberbandY = -Math.min(Math.abs(deltaY) * 0.45, 90);
-          taskDrawer.style.transition = 'none';
-          taskDrawer.style.setProperty('transform', `translateY(calc(100% - 56px + ${rubberbandY}px))`, 'important');
-
-          // When swiped with enough resistance (>= 60px), rotate arrow 180 deg to point up; rotate back if pulled down
-          if (Math.abs(deltaY) >= 60) {
-            taskDrawer.classList.add('will-open');
-          } else {
+    if (isLandscape) {
+      // In landscape, Today's Schedule is a right-side drawer: swipe left to open, swipe right to minimise
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+        if (taskDrawer.classList.contains('collapsed')) {
+          if (deltaX < 0) {
+            isDrawerPullingLeft = true;
+            const rubberbandX = -Math.min(Math.abs(deltaX) * 0.45, 90);
+            taskDrawer.style.transition = 'none';
+            taskDrawer.style.setProperty('transform', `translateX(calc(100% - 48px + ${rubberbandX}px))`, 'important');
+            if (Math.abs(deltaX) >= 60) {
+              taskDrawer.classList.add('will-open');
+            } else {
+              taskDrawer.classList.remove('will-open');
+            }
+          } else if (deltaX >= 0 && isDrawerPullingLeft) {
             taskDrawer.classList.remove('will-open');
           }
-        } else if (deltaY >= 0 && isDrawerPullingUp) {
-          taskDrawer.classList.remove('will-open');
-        }
-      } else {
-        // Swiping DOWN when expanded: only allow when user is at the top of drawer content (scrollTop <= 0) or touching the header
-        const drawerContentEl = document.getElementById('drawerContent');
-        const isHeaderTouch = e.target.closest('#drawerHeader, .drawer-header');
-        const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
-
-        if ((isHeaderTouch || isAtTop) && deltaY > 0) {
-          isDrawerPullingDown = true;
-          // Live rubberband pull visual
-          const rubberbandY = Math.min(deltaY * 0.45, 120);
-          taskDrawer.style.transition = 'none';
-          taskDrawer.style.setProperty('transform', `translateY(${rubberbandY}px)`, 'important');
-
-          // Rotate arrow 180° clockwise when swiped >= 65px to indicate release will minimise; rotate back if pulled back
-          if (deltaY >= 65) {
-            taskDrawer.classList.add('will-minimise');
-          } else {
+        } else {
+          const isHeaderTouch = Boolean(e.target.closest('#drawerHeader, .drawer-header'));
+          const drawerContentEl = document.getElementById('drawerContent');
+          const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
+          if ((isHeaderTouch || isAtTop) && deltaX > 0) {
+            isDrawerPullingRight = true;
+            const rubberbandX = Math.min(deltaX * 0.45, 120);
+            taskDrawer.style.transition = 'none';
+            taskDrawer.style.setProperty('transform', `translateX(${rubberbandX}px)`, 'important');
+            if (deltaX >= 65) {
+              taskDrawer.classList.add('will-minimise');
+            } else {
+              taskDrawer.classList.remove('will-minimise');
+            }
+          } else if (deltaX <= 0 && isDrawerPullingRight) {
+            isDrawerPullingRight = false;
             taskDrawer.classList.remove('will-minimise');
+            taskDrawer.style.removeProperty('transform');
           }
-        } else if (deltaY <= 0 && isDrawerPullingDown) {
-          isDrawerPullingDown = false;
-          taskDrawer.classList.remove('will-minimise');
-          taskDrawer.style.removeProperty('transform');
+        }
+      }
+    } else {
+      // In portrait, vertical gestures: swipe up to open, swipe down to minimise
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+        if (taskDrawer.classList.contains('collapsed')) {
+          if (deltaY < 0) {
+            isDrawerPullingUp = true;
+            const rubberbandY = -Math.min(Math.abs(deltaY) * 0.45, 90);
+            taskDrawer.style.transition = 'none';
+            taskDrawer.style.setProperty('transform', `translateY(calc(100% - 56px + ${rubberbandY}px))`, 'important');
+            if (Math.abs(deltaY) >= 60) {
+              taskDrawer.classList.add('will-open');
+            } else {
+              taskDrawer.classList.remove('will-open');
+            }
+          } else if (deltaY >= 0 && isDrawerPullingUp) {
+            taskDrawer.classList.remove('will-open');
+          }
+        } else {
+          const drawerContentEl = document.getElementById('drawerContent');
+          const isHeaderTouch = e.target.closest('#drawerHeader, .drawer-header');
+          const isAtTop = !drawerContentEl || drawerContentEl.scrollTop <= 0;
+          if ((isHeaderTouch || isAtTop) && deltaY > 0) {
+            isDrawerPullingDown = true;
+            const rubberbandY = Math.min(deltaY * 0.45, 120);
+            taskDrawer.style.transition = 'none';
+            taskDrawer.style.setProperty('transform', `translateY(${rubberbandY}px)`, 'important');
+            if (deltaY >= 65) {
+              taskDrawer.classList.add('will-minimise');
+            } else {
+              taskDrawer.classList.remove('will-minimise');
+            }
+          } else if (deltaY <= 0 && isDrawerPullingDown) {
+            isDrawerPullingDown = false;
+            taskDrawer.classList.remove('will-minimise');
+            taskDrawer.style.removeProperty('transform');
+          }
         }
       }
     }
   }
 
   function onDrawerTouchEnd(e) {
+    const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight;
     const currentY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0;
+    const currentX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : 0;
     const deltaY = currentY - drawerTouchStartY;
+    const deltaX = currentX - drawerTouchStartX;
     const elapsedMs = Math.max(1, Date.now() - drawerTouchStartTime);
-    const flickVelocity = Math.abs(deltaY) / elapsedMs; // px per ms
 
-    if (isDrawerPullingUp) {
-      taskDrawer.style.transition = '';
-      // Opens when either flicked up (deltaY < -30 with speed) or swiped with enough resistance (deltaY <= -60)
-      if (deltaY <= -60 || (deltaY < -30 && flickVelocity > 0.35)) {
-        taskDrawer.classList.remove('will-open');
-        taskDrawer.style.removeProperty('transform');
-        openTaskDrawer();
-      } else {
-        // Snap back to collapsed state
-        taskDrawer.classList.remove('will-open');
-        taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        taskDrawer.style.removeProperty('transform');
+    if (isLandscape) {
+      const flickVelocityX = Math.abs(deltaX) / elapsedMs;
+      if (isDrawerPullingLeft) {
+        taskDrawer.style.transition = '';
+        if (deltaX <= -60 || (deltaX < -30 && flickVelocityX > 0.35)) {
+          taskDrawer.classList.remove('will-open');
+          taskDrawer.style.removeProperty('transform');
+          openTaskDrawer();
+        } else {
+          taskDrawer.classList.remove('will-open');
+          taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+          taskDrawer.style.removeProperty('transform');
+        }
+      }
+      if (isDrawerPullingRight) {
+        taskDrawer.style.transition = '';
+        if (deltaX > 65 || (deltaX > 30 && flickVelocityX > 0.35)) {
+          taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.removeProperty('transform');
+          closeTaskDrawer();
+        } else {
+          taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+          taskDrawer.style.removeProperty('transform');
+        }
+      }
+    } else {
+      const flickVelocity = Math.abs(deltaY) / elapsedMs;
+      if (isDrawerPullingUp) {
+        taskDrawer.style.transition = '';
+        if (deltaY <= -60 || (deltaY < -30 && flickVelocity > 0.35)) {
+          taskDrawer.classList.remove('will-open');
+          taskDrawer.style.removeProperty('transform');
+          openTaskDrawer();
+        } else {
+          taskDrawer.classList.remove('will-open');
+          taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+          taskDrawer.style.removeProperty('transform');
+        }
+      }
+      if (isDrawerPullingDown) {
+        taskDrawer.style.transition = '';
+        if (deltaY > 65 || (deltaY > 30 && flickVelocity > 0.35)) {
+          taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.removeProperty('transform');
+          closeTaskDrawer();
+        } else {
+          taskDrawer.classList.remove('will-minimise');
+          taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
+          taskDrawer.style.removeProperty('transform');
+        }
       }
     }
 
-    if (isDrawerPullingDown) {
-      taskDrawer.style.transition = '';
-      if (deltaY > 65 || (deltaY > 30 && flickVelocity > 0.35)) {
-        taskDrawer.classList.remove('will-minimise');
-        taskDrawer.style.removeProperty('transform');
-        closeTaskDrawer();
-      } else {
-        taskDrawer.classList.remove('will-minimise');
-        taskDrawer.style.transition = 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)';
-        taskDrawer.style.removeProperty('transform');
-      }
-    }
-
-    if (isDrawerPullingUp || isDrawerPullingDown) {
+    if (isDrawerPullingUp || isDrawerPullingDown || isDrawerPullingLeft || isDrawerPullingRight) {
       const suppressClick = (clickEv) => {
         clickEv.stopPropagation();
         clickEv.preventDefault();
@@ -2972,6 +3043,8 @@ function setupControls() {
     isDrawerTouching = false;
     isDrawerPullingDown = false;
     isDrawerPullingUp = false;
+    isDrawerPullingLeft = false;
+    isDrawerPullingRight = false;
   }
 
   function onDrawerTouchCancel() {
@@ -5358,7 +5431,7 @@ function applyTheme(theme) {
     metaThemeColor.setAttribute('content', resolvedTheme === 'light' ? '#f4f5f8' : '#0a0a0f');
   }
 
-  const segmentBtns = document.querySelectorAll('.theme-segment-btn');
+  const segmentBtns = document.querySelectorAll('#themeSegmented .theme-segment-btn');
   segmentBtns.forEach(btn => {
     if (btn.getAttribute('data-theme-val') === activeTheme) {
       btn.classList.add('active');
@@ -6475,6 +6548,9 @@ function openSettings() {
   if (settingsMainGroup) settingsMainGroup.classList.remove('hidden');
   if (settingsMainHeader) settingsMainHeader.classList.remove('hidden');
   applyTheme(taskStore.getTheme());
+  if (typeof syncGalaxySchemeUI === 'function') {
+    syncGalaxySchemeUI();
+  }
   if (settingsModalBackdrop) {
     settingsModalBackdrop.classList.remove('hidden');
   }
@@ -9300,7 +9376,7 @@ function setupNavigationAndModals() {
   }
 
   // Theme segmented buttons in Settings
-  const themeSegmentBtns = document.querySelectorAll('.theme-segment-btn');
+  const themeSegmentBtns = document.querySelectorAll('#themeSegmented .theme-segment-btn');
   themeSegmentBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const selectedTheme = btn.getAttribute('data-theme-val');
@@ -9309,6 +9385,58 @@ function setupNavigationAndModals() {
       mobileServices.hapticTap();
     });
   });
+
+  // Galaxy Colour Scheme segmented buttons in Settings (Standard vs Galaxy 🌌)
+  const settingRowGalaxyScheme = document.getElementById('settingRowGalaxyScheme');
+  const btnSchemeStandard = document.getElementById('btnSchemeStandard');
+  const btnSchemeGalaxy = document.getElementById('btnSchemeGalaxy');
+
+  function syncGalaxySchemeUI() {
+    const isUnlocked = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeUnlocked === 'function')
+      ? taskStore.getGalaxyThemeUnlocked()
+      : false;
+    const isGalaxy = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeEnabled === 'function')
+      ? taskStore.getGalaxyThemeEnabled()
+      : false;
+
+    if (settingRowGalaxyScheme) {
+      settingRowGalaxyScheme.classList.toggle('hidden', !isUnlocked);
+    }
+    if (btnSchemeStandard && btnSchemeGalaxy) {
+      btnSchemeStandard.classList.toggle('active', !isGalaxy);
+      btnSchemeGalaxy.classList.toggle('active', isGalaxy);
+    }
+  }
+  window.syncGalaxySchemeUI = syncGalaxySchemeUI;
+
+  if (btnSchemeStandard) {
+    btnSchemeStandard.addEventListener('click', () => {
+      if (typeof taskStore !== 'undefined' && typeof taskStore.setGalaxyThemeEnabled === 'function') {
+        taskStore.setGalaxyThemeEnabled(false);
+      }
+      if (document.body) document.body.classList.remove('galaxy-theme-active');
+      syncGalaxySchemeUI();
+      mobileServices.hapticTap();
+      showToastNotification('Standard Emerald theme active');
+    });
+  }
+
+  if (btnSchemeGalaxy) {
+    btnSchemeGalaxy.addEventListener('click', () => {
+      if (typeof taskStore !== 'undefined' && typeof taskStore.setGalaxyThemeEnabled === 'function') {
+        taskStore.setGalaxyThemeEnabled(true);
+      }
+      if (document.body) {
+        document.body.classList.add('galaxy-theme-active');
+        if (!document.body.classList.contains('has-lava-lamp')) {
+          document.body.classList.add('has-lava-lamp');
+        }
+      }
+      syncGalaxySchemeUI();
+      mobileServices.hapticTaskComplete();
+      showToastNotification('Cosmic Galaxy theme active 🌌');
+    });
+  }
 
   // Task Edit Modal events
   const btnCloseTaskEdit = document.getElementById('btnCloseTaskEdit');
@@ -9850,9 +9978,19 @@ function setupNavigationAndModals() {
           ? taskStore.getGalaxyThemeEnabled()
           : false;
         const nextActive = !currentActive;
-        if (typeof taskStore !== 'undefined' && typeof taskStore.setGalaxyThemeEnabled === 'function') {
-          taskStore.setGalaxyThemeEnabled(nextActive);
+        const wasUnlocked = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeUnlocked === 'function')
+          ? taskStore.getGalaxyThemeUnlocked()
+          : false;
+
+        if (typeof taskStore !== 'undefined') {
+          if (typeof taskStore.setGalaxyThemeEnabled === 'function') {
+            taskStore.setGalaxyThemeEnabled(nextActive);
+          }
+          if (!wasUnlocked && typeof taskStore.setGalaxyThemeUnlocked === 'function') {
+            taskStore.setGalaxyThemeUnlocked(true);
+          }
         }
+
         if (document.body) {
           document.body.classList.toggle('galaxy-theme-active', nextActive);
           if (nextActive && !document.body.classList.contains('has-lava-lamp')) {
@@ -9860,7 +9998,15 @@ function setupNavigationAndModals() {
           }
         }
         mobileServices.hapticTaskComplete();
-        showToastNotification(nextActive ? '🌌 Galaxy Theme unlocked!' : '✨ Default Theme restored');
+
+        // Only display toast notification the FIRST time galaxy mode is unlocked
+        if (!wasUnlocked) {
+          showToastNotification('🌌 Galaxy Theme unlocked!');
+        }
+
+        if (typeof syncGalaxySchemeUI === 'function') {
+          syncGalaxySchemeUI();
+        }
       } else {
         mobileServices.hapticTick();
         logoTapTimer = setTimeout(() => {

@@ -53,7 +53,8 @@ const STORAGE_KEYS = {
   SKIP_REEL_ALL_CONFIRM: 'calentimer_skip_reel_all_v1',
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1',
   LAVA_LAMP_BG: 'calentimer_lava_lamp_bg_v1',
-  GALAXY_THEME_ENABLED: 'calentimer_galaxy_theme_v1'
+  GALAXY_THEME_ENABLED: 'calentimer_galaxy_theme_v1',
+  GALAXY_THEME_UNLOCKED: 'calentimer_galaxy_theme_unlocked_v1'
 };
 
 const memoryStorage = {};
@@ -3140,6 +3141,24 @@ export class TaskStore {
    */
   setGalaxyThemeEnabled(enabled) {
     safeSetItem(STORAGE_KEYS.GALAXY_THEME_ENABLED, enabled ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Checks if the galaxy easter egg theme has been unlocked.
+   * @returns {boolean}
+   */
+  getGalaxyThemeUnlocked() {
+    const val = safeGetItem(STORAGE_KEYS.GALAXY_THEME_UNLOCKED);
+    return val === 'true';
+  }
+
+  /**
+   * Sets whether the galaxy easter egg theme is unlocked.
+   * @param {boolean} unlocked
+   */
+  setGalaxyThemeUnlocked(unlocked) {
+    safeSetItem(STORAGE_KEYS.GALAXY_THEME_UNLOCKED, unlocked ? 'true' : 'false');
     this._notify();
   }
 }
