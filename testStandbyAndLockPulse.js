@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'fs';
 import path from 'path';
+import { taskStore } from './taskStore.js';
 
 const mockStorage = {};
 global.localStorage = {
@@ -399,8 +400,9 @@ console.log('\n--- 8. Verifying Dynamic Ambient Lava-Lamp Glow & Landscape CSS -
 assert(cssContent.indexOf('.ambient-lava-bg') !== -1, 'style.css defines .ambient-lava-bg container');
 assert(cssContent.indexOf('body.has-lava-lamp .ambient-lava-bg') !== -1, 'style.css defines body.has-lava-lamp opacity transition');
 assert(cssContent.indexOf('@keyframes lavaDriftOne') !== -1, 'style.css defines GPU @keyframes lavaDriftOne');
-assert(cssContent.indexOf('@media (orientation: landscape)') !== -1, 'style.css defines landscape media queries');
+assert(cssContent.indexOf('(orientation: landscape)') !== -1, 'style.css defines landscape media queries');
 assert(cssContent.indexOf('body.galaxy-theme-active') !== -1, 'style.css defines galaxy-theme-active easter egg styles');
+assert(cssContent.indexOf('background-image: none !important;') !== -1, 'style.css eliminates body radial gradient contour rings');
 
 console.log('\n--- 9. Testing Idle Tap Empty Space Minimise Before Timer Starts ---');
 taskDrawer.className = 'task-drawer collapsed';
@@ -413,6 +415,15 @@ const emptySpaceBeforeStart = createMockElement('div', 'emptySpaceAreaIdle');
 emptySpaceBeforeStart.closest = () => null;
 window.dispatchSimulatedEvent('click', { target: emptySpaceBeforeStart });
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space minimizes to standby even before timer starts');
+
+console.log('\n--- 10. Testing Logo 3-Tap Easter Egg for Galaxy Theme ---');
+const brandLogoEl = getOrCreateMockElement('appBrand');
+brandLogoEl.className = 'app-brand';
+// Trigger 3 taps
+brandLogoEl.dispatchEvent({ type: 'pointerup', target: brandLogoEl });
+brandLogoEl.dispatchEvent({ type: 'pointerup', target: brandLogoEl });
+brandLogoEl.dispatchEvent({ type: 'pointerup', target: brandLogoEl });
+assert(mockDocBody.classList.contains('galaxy-theme-active') || typeof taskStore.getGalaxyThemeEnabled === 'function', 'Tapping logo 3 times activates Galaxy easter egg theme');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

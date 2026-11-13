@@ -703,6 +703,16 @@ function handleUserActivityWake(e) {
   }
 }
 
+let emptySpaceTapStartX = 0;
+let emptySpaceTapStartY = 0;
+let emptySpaceTapStartTime = 0;
+
+function handleEmptySpacePointerDown(e) {
+  emptySpaceTapStartX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+  emptySpaceTapStartY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  emptySpaceTapStartTime = Date.now();
+}
+
 function handleEmptySpaceMinimise(e) {
   if (!document.body || document.body.classList.contains('is-timer-standby') || document.body.classList.contains('is-waking-standby')) return;
   if (isSuppressingWakeTap) return;
@@ -710,13 +720,21 @@ function handleEmptySpaceMinimise(e) {
   const target = e.target;
   if (!target || typeof target.closest !== 'function') return;
 
-  // Check if target is an interactive button, dial, input, modal, or drawer
+  // Verify that it was a stationary tap, not a swipe or drag
+  const clientX = e.clientX || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : emptySpaceTapStartX);
+  const clientY = e.clientY || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : emptySpaceTapStartY);
+  if (Math.hypot(clientX - emptySpaceTapStartX, clientY - emptySpaceTapStartY) > 12) {
+    return;
+  }
+
+  // Check if target is an interactive button, dial control, input, modal, or drawer
   const isInteractive = target.closest(
     'button, [role="button"], input, select, textarea, label, ' +
     '.btn-menu, .mode-slider-wrap, .timer-quick-btn, .control-btn, .btn-finish-early, ' +
-    '#revolvingHitbox, #revolvingCircleGroup, #rotarySvg, .wheel-container, .timer-center-display, ' +
-    '.task-drawer, .modal-backdrop, .task-edit-modal-backdrop, .nav-sidebar, .cal-sidebar-card, ' +
-    '.day-event-card, .week-event-card, .time-bank-pill, .total-minutes-pill, .hard-stop-pill'
+    '#revolvingHitbox, #revolvingCircleGroup, #rotaryDialGroup, #dialHitRing, .dial-hit-ring, ' +
+    '.timer-quick-toggles, #rotaryConfirmPill, .rotary-confirm-pill, #activeCategoryChip, #activeTaskTitle, ' +
+    '.task-drawer, .modal-backdrop, .task-edit-modal-backdrop, .nav-drawer, .nav-sidebar, .cal-sidebar-card, ' +
+    '.day-event-card, .week-event-card, .time-bank-pill, .total-minutes-pill, .hard-stop-pill, .app-brand'
   );
 
   if (!isInteractive) {
@@ -742,7 +760,16 @@ if (typeof window !== 'undefined') {
   window.addEventListener('touchend', suppressClickDuringWake, true);
   window.addEventListener('pointerup', suppressClickDuringWake, true);
 
-  window.addEventListener('click', handleEmptySpaceMinimise, false);
+  let lastEmptySpaceMinimiseTime = 0;
+  const safeEmptySpaceMinimise = (e) => {
+    const now = Date.now();
+    if (now - lastEmptySpaceMinimiseTime < 300) return;
+    lastEmptySpaceMinimiseTime = now;
+    handleEmptySpaceMinimise(e);
+  };
+  window.addEventListener('pointerdown', handleEmptySpacePointerDown, { passive: true });
+  window.addEventListener('pointerup', safeEmptySpaceMinimise, false);
+  window.addEventListener('click', safeEmptySpaceMinimise, false);
 }
 
 // ==========================================
@@ -9799,12 +9826,24 @@ function setupNavigationAndModals() {
   // Logo Easter Egg: Tap 3 times to toggle Galaxy Theme (Dark blue to purple ambient glow and shimmer)
   let logoTapCount = 0;
   let logoTapTimer = null;
+  let lastLogoTapTimestamp = 0;
   const brandLogos = document.querySelectorAll('.app-brand');
   brandLogos.forEach(logoEl => {
     logoEl.style.cursor = 'pointer';
-    logoEl.addEventListener('click', (e) => {
+    logoEl.style.touchAction = 'manipulation';
+
+    const handleLogoTap = (e) => {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      }
+      const now = Date.now();
+      if (now - lastLogoTapTimestamp < 120) return; // Deduplicate pointerup and click
+      lastLogoTapTimestamp = now;
+
       logoTapCount++;
       if (logoTapTimer) clearTimeout(logoTapTimer);
+
       if (logoTapCount === 3) {
         logoTapCount = 0;
         const currentActive = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeEnabled === 'function')
@@ -9816,15 +9855,22 @@ function setupNavigationAndModals() {
         }
         if (document.body) {
           document.body.classList.toggle('galaxy-theme-active', nextActive);
+          if (nextActive && !document.body.classList.contains('has-lava-lamp')) {
+            document.body.classList.add('has-lava-lamp');
+          }
         }
         mobileServices.hapticTaskComplete();
         showToastNotification(nextActive ? '🌌 Galaxy Theme unlocked!' : '✨ Default Theme restored');
       } else {
+        mobileServices.hapticTick();
         logoTapTimer = setTimeout(() => {
           logoTapCount = 0;
-        }, 550);
+        }, 950);
       }
-    });
+    };
+
+    logoEl.addEventListener('pointerup', handleLogoTap);
+    logoEl.addEventListener('click', handleLogoTap);
   });
 
   // Insights modal
