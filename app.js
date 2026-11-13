@@ -456,6 +456,10 @@ function initApp() {
       : true;
     if (document.body) {
       document.body.classList.toggle('has-lava-lamp', isLavaLampActive);
+      const isGalaxyActive = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeEnabled === 'function')
+        ? taskStore.getGalaxyThemeEnabled()
+        : false;
+      document.body.classList.toggle('galaxy-theme-active', isGalaxyActive);
     }
 
     resetTransientGestureState();
@@ -614,9 +618,11 @@ function getBrandStandbyShift() {
   return cachedBrandStandbyShift;
 }
 
-function enterTimerStandbyMode() {
+function enterTimerStandbyMode(allowIdleManual) {
   const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
-  if (!currentRuntime || currentRuntime.status !== TimerStatus.RUNNING) return;
+  const isRunning = Boolean(currentRuntime && currentRuntime.status === TimerStatus.RUNNING);
+  // Allow manual entry when user intentionally taps empty space before starting (allowIdleManual)
+  if (!isRunning && !allowIdleManual) return;
   // Do not enter standby if any modal is visible or task drawer is expanded
   const drawerEl = document.getElementById('taskDrawer');
   if (drawerEl && !drawerEl.classList.contains('collapsed')) return;
@@ -698,8 +704,6 @@ function handleUserActivityWake(e) {
 }
 
 function handleEmptySpaceMinimise(e) {
-  const currentRuntime = window.runtime || (typeof runtime !== 'undefined' ? runtime : null);
-  if (!currentRuntime || currentRuntime.status !== TimerStatus.RUNNING) return;
   if (!document.body || document.body.classList.contains('is-timer-standby') || document.body.classList.contains('is-waking-standby')) return;
   if (isSuppressingWakeTap) return;
 
@@ -716,7 +720,8 @@ function handleEmptySpaceMinimise(e) {
   );
 
   if (!isInteractive) {
-    enterTimerStandbyMode();
+    // If timer is running or even if timer hasn't started yet, intentional tap on empty space minimizes everything to clean dials
+    enterTimerStandbyMode(true);
   }
 }
 
@@ -9790,6 +9795,37 @@ function setupNavigationAndModals() {
       openSettings();
     });
   }
+
+  // Logo Easter Egg: Tap 3 times to toggle Galaxy Theme (Dark blue to purple ambient glow and shimmer)
+  let logoTapCount = 0;
+  let logoTapTimer = null;
+  const brandLogos = document.querySelectorAll('.app-brand');
+  brandLogos.forEach(logoEl => {
+    logoEl.style.cursor = 'pointer';
+    logoEl.addEventListener('click', (e) => {
+      logoTapCount++;
+      if (logoTapTimer) clearTimeout(logoTapTimer);
+      if (logoTapCount === 3) {
+        logoTapCount = 0;
+        const currentActive = (typeof taskStore !== 'undefined' && typeof taskStore.getGalaxyThemeEnabled === 'function')
+          ? taskStore.getGalaxyThemeEnabled()
+          : false;
+        const nextActive = !currentActive;
+        if (typeof taskStore !== 'undefined' && typeof taskStore.setGalaxyThemeEnabled === 'function') {
+          taskStore.setGalaxyThemeEnabled(nextActive);
+        }
+        if (document.body) {
+          document.body.classList.toggle('galaxy-theme-active', nextActive);
+        }
+        mobileServices.hapticTaskComplete();
+        showToastNotification(nextActive ? '🌌 Galaxy Theme unlocked!' : '✨ Default Theme restored');
+      } else {
+        logoTapTimer = setTimeout(() => {
+          logoTapCount = 0;
+        }, 550);
+      }
+    });
+  });
 
   // Insights modal
   const btnCloseInsights = document.getElementById('btnCloseInsights');

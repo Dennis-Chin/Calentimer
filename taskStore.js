@@ -52,7 +52,8 @@ const STORAGE_KEYS = {
   SKIP_FISH_UNSCHEDULE_CONFIRM: 'calentimer_skip_fish_unschedule_v1',
   SKIP_REEL_ALL_CONFIRM: 'calentimer_skip_reel_all_v1',
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1',
-  LAVA_LAMP_BG: 'calentimer_lava_lamp_bg_v1'
+  LAVA_LAMP_BG: 'calentimer_lava_lamp_bg_v1',
+  GALAXY_THEME_ENABLED: 'calentimer_galaxy_theme_v1'
 };
 
 const memoryStorage = {};
@@ -3121,6 +3122,24 @@ export class TaskStore {
    */
   setLavaLampEnabled(enabled) {
     safeSetItem(STORAGE_KEYS.LAVA_LAMP_BG, enabled ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Checks if the galaxy easter egg theme is active.
+   * @returns {boolean}
+   */
+  getGalaxyThemeEnabled() {
+    const val = safeGetItem(STORAGE_KEYS.GALAXY_THEME_ENABLED);
+    return val === 'true';
+  }
+
+  /**
+   * Enables or disables the galaxy easter egg theme.
+   * @param {boolean} enabled
+   */
+  setGalaxyThemeEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.GALAXY_THEME_ENABLED, enabled ? 'true' : 'false');
     this._notify();
   }
 }

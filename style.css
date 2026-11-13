@@ -351,18 +351,21 @@ body {
 
 /* ==========================================================================
    Dynamic Lava Lamp Ambient Background (Hardware-accelerated, zero CPU jank)
+   Frosted glass backdrop with ultra-soft organic gradients & smooth matte texture
    ========================================================================== */
 .ambient-lava-bg {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  inset: -15%;
+  width: 130vw;
+  height: 130vh;
+  height: 130dvh;
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
   opacity: 0;
   transition: opacity 1.2s ease-in-out;
+  backdrop-filter: blur(80px);
+  -webkit-backdrop-filter: blur(80px);
 }
 
 body.has-lava-lamp .ambient-lava-bg {
@@ -372,52 +375,90 @@ body.has-lava-lamp .ambient-lava-bg {
 .lava-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
+  filter: blur(95px);
+  -webkit-filter: blur(95px);
   will-change: transform;
   transform: translate3d(0, 0, 0);
   pointer-events: none;
 }
 
-/* Orb 1: Primary Emerald Glow */
+/* Orb 1: Primary Emerald Glow (or Galaxy Dark Blue) */
 .lava-orb-1 {
-  width: 320px;
-  height: 320px;
-  top: 10%;
-  left: 20%;
-  background: radial-gradient(circle, rgba(0, 255, 136, 0.08) 0%, rgba(16, 185, 129, 0.04) 50%, transparent 75%);
+  width: 520px;
+  height: 520px;
+  top: 5%;
+  left: 15%;
+  background: radial-gradient(circle at 45% 45%, rgba(0, 255, 136, 0.08) 0%, rgba(16, 185, 129, 0.035) 55%, transparent 75%);
   animation: lavaDriftOne 32s ease-in-out infinite alternate;
 }
 
-/* Orb 2: Electric Cyan Glow */
+/* Orb 2: Electric Cyan Glow (or Galaxy Indigo / Purple) */
 .lava-orb-2 {
-  width: 360px;
-  height: 360px;
-  top: 35%;
+  width: 560px;
+  height: 560px;
+  top: 30%;
   right: 10%;
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.065) 0%, rgba(6, 182, 212, 0.03) 50%, transparent 75%);
+  background: radial-gradient(circle at 55% 45%, rgba(0, 240, 255, 0.065) 0%, rgba(6, 182, 212, 0.025) 55%, transparent 75%);
   animation: lavaDriftTwo 40s ease-in-out infinite alternate;
 }
 
-/* Orb 3: Soft Lower Ambient Glow */
+/* Orb 3: Soft Lower Ambient Glow (or Galaxy Deep Violet) */
 .lava-orb-3 {
-  width: 380px;
-  height: 380px;
-  bottom: 5%;
-  left: 30%;
-  background: radial-gradient(circle, rgba(0, 255, 136, 0.05) 0%, rgba(0, 240, 255, 0.03) 50%, transparent 75%);
+  width: 600px;
+  height: 600px;
+  bottom: 0%;
+  left: 25%;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.045) 0%, rgba(0, 240, 255, 0.02) 55%, transparent 75%);
   animation: lavaDriftThree 48s ease-in-out infinite alternate;
 }
 
 [data-theme="light"] .lava-orb-1 {
-  background: radial-gradient(circle, rgba(5, 150, 105, 0.06) 0%, rgba(16, 185, 129, 0.03) 50%, transparent 75%);
+  background: radial-gradient(circle at 45% 45%, rgba(5, 150, 105, 0.06) 0%, rgba(16, 185, 129, 0.025) 55%, transparent 75%);
 }
 
 [data-theme="light"] .lava-orb-2 {
-  background: radial-gradient(circle, rgba(2, 132, 199, 0.055) 0%, rgba(14, 165, 233, 0.025) 50%, transparent 75%);
+  background: radial-gradient(circle at 55% 45%, rgba(2, 132, 199, 0.05) 0%, rgba(14, 165, 233, 0.02) 55%, transparent 75%);
 }
 
 [data-theme="light"] .lava-orb-3 {
-  background: radial-gradient(circle, rgba(5, 150, 105, 0.045) 0%, rgba(2, 132, 199, 0.02) 50%, transparent 75%);
+  background: radial-gradient(circle at 50% 50%, rgba(5, 150, 105, 0.04) 0%, rgba(2, 132, 199, 0.015) 55%, transparent 75%);
+}
+
+/* ==========================================================================
+   Galaxy Easter Egg Theme (Toggled by tapping Calentimer logo 3 times)
+   Deep cosmic dark blue into vivid neon purple shimmer
+   ========================================================================== */
+body.galaxy-theme-active {
+  background-color: #080914 !important;
+}
+
+body.galaxy-theme-active .lava-orb-1 {
+  background: radial-gradient(circle at 45% 45%, rgba(59, 130, 246, 0.12) 0%, rgba(29, 78, 216, 0.05) 55%, transparent 75%) !important;
+}
+
+body.galaxy-theme-active .lava-orb-2 {
+  background: radial-gradient(circle at 55% 45%, rgba(168, 85, 247, 0.11) 0%, rgba(126, 34, 206, 0.04) 55%, transparent 75%) !important;
+}
+
+body.galaxy-theme-active .lava-orb-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.08) 0%, rgba(99, 102, 241, 0.035) 55%, transparent 75%) !important;
+}
+
+body.galaxy-theme-active .app-brand {
+  background: linear-gradient(
+    90deg,
+    #3b82f6 0%,
+    #8b5cf6 22%,
+    #e9d5ff 45%,
+    #ffffff 55%,
+    #a855f7 78%,
+    #2563eb 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
 @keyframes lavaDriftOne {
@@ -9275,13 +9316,13 @@ body.simple-mode-active #calendarSimpleActions {
     width: 100vw;
     height: 100vh;
     height: 100dvh;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-around;
-    padding: 6px 18px;
-    gap: 16px;
+    justify-content: center;
+    padding: 0 16px;
     box-sizing: border-box;
     overflow: hidden;
+    position: relative;
   }
 
   .app-header {
@@ -9290,7 +9331,7 @@ body.simple-mode-active #calendarSimpleActions {
     left: 0;
     right: 0;
     width: 100%;
-    padding: calc(env(safe-area-inset-top, 0px) + 6px) 20px 4px;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) calc(env(safe-area-inset-right, 0px) + 20px) 0 calc(env(safe-area-inset-left, 0px) + 20px);
     pointer-events: none;
     z-index: 30;
   }
@@ -9301,53 +9342,102 @@ body.simple-mode-active #calendarSimpleActions {
   }
 
   .app-brand {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
   }
 
-  /* Left Half: Rotary Wheel Dial Viewport */
+  /* Center the timer dial horizontally and vertically */
   .timer-viewport {
-    flex: 1 1 50%;
-    max-width: 50vw;
-    height: 100%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(84vh, 360px);
+    height: min(84vh, 360px);
     justify-content: center;
     align-items: center;
     padding: 0;
-    margin-top: 10px;
+    margin: 0;
+    z-index: 10;
   }
 
   .wheel-container {
-    width: min(72vh, 320px);
-    height: min(72vh, 320px);
+    width: 100%;
+    height: 100%;
     margin-top: 0;
   }
 
   .schedule-concept-bar {
-    display: none;
+    display: none !important;
   }
 
-  /* Right Half: Controls, Schedule Bar, Finish Early */
-  .landscape-controls-column {
-    flex: 1 1 50%;
-    max-width: 440px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    z-index: 20;
-  }
-
+  /* Schedule bar placed elegantly on left side */
   .schedule-control-bar {
-    margin-bottom: 0;
+    position: absolute;
+    left: calc(env(safe-area-inset-left, 0px) + 24px);
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    width: auto;
+    margin: 0;
+    z-index: 20;
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* Primary control buttons placed elegantly on right side */
   .timer-controls {
-    margin-top: 4px;
-    gap: 20px;
+    position: absolute;
+    right: calc(env(safe-area-inset-right, 0px) + 28px);
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+    gap: 14px;
+    width: auto;
+    margin: 0;
+    z-index: 20;
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* Finish Early action button sits on right side below controls or under schedule bar */
   .secondary-actions {
-    margin-top: 4px;
+    position: absolute;
+    left: calc(env(safe-area-inset-left, 0px) + 24px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    width: auto;
+    max-width: 200px;
+    margin: 0;
+    z-index: 20;
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-finish-early {
+    padding: 6px 12px;
+    font-size: 0.72rem;
+  }
+
+  /* Standby mode transitions in horizontal landscape orientation */
+  body.is-timer-standby .schedule-control-bar {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(-24px);
+  }
+
+  body.is-timer-standby .timer-controls {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(24px);
+  }
+
+  body.is-timer-standby .secondary-actions {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(18px);
+  }
+
+  /* Standby logo positioning in landscape: keep it far left with standard top margin */
+  body.is-timer-standby .app-brand {
+    transform: translate3d(var(--brand-standby-shift, -14px), 0, 0);
   }
 
   /* Bottom drawer adapts to landscape */

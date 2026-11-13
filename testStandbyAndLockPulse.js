@@ -400,6 +400,19 @@ assert(cssContent.indexOf('.ambient-lava-bg') !== -1, 'style.css defines .ambien
 assert(cssContent.indexOf('body.has-lava-lamp .ambient-lava-bg') !== -1, 'style.css defines body.has-lava-lamp opacity transition');
 assert(cssContent.indexOf('@keyframes lavaDriftOne') !== -1, 'style.css defines GPU @keyframes lavaDriftOne');
 assert(cssContent.indexOf('@media (orientation: landscape)') !== -1, 'style.css defines landscape media queries');
+assert(cssContent.indexOf('body.galaxy-theme-active') !== -1, 'style.css defines galaxy-theme-active easter egg styles');
+
+console.log('\n--- 9. Testing Idle Tap Empty Space Minimise Before Timer Starts ---');
+taskDrawer.className = 'task-drawer collapsed';
+window.exitTimerStandbyMode(false);
+await new Promise(r => setTimeout(r, 450));
+mockDocBody.classList.remove('is-waking-standby');
+assert(!mockDocBody.classList.contains('is-timer-standby'), 'Standby initially false while IDLE');
+if (testRuntime) testRuntime.status = 'IDLE';
+const emptySpaceBeforeStart = createMockElement('div', 'emptySpaceAreaIdle');
+emptySpaceBeforeStart.closest = () => null;
+window.dispatchSimulatedEvent('click', { target: emptySpaceBeforeStart });
+assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space minimizes to standby even before timer starts');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);
