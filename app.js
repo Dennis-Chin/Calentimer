@@ -561,6 +561,87 @@ function updateTotalMinutesDisplay() {
 window.updateTotalMinutesDisplay = updateTotalMinutesDisplay;
 
 // ==========================================
+// Locked Task Padlock Warning Pulse
+// ==========================================
+function triggerLockPulseWarning() {
+  const lockIcon = document.getElementById('timerScreenLockIcon');
+  if (lockIcon) {
+    lockIcon.classList.remove('pulse-locked');
+    void lockIcon.offsetWidth;
+    lockIcon.classList.add('pulse-locked');
+    setTimeout(() => {
+      if (lockIcon) lockIcon.classList.remove('pulse-locked');
+    }, 700);
+  }
+  mobileServices.hapticWarning();
+  showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
+}
+window.triggerLockPulseWarning = triggerLockPulseWarning;
+
+// ==========================================
+// Distraction-Free Standby Focus Mode
+// ==========================================
+let timerStandbyInactivityTimer = null;
+
+function enterTimerStandbyMode() {
+  if (!runtime || runtime.status !== TimerStatus.RUNNING) return;
+  // Do not enter standby if any modal is visible or task drawer is expanded
+  const drawerEl = document.getElementById('taskDrawer');
+  if (drawerEl && !drawerEl.classList.contains('collapsed')) return;
+  const anyModalOpen = document.querySelector('.modal-backdrop:not(.hidden), .task-edit-modal-backdrop:not(.hidden)');
+  if (anyModalOpen) return;
+  if (typeof isScrubbingGreenLine !== 'undefined' && isScrubbingGreenLine) return;
+  if (typeof isDraggingOuterDial !== 'undefined' && isDraggingOuterDial) return;
+
+  if (timerStandbyInactivityTimer) {
+    clearTimeout(timerStandbyInactivityTimer);
+    timerStandbyInactivityTimer = null;
+  }
+  if (document.body) {
+    document.body.classList.add('is-timer-standby');
+  }
+}
+
+function exitTimerStandbyMode(scheduleReentry) {
+  if (timerStandbyInactivityTimer) {
+    clearTimeout(timerStandbyInactivityTimer);
+    timerStandbyInactivityTimer = null;
+  }
+  const wasStandby = document.body && document.body.classList.contains('is-timer-standby');
+  if (wasStandby) {
+    document.body.classList.remove('is-timer-standby');
+  }
+
+  // If timer is still running and scheduleReentry is true, re-enter standby after 5s of idle time
+  if (scheduleReentry && runtime && runtime.status === TimerStatus.RUNNING) {
+    timerStandbyInactivityTimer = setTimeout(() => {
+      enterTimerStandbyMode();
+    }, 5000);
+  }
+}
+window.enterTimerStandbyMode = enterTimerStandbyMode;
+window.exitTimerStandbyMode = exitTimerStandbyMode;
+
+function handleUserActivityWake() {
+  if (document.body && document.body.classList.contains('is-timer-standby')) {
+    exitTimerStandbyMode(true);
+  } else if (runtime && runtime.status === TimerStatus.RUNNING) {
+    if (timerStandbyInactivityTimer) {
+      clearTimeout(timerStandbyInactivityTimer);
+    }
+    timerStandbyInactivityTimer = setTimeout(() => {
+      enterTimerStandbyMode();
+    }, 5000);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  ['pointerdown', 'touchstart', 'mousedown', 'pointermove', 'mousemove', 'touchmove', 'keydown'].forEach(evt => {
+    window.addEventListener(evt, handleUserActivityWake, { passive: true });
+  });
+}
+
+// ==========================================
 // Event Bindings for TimerRuntime
 // ==========================================
 function setupRuntimeEvents() {
@@ -657,6 +738,7 @@ function setupRuntimeEvents() {
     const actTask = data && data.activeTask ? data.activeTask : runtime.getActiveTask();
     analytics.startTaskMetric(actTask, { index: runtime.activeTaskIndex });
     startContinuousWheelAnimation();
+    enterTimerStandbyMode();
     updateActiveTaskDisplay();
     updateFinishEarlyButtonText(data.totalDurationSeconds);
     renderTaskList(((runtime.currentSchedule && runtime.currentSchedule.tasks) || []) || []);
@@ -685,6 +767,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('taskComplete', (data) => {
+    exitTimerStandbyMode(false);
     const isEarly = data && Boolean(data.completedEarly);
     const statusStr = isEarly ? 'completed_early' : (runtime.isOverrunning ? 'overrun' : 'completed');
     analytics.finalizeTaskMetric(statusStr, runtime.getElapsedSeconds ? runtime.getElapsedSeconds() : 0);
@@ -751,6 +834,7 @@ function setupRuntimeEvents() {
   });
 
   runtime.on('allTasksCompleted', () => {
+    exitTimerStandbyMode(false);
     stopContinuousWheelAnimation();
     mobileServices.disableWakeLock();
     mobileServices.clearLiveNotification();
@@ -799,6 +883,7 @@ function setupRuntimeEvents() {
     if (status === TimerStatus.RUNNING) {
       analytics.recordTaskPause(false);
       startContinuousWheelAnimation();
+      enterTimerStandbyMode();
       iconPlay.classList.add('hidden');
       iconPause.classList.remove('hidden');
       mobileServices.enableWakeLock();
@@ -811,6 +896,7 @@ function setupRuntimeEvents() {
         isPaused: false
       });
     } else if (status === TimerStatus.PAUSED) {
+      exitTimerStandbyMode(false);
       analytics.recordTaskPause(true);
       stopContinuousWheelAnimation();
       iconPlay.classList.remove('hidden');
@@ -825,6 +911,7 @@ function setupRuntimeEvents() {
         isPaused: true
       });
     } else {
+      exitTimerStandbyMode(false);
       stopContinuousWheelAnimation();
       iconPlay.classList.remove('hidden');
       iconPause.classList.add('hidden');
@@ -1378,17 +1465,12 @@ function setupRotaryWheel() {
     if (isNavSwiping) return;
     const activeTask = runtime ? runtime.getActiveTask() : null;
     if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
-      if (e && e.type === 'mousedown') {
-        mobileServices.hapticWarning();
-        showToastNotification('Please create a task first before adjusting the timer.');
-      }
+      mobileServices.hapticWarning();
+      showToastNotification('Please create a task first before adjusting the timer.');
       return;
     }
     if (activeTask && activeTask.isLocked) {
-      if (e && e.type === 'mousedown') {
-        mobileServices.hapticWarning();
-        showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
-      }
+      triggerLockPulseWarning();
       return;
     }
 
@@ -1497,17 +1579,12 @@ function setupRotaryWheel() {
 
     const activeTask = runtime ? runtime.getActiveTask() : null;
     if (!activeTask || (runtime && runtime.status === TimerStatus.COMPLETED)) {
-      if (e && e.type === 'mousedown') {
-        mobileServices.hapticWarning();
-        showToastNotification('Please create a task first before adjusting the timer.');
-      }
+      mobileServices.hapticWarning();
+      showToastNotification('Please create a task first before adjusting the timer.');
       return;
     }
     if (activeTask && activeTask.isLocked) {
-      if (e && e.type === 'mousedown') {
-        mobileServices.hapticWarning();
-        showToastNotification('Task duration is locked. Tap the padlock on the timer to unlock and adjust time.');
-      }
+      triggerLockPulseWarning();
       return;
     }
 
@@ -1783,6 +1860,7 @@ function updateResetButtonUI() {
 }
 
 function resetWholeDay() {
+  exitTimerStandbyMode(false);
   analytics.recordSessionEvent('reset_day');
   analytics.trackInteraction('btn_click', 'resetWholeDay');
   stopContinuousWheelAnimation();
@@ -1917,6 +1995,7 @@ function setupControls() {
   // - While timer is running -> Exit button: stops current task, resets timer for that task, reverts to Reset button
   // - While timer is not running -> Reset button: resets the whole day of events
   btnStopTime.addEventListener('click', () => {
+    exitTimerStandbyMode(false);
     mobileServices.hapticTap();
     analytics.trackInteraction('btn_click', 'btnStopTime', { isRunning: runtime.status === TimerStatus.RUNNING });
     if (runtime.status === TimerStatus.RUNNING) {
@@ -1993,6 +2072,7 @@ function setupControls() {
   }
 
   btnFinishEarly.addEventListener('click', () => {
+    exitTimerStandbyMode(false);
     mobileServices.hapticTap();
     analytics.trackInteraction('btn_click', 'btnFinishEarly');
     runtime.completeCurrentTaskEarly();
@@ -2518,6 +2598,7 @@ function setupControls() {
   }
 
   openTaskDrawer = function() {
+    exitTimerStandbyMode(false);
     ensureHistoryBuffer();
     if (!runtime || runtime.status === TimerStatus.IDLE) {
       taskStore.syncScheduleAndCalendar();
@@ -2547,6 +2628,8 @@ function setupControls() {
       runtime.initialTasks = taskStore.getTasks();
       runtime.recalculate();
       updateActiveTaskDisplay();
+    } else if (runtime && runtime.status === TimerStatus.RUNNING) {
+      exitTimerStandbyMode(true);
     }
   };
 
@@ -5730,6 +5813,7 @@ function renderEditModalSubtaskList() {
 }
 
 function openAddTaskModal(defaultType = 'work', prefillData = null) {
+  exitTimerStandbyMode(false);
   ensureHistoryBuffer();
   isAddModalManualEmoji = false;
   isAddModalManualCategory = false;
@@ -6173,6 +6257,7 @@ window.syncNavActiveState = syncNavActiveState;
 
 function openDrawer() {
   if (navDrawer && navDrawerBackdrop) {
+    exitTimerStandbyMode(false);
     ensureHistoryBuffer();
     syncNavActiveState();
     navDrawer.style.removeProperty('transform');
@@ -6201,6 +6286,7 @@ function closeDrawer() {
 }
 
 function openSettings() {
+  exitTimerStandbyMode(false);
   ensureHistoryBuffer();
   closeDrawer();
   closeCalendar();
@@ -6264,6 +6350,7 @@ function closeSettings() {
 }
 
 function openCalendar() {
+  exitTimerStandbyMode(false);
   ensureHistoryBuffer();
   closeDrawer();
   closeSettings();
@@ -6318,6 +6405,7 @@ function closeCalendar() {
 }
 
 function openTodo() {
+  exitTimerStandbyMode(false);
   ensureHistoryBuffer();
   closeDrawer();
   closeSettings();
@@ -6356,6 +6444,7 @@ function closeTodo() {
 let currentInsightsRangeDays = 7;
 
 function openInsights() {
+  exitTimerStandbyMode(false);
   ensureHistoryBuffer();
   closeDrawer();
   closeSettings();

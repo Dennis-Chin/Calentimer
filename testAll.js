@@ -20,6 +20,7 @@ const suites = [
   'testTelemetrySyncService.js',
   'testSimpleMode.js',
   'testMultiSessionSubtasks.js',
+  'testStandbyAndLockPulse.js',
   'testSyntaxCompatibility.js'
 ];
 

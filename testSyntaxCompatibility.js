@@ -42,6 +42,7 @@ const targetFiles = [
   'cryptoPolyfill.js',
   'telemetrySyncService.js',
   'testMultiSessionSubtasks.js',
+  'testStandbyAndLockPulse.js',
   'server/worker.js'
 ];
 

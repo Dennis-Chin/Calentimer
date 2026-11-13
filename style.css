@@ -374,6 +374,13 @@ body {
   align-items: center;
   padding-top: calc(env(safe-area-inset-top, 0px) + 19px);
   padding-bottom: 10px;
+  position: relative;
+  z-index: 25;
+}
+
+.btn-menu,
+.mode-slider-wrap {
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .app-brand {
@@ -484,6 +491,9 @@ body {
   gap: 8px;
   margin-bottom: 2px;
   width: 100%;
+  position: relative;
+  z-index: 10;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.32s ease;
 }
 
 .hard-stop-pill {
@@ -945,6 +955,7 @@ body {
   gap: 24px;
   margin-top: 14px;
   width: 100%;
+  transition: opacity 0.32s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .control-btn {
@@ -1011,6 +1022,7 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
+  transition: opacity 0.32s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-finish-early {
@@ -3784,6 +3796,72 @@ body {
 
 .timer-lock-indicator.unlocked:hover {
   opacity: 0.8;
+}
+
+/* Timer Screen Lock Indicator Warning Pulse */
+.timer-lock-indicator.pulse-locked {
+  animation: timerLockPulseWarning 0.65s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
+  color: #f59e0b !important;
+  opacity: 1 !important;
+}
+
+@keyframes timerLockPulseWarning {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.5));
+  }
+  20% {
+    transform: scale(1.45) rotate(-12deg);
+    filter: drop-shadow(0 0 16px rgba(245, 158, 11, 1));
+  }
+  40% {
+    transform: scale(1.35) rotate(12deg);
+    filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95));
+  }
+  60% {
+    transform: scale(1.4) rotate(-8deg);
+    filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95));
+  }
+  80% {
+    transform: scale(1.15) rotate(4deg);
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.75));
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.5));
+  }
+}
+
+/* ==========================================================================
+   Distraction-Free Standby Focus Mode (When Timer is Active / Running)
+   ========================================================================== */
+body.is-timer-standby .schedule-control-bar {
+  transform: translateY(-46px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.is-timer-standby #btnOpenNav,
+body.is-timer-standby .btn-menu,
+body.is-timer-standby #modeSliderWrap,
+body.is-timer-standby #btnNotifToggle {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.88);
+}
+
+body.is-timer-standby .timer-controls,
+body.is-timer-standby .secondary-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(14px) scale(0.96);
+}
+
+body.is-timer-standby .task-drawer,
+body.is-timer-standby #taskDrawer {
+  transform: translateY(100%) !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
 }
 
 .is-break-mode .dial-tick {
