@@ -3,7 +3,7 @@
  * Manages caching, offline reliability, and notification interactions for PWA.
  */
 
-const CACHE_NAME = 'calentimer-v15';
+const CACHE_NAME = 'calentimer-v16';
 const ASSETS = [
   '/',
   '/index.html',

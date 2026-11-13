@@ -117,6 +117,13 @@
   <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js" async defer></script>
 </head>
 <body>
+  <!-- Dynamic Ambient Lava Lamp Glow Background (Hardware-accelerated) -->
+  <div class="ambient-lava-bg" id="ambientLavaBg" aria-hidden="true">
+    <div class="lava-orb lava-orb-1"></div>
+    <div class="lava-orb lava-orb-2"></div>
+    <div class="lava-orb lava-orb-3"></div>
+  </div>
+
   <div class="app-container">
     
     <!-- Semantic Crawlable Outline for Search Engines & Accessibility -->
@@ -590,6 +597,18 @@
               </div>
               <label class="toggle-switch">
                 <input type="checkbox" id="toggleKeepScreenAwake">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Dynamic Lava Lamp Glow Background -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <span class="setting-label">Ambient Glow Movement</span>
+                <span class="setting-desc">Subtle, slow-moving lava lamp ambient gradient in the background.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggleLavaLampBg" checked>
                 <span class="toggle-slider"></span>
               </label>
             </div>

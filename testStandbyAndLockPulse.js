@@ -359,8 +359,8 @@ const emptySpaceEl = createMockElement('div', 'emptySpaceArea');
 emptySpaceEl.closest = () => null;
 window.dispatchSimulatedEvent('click', { target: emptySpaceEl });
 assert(mockDocBody.classList.contains('is-timer-standby'), 'Tapping empty background space immediately minimizes to standby');
-const shiftVal = parseInt(mockDocElement.style['--brand-standby-shift'] || '-48', 10);
-assert(shiftVal <= -20, `Logo moves back to far left on re-minimise (shift: ${shiftVal}px)`);
+const shiftVal = parseInt(mockDocElement.style['--brand-standby-shift'] || '-14', 10);
+assert(shiftVal <= -10, `Logo moves back to far left on re-minimise (shift: ${shiftVal}px)`);
 
 console.log('\n--- 6. Testing Exit Standby Mode on Pause, Stop & Drawer Open ---');
 window.enterTimerStandbyMode();
@@ -393,6 +393,13 @@ assert(cssContent.indexOf('body.is-waking-standby') !== -1, 'style.css defines p
 
 const manifestContent = readFileSync(path.resolve(process.cwd(), 'manifest.json'), 'utf8');
 assert(manifestContent.indexOf('"display": "fullscreen"') !== -1, 'manifest.json defines display: fullscreen to hide notification bar natively without browser popup');
+assert(manifestContent.indexOf('"orientation": "any"') !== -1, 'manifest.json defines orientation: any for landscape rotation');
+
+console.log('\n--- 8. Verifying Dynamic Ambient Lava-Lamp Glow & Landscape CSS ---');
+assert(cssContent.indexOf('.ambient-lava-bg') !== -1, 'style.css defines .ambient-lava-bg container');
+assert(cssContent.indexOf('body.has-lava-lamp .ambient-lava-bg') !== -1, 'style.css defines body.has-lava-lamp opacity transition');
+assert(cssContent.indexOf('@keyframes lavaDriftOne') !== -1, 'style.css defines GPU @keyframes lavaDriftOne');
+assert(cssContent.indexOf('@media (orientation: landscape)') !== -1, 'style.css defines landscape media queries');
 
 console.log('\n========================================');
 console.log(`Summary: ${passed} passed, ${failed} failed.`);

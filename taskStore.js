@@ -51,7 +51,8 @@ const STORAGE_KEYS = {
   SHOW_TIMESPANS_SEQUENTIAL: 'calentimer_show_timespans_sequential_v1',
   SKIP_FISH_UNSCHEDULE_CONFIRM: 'calentimer_skip_fish_unschedule_v1',
   SKIP_REEL_ALL_CONFIRM: 'calentimer_skip_reel_all_v1',
-  CLOUD_PROFILE: 'calentimer_cloud_profile_v1'
+  CLOUD_PROFILE: 'calentimer_cloud_profile_v1',
+  LAVA_LAMP_BG: 'calentimer_lava_lamp_bg_v1'
 };
 
 const memoryStorage = {};
@@ -3103,6 +3104,24 @@ export class TaskStore {
       safeSetItem(STORAGE_KEYS.ANON_CLIENT_ID, id);
     }
     return id;
+  }
+
+  /**
+   * Checks if dynamic ambient lava lamp background is enabled (default: true).
+   * @returns {boolean}
+   */
+  getLavaLampEnabled() {
+    const val = safeGetItem(STORAGE_KEYS.LAVA_LAMP_BG);
+    return val !== 'false';
+  }
+
+  /**
+   * Enables or disables dynamic ambient lava lamp background.
+   * @param {boolean} enabled
+   */
+  setLavaLampEnabled(enabled) {
+    safeSetItem(STORAGE_KEYS.LAVA_LAMP_BG, enabled ? 'true' : 'false');
+    this._notify();
   }
 }
 

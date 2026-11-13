@@ -450,6 +450,14 @@ function initApp() {
       }
     }
 
+    // Initialize dynamic ambient lava lamp background based on user setting (default: on)
+    const isLavaLampActive = (typeof taskStore !== 'undefined' && typeof taskStore.getLavaLampEnabled === 'function')
+      ? taskStore.getLavaLampEnabled()
+      : true;
+    if (document.body) {
+      document.body.classList.toggle('has-lava-lamp', isLavaLampActive);
+    }
+
     resetTransientGestureState();
   } catch (err) {
     console.error('Fatal initialization error in initApp:', err);
@@ -595,13 +603,14 @@ function getBrandStandbyShift() {
   if (brandEl && btnMenu && typeof brandEl.getBoundingClientRect === 'function' && typeof btnMenu.getBoundingClientRect === 'function') {
     const menuRect = btnMenu.getBoundingClientRect();
     const brandRect = brandEl.getBoundingClientRect();
-    const diff = Math.round(menuRect.left - brandRect.left);
-    if (diff < -20) {
+    // Offset by +34px (~1cm) rightward from the far-left edge so it doesn't hug the screen bezel
+    const diff = Math.round(menuRect.left - brandRect.left) + 34;
+    if (diff < -5) {
       cachedBrandStandbyShift = diff;
       return cachedBrandStandbyShift;
     }
   }
-  cachedBrandStandbyShift = -48;
+  cachedBrandStandbyShift = -14;
   return cachedBrandStandbyShift;
 }
 
@@ -621,9 +630,10 @@ function enterTimerStandbyMode() {
     timerStandbyInactivityTimer = null;
   }
 
-  // Slide brand logo to the far-left position (where the menu button was)
+  // Slide brand logo to the standby position with safe margin
   const shiftX = getBrandStandbyShift();
   document.documentElement.style.setProperty('--brand-standby-shift', `${shiftX}px`);
+  document.documentElement.style.setProperty('--brand-standby-shift-y', `-6px`);
 
   if (document.body) {
     document.body.classList.add('is-timer-standby');
@@ -2076,6 +2086,20 @@ function setupControls() {
       if ('Notification' in window && Notification.permission === 'default' && taskStore.getAlertsEnabled()) {
         mobileServices.requestNotificationPermission();
       }
+
+      // If user hasn't installed PWA, request fullscreen on user start gesture to hide browser notification bar
+      const isStandalonePWA = (typeof window !== 'undefined' && window.matchMedia)
+        ? (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches || Boolean(window.navigator.standalone))
+        : false;
+      if (!isStandalonePWA && document.documentElement && !document.fullscreenElement && typeof document.documentElement.requestFullscreen === 'function') {
+        try {
+          const req = document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+          if (req && typeof req.catch === 'function') {
+            req.catch(() => {});
+          }
+        } catch (_) {}
+      }
+
       runtime.start();
     }
   });
@@ -6399,6 +6423,10 @@ function openSettings() {
   if (toggleKeepAwake && typeof taskStore.getKeepScreenAwake === 'function') {
     toggleKeepAwake.checked = taskStore.getKeepScreenAwake();
   }
+  const toggleLavaLamp = document.getElementById('toggleLavaLampBg');
+  if (toggleLavaLamp && typeof taskStore.getLavaLampEnabled === 'function') {
+    toggleLavaLamp.checked = taskStore.getLavaLampEnabled();
+  }
   const toggleCompletion = document.getElementById('toggleCompletionHaptics');
   if (toggleCompletion && typeof taskStore.getCompletionHapticsEnabled === 'function') {
     toggleCompletion.checked = taskStore.getCompletionHapticsEnabled();
@@ -9882,6 +9910,20 @@ function setupNavigationAndModals() {
       }
       mobileServices.hapticTap();
       showToastNotification(enabled ? 'Keep screen on enabled' : 'Keep screen on disabled');
+    });
+  }
+
+  const toggleLavaLampBg = document.getElementById('toggleLavaLampBg');
+  if (toggleLavaLampBg) {
+    toggleLavaLampBg.checked = (typeof taskStore.getLavaLampEnabled === 'function') ? taskStore.getLavaLampEnabled() : true;
+    toggleLavaLampBg.addEventListener('change', () => {
+      const enabled = toggleLavaLampBg.checked;
+      taskStore.setLavaLampEnabled(enabled);
+      if (document.body) {
+        document.body.classList.toggle('has-lava-lamp', enabled);
+      }
+      mobileServices.hapticTap();
+      showToastNotification(enabled ? 'Ambient glow movement enabled' : 'Ambient glow movement disabled');
     });
   }
 
