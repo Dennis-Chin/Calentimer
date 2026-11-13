@@ -721,6 +721,11 @@ function handleEmptySpaceMinimise(e) {
   if (!document.body || document.body.classList.contains('is-timer-standby') || document.body.classList.contains('is-waking-standby')) return;
   if (isSuppressingWakeTap) return;
 
+  const navDrawer = document.getElementById('navDrawer');
+  if (navDrawer && (navDrawer.classList.contains('open') || navDrawer.classList.contains('active'))) {
+    return;
+  }
+
   const target = e.target;
   if (!target || typeof target.closest !== 'function') return;
 
@@ -737,7 +742,7 @@ function handleEmptySpaceMinimise(e) {
     '.btn-menu, .mode-slider-wrap, .timer-quick-btn, .control-btn, .btn-finish-early, ' +
     '#revolvingHitbox, #revolvingCircleGroup, #rotaryDialGroup, #dialHitRing, .dial-hit-ring, ' +
     '.timer-quick-toggles, #rotaryConfirmPill, .rotary-confirm-pill, #activeCategoryChip, #activeTaskTitle, ' +
-    '.task-drawer, .modal-backdrop, .task-edit-modal-backdrop, .nav-drawer, .nav-sidebar, .cal-sidebar-card, ' +
+    '.task-drawer, .modal-backdrop, .task-edit-modal-backdrop, .nav-drawer, .nav-sidebar, .nav-drawer-backdrop, #navDrawerBackdrop, .cal-sidebar-card, ' +
     '.day-event-card, .week-event-card, .time-bank-pill, .total-minutes-pill, .hard-stop-pill, .app-brand'
   );
 
@@ -1817,11 +1822,18 @@ function setupRotaryWheel() {
 
       const activeTask = runtime.getActiveTask();
       if (activeTask) {
-        const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
-        const preserveLock = initTask ? Boolean(initTask.isLocked) : Boolean(activeTask.isLocked);
+        const storeTasks = (typeof taskStore.getTasks === 'function') ? taskStore.getTasks() : [];
+        const storeTask = storeTasks.find(t => t.id === activeTask.id);
+        const preserveLock = (storeTask && typeof storeTask.isLocked === 'boolean')
+          ? storeTask.isLocked
+          : Boolean(activeTask.isLocked);
         activeTask.isLocked = preserveLock;
         activeTask.fixedEndTime = null;
         activeTask.dialAdjusted = true;
+        const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
+        if (initTask) {
+          initTask.isLocked = preserveLock;
+        }
         taskStore.updateTask(activeTask.id, {
           plannedDuration: activeTask.plannedDuration,
           isLocked: preserveLock,
@@ -2287,6 +2299,9 @@ function setupControls() {
     activeTask.fixedStartTime = fixedStartTime;
 
     taskStore.updateTask(activeTask.id, { isLocked: nextLock, fixedStartTime: fixedStartTime });
+    if (runtime) {
+      runtime.initialTasks = taskStore.getTasks();
+    }
     const initTask = (runtime && runtime.initialTasks) ? runtime.initialTasks.find(t => t.id === activeTask.id) : null;
     if (initTask) {
       initTask.isLocked = nextLock;
@@ -9704,23 +9719,10 @@ function setupNavigationAndModals() {
     // Guard: If touch starts inside or on the timer wheel/dial elements, check if inside dial circle.
     // Swipes starting near the left edge of the screen (touch.clientX <= 90) or at the outer corner spandrels
     // are allowed to open the nav menu drawer immediately even if touching over the wheel container!
-    const wheelEl = document.getElementById('wheelContainer');
-    if (touch.clientX > 90 && wheelEl && target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, .timer-center-display')) {
-      const rect = wheelEl.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dist = Math.hypot(touch.clientX - cx, touch.clientY - cy);
-      const wheelRadius = rect.width / 2;
-      // Outer dial tick radius is ~1.02 * wheelRadius (bezel).
-      // The green track is at ~0.81 * wheelRadius.
-      // We define the protected dial rotation zone between innerGreenBorderRadius (~0.68 * wheelRadius) and dialSafeRadius (1.02 * wheelRadius).
-      const dialSafeRadius = wheelRadius * 1.02;
-      const innerGreenBorderRadius = wheelRadius * 0.68;
-      if (dist >= innerGreenBorderRadius && dist <= dialSafeRadius && isDraggingOuterDial && Math.abs(accumulatedDialAngleDeltaDeg) > 5) {
-        navTouchStartX = null;
-        navTouchStartY = null;
-        return;
-      }
+    if (touch.clientX > 90 && target.closest('.wheel-container, #wheelContainer, .rotary-dial-group, #rotaryDialGroup, .revolving-circle-group, #revolvingCircleGroup, .dial-hit-ring, #dialHitRing, #trackProgress, .timer-svg, .timer-center-display, #btnTimerLock')) {
+      navTouchStartX = null;
+      navTouchStartY = null;
+      return;
     }
 
     // Clear stale dial states if body does not have active dragging classes
@@ -9745,6 +9747,7 @@ function setupNavigationAndModals() {
   window.addEventListener('touchmove', (e) => {
     if (!navDrawer || !navDrawerBackdrop) return;
     if (navTouchStartX === null || navTouchStartY === null) return;
+    const target = e.target;
     if (isDrawerPullingUp || isDrawerPullingDown) {
       if (isNavSwiping) {
         isNavSwiping = false;
@@ -9768,30 +9771,19 @@ function setupNavigationAndModals() {
     const diffY = touch.clientY - navTouchStartY;
     const drawerW = navDrawer.offsetWidth || 280;
 
+    if (isDraggingOuterDial || isScrubbingGreenLine || (document.body && (document.body.classList.contains('is-dragging-dial') || document.body.classList.contains('is-scrubbing')))) {
+      return;
+    }
+
     if (!isDrawerOpenAtTouchStart) {
       // Swiping right from closed state:
       // Only open the menu for milder/flatter angles of swiping left to right:
-      // - Horizontal movement must be at least 22px
+      // - Horizontal movement must be at least 25px
       // - If swiping upwards (diffY < 0), require diffX >= Math.abs(diffY) * 1.85 (angle <= 28 deg from horizontal)
       // - If swiping downwards (diffY >= 0), require diffX >= diffY * 1.5 (angle <= 33 deg from horizontal)
       // This strictly prevents steep upward swipes or dial thumb gestures from opening the menu
       const maxAllowedVertical = diffY < 0 ? (diffX / 1.85) : (diffX / 1.5);
-      if (diffX > 22 && Math.abs(diffY) <= maxAllowedVertical) {
-        // Deliberate horizontal swipe right: cancel any dial dragging/scrubbing
-        if (isDraggingOuterDial || isScrubbingGreenLine) {
-          isDraggingOuterDial = false;
-          isScrubbingGreenLine = false;
-          document.body.classList.remove('is-dragging-dial', 'is-scrubbing');
-          if (rotaryDialGroup) {
-            rotaryDialGroup.setAttribute('transform', 'rotate(0 160 160)');
-          }
-          if (rotaryPreviewBadge) {
-            rotaryPreviewBadge.classList.add('hidden');
-          }
-          currentDialRotationDeg = 0;
-          accumulatedDialAngleDeltaDeg = 0;
-        }
-
+      if (diffX > 25 && Math.abs(diffY) <= maxAllowedVertical) {
         if (!isNavSwiping) {
           syncNavActiveState();
         }
@@ -9805,20 +9797,21 @@ function setupNavigationAndModals() {
         const currentX = -drawerW * (1 - progress);
         navDrawer.style.transform = `translateX(${currentX}px)`;
         navDrawerBackdrop.style.opacity = progress.toString();
-      } else if (isDraggingOuterDial || isScrubbingGreenLine) {
-        // User is actually turning dial or scrubbing, do not trigger nav swipe
-        return;
       }
-    } else if (isDrawerOpenAtTouchStart && diffX < -15) {
-      // Swiping left from open state: smoothly slide menu back left
-      isNavSwiping = true;
-      navDrawer.style.transition = 'none';
-      navDrawerBackdrop.style.transition = 'none';
+    } else if (isDrawerOpenAtTouchStart) {
+      const isItemTouch = Boolean(target && typeof target.closest === 'function' && target.closest('.nav-item, button, .nav-header'));
+      const closeThreshold = isItemTouch ? -42 : -30;
+      if (diffX < closeThreshold) {
+        // Swiping left from open state: smoothly slide menu back left
+        isNavSwiping = true;
+        navDrawer.style.transition = 'none';
+        navDrawerBackdrop.style.transition = 'none';
 
-      const progress = Math.max(0, Math.min(1, 1 + diffX / 160));
-      const currentX = -drawerW * (1 - progress);
-      navDrawer.style.transform = `translateX(${currentX}px)`;
-      navDrawerBackdrop.style.opacity = progress.toString();
+        const progress = Math.max(0, Math.min(1, 1 + diffX / 160));
+        const currentX = -drawerW * (1 - progress);
+        navDrawer.style.transform = `translateX(${currentX}px)`;
+        navDrawerBackdrop.style.opacity = progress.toString();
+      }
     }
   }, { capture: true, passive: true });
 
@@ -11662,54 +11655,13 @@ function setupNavigationAndModals() {
           ? taskStore.generatePresetTasks(selectedPresetKey, customCfg, baseStartMin)
           : [];
 
-        // 3. Final task list for Simple Mode: completed tasks remain, followed by new preset tasks
-        const finalTasks = completedTasks.concat(generated);
+        // 3. Final task list for Simple Mode: strictly preset tasks, isolated from calendar
+        const finalTasks = generated;
         if (typeof taskStore.saveSimpleTasks === 'function') {
           taskStore.saveSimpleTasks(finalTasks);
         }
         if (typeof taskStore.setSimpleConfigured === 'function') {
           taskStore.setSimpleConfigured(true);
-        }
-
-        // 4. Update Calendar Events for Today:
-        // - Retain all completed events for today (user requirement: completed tasks stay on calendar)
-        // - Retain external or non-simple events
-        // - Remove uncompleted simple events
-        // - Add new generated simple preset tasks to calendar
-        const unfinishedSimpleIds = new Set(existingSimpleTasks.filter(t => !t.isCompleted).map(t => t.id));
-        const retainedTodayEvents = todayCalEvents.filter(e => {
-          if (e.isCompleted) return true;
-          if (unfinishedSimpleIds.has(e.id)) return false;
-          if (e.id && String(e.id).indexOf('simple-') === 0) return false;
-          return true;
-        });
-
-        const newEventsForCalendar = generated.map(t => ({
-          id: t.id,
-          title: t.title || 'Focus',
-          date: todayStr,
-          startTime: t.startTime || '09:00',
-          endTime: t.endTime || '09:25',
-          plannedDuration: t.plannedDuration || 25,
-          isLocked: false,
-          isCompleted: false,
-          completedDate: null,
-          manualCompleted: null,
-          useTimeBank: false,
-          emoji: t.emoji || (t.category === 'Rest' ? '☕' : '🎯'),
-          category: t.category || 'Focus',
-          color: t.color || (typeof classifierGetCategoryColor === 'function' ? classifierGetCategoryColor(t.category) : (t.category === 'Rest' ? '#f59e0b' : '#3b82f6')),
-          colorId: t.colorId || null,
-          source: 'local',
-          origin: 'local',
-          createdInApp: true,
-          provider: 'local',
-          lastModified: Date.now()
-        }));
-
-        const finalCalEvents = otherCalEvents.concat(retainedTodayEvents).concat(newEventsForCalendar);
-        if (typeof taskStore.saveCalendarEvents === 'function') {
-          taskStore.saveCalendarEvents(finalCalEvents);
         }
 
         closeSimplePresetsModal();
@@ -11719,7 +11671,7 @@ function setupNavigationAndModals() {
           if (runtime) {
             runtime.initialTasks = finalTasks;
             runtime.reset();
-            runtime.activeTaskIndex = completedTasks.length;
+            runtime.activeTaskIndex = 0;
             runtime.setLoopEnabled(loopVal);
             runtime.recalculate();
             syncDynamicScheduleTimesToCalendar();

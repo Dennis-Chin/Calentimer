@@ -449,11 +449,11 @@ body.galaxy-theme-active .app-brand {
   background-image: linear-gradient(
     90deg,
     #3b82f6 0%,
-    #8b5cf6 22%,
+    #a855f7 22%,
     #ffffff 45%,
     #ffffff 55%,
     #a855f7 78%,
-    #2563eb 100%
+    #3b82f6 100%
   ) !important;
   background-size: 200% 100% !important;
   -webkit-background-clip: text !important;
@@ -4079,10 +4079,6 @@ body.is-waking-standby .secondary-actions,
 body.is-waking-standby .secondary-actions button,
 body.is-waking-standby .task-drawer {
   pointer-events: none !important;
-}
-
-.is-break-mode .dial-tick {
-  stroke: rgba(245, 158, 11, 0.45) !important;
 }
 
 .is-break-mode .dial-tick-active,
@@ -9348,11 +9344,45 @@ body.simple-mode-active #calendarSimpleActions {
   margin-left: 4px;
 }
 
+/* Simple Mode Presets Modal Primary Start Button */
+#btnStartSimpleMode {
+  background: var(--primary) !important;
+  color: #0c0e14 !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 18px rgba(0, 255, 136, 0.35) !important;
+  border: none !important;
+}
+
+#btnStartSimpleMode:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 22px rgba(0, 255, 136, 0.45) !important;
+}
+
+/* Today's Schedule Preset button styled light blue */
+.btn-simple-presets-btn {
+  background: rgba(56, 189, 248, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  color: #38bdf8 !important;
+}
+
+.btn-simple-presets-btn:hover {
+  background: rgba(56, 189, 248, 0.28) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+}
+
+/* In portrait, hide landscape-specific tab label */
+.landscape-tab-label {
+  display: none !important;
+}
+
 /* ==========================================================================
    Horizontal / Landscape Mode Support
    Allows using phone rotated horizontally without dial squishing or overflow.
+   Restricted to mobile landscape viewports to keep PC displays in phone frame.
    ========================================================================== */
-@media screen and (orientation: landscape), screen and (min-aspect-ratio: 1.1/1) {
+@media screen and (orientation: landscape) and (max-height: 550px),
+       screen and (orientation: landscape) and (pointer: coarse) and (max-height: 650px) {
   .app-container {
     max-width: 100vw;
     width: 100vw;
@@ -9516,8 +9546,64 @@ body.simple-mode-active #calendarSimpleActions {
   }
 
   .task-drawer.collapsed .drawer-header {
-    pointer-events: auto;
-    cursor: pointer;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 48px !important;
+    height: 100% !important;
+    padding: 16px 0 !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+
+  .task-drawer.collapsed .drawer-pull-pill {
+    display: block !important;
+    width: 4px !important;
+    height: 38px !important;
+    border-radius: 2px !important;
+    margin: 0 0 16px 0 !important;
+    background: rgba(255, 255, 255, 0.4) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .task-drawer.collapsed .landscape-tab-label {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    user-select: none !important;
+    pointer-events: none !important;
+  }
+
+  .task-drawer.collapsed .landscape-tab-label span {
+    display: inline-block !important;
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
+    transform: rotate(45deg) !important;
+    color: var(--text-dim) !important;
+    text-transform: uppercase !important;
+    line-height: 1 !important;
+    margin: 1px 0 !important;
+  }
+
+  .task-drawer.collapsed .drawer-header-content {
+    display: none !important;
+  }
+
+  .task-drawer:not(.collapsed) .landscape-tab-label {
+    display: none !important;
+  }
+
+  .task-drawer:not(.collapsed) .drawer-pull-pill {
+    display: none !important;
+  }
+
+  .task-drawer:not(.collapsed) .drawer-header-content {
+    display: flex !important;
+    width: 100% !important;
   }
 
   /* Point arrow left when collapsed in landscape, point right when open */
@@ -9556,7 +9642,8 @@ body.simple-mode-active #calendarSimpleActions {
     transform: translateX(-50%) translateY(20px);
   }
 
-  body.is-timer-standby .task-drawer {
+  body.is-timer-standby .task-drawer,
+  body.is-timer-standby #taskDrawer {
     transform: translateX(100%) !important;
   }
 

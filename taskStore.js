@@ -54,7 +54,8 @@ const STORAGE_KEYS = {
   CLOUD_PROFILE: 'calentimer_cloud_profile_v1',
   LAVA_LAMP_BG: 'calentimer_lava_lamp_bg_v1',
   GALAXY_THEME_ENABLED: 'calentimer_galaxy_theme_v1',
-  GALAXY_THEME_UNLOCKED: 'calentimer_galaxy_theme_unlocked_v1'
+  GALAXY_THEME_UNLOCKED: 'calentimer_galaxy_theme_unlocked_v1',
+  KEEP_AWAKE: 'calentimer_keep_awake_v1'
 };
 
 const memoryStorage = {};
@@ -2058,6 +2059,7 @@ export class TaskStore {
   }
 
   _syncCalendarToTask(calEvent) {
+    if (this.getAppMode() === 'simple') return;
     const todayStr = this.getTodayDateString();
     if (calEvent.date !== todayStr) return;
 
@@ -2195,7 +2197,8 @@ export class TaskStore {
       const mergedTodayEvents = [...todayCalEvents];
 
       // 1. Sync Calendar Events -> Tasks (Events created or edited on Calendar for Today)
-      todayCalEvents.forEach(calEvent => {
+      if (this.getAppMode() !== 'simple') {
+        todayCalEvents.forEach(calEvent => {
         if (deletedIds.has(calEvent.id)) return;
         if (isCalendarDeselected(calEvent)) return;
         let existingTask = taskMap.get(calEvent.id);
@@ -2278,10 +2281,15 @@ export class TaskStore {
           }
         }
       });
+      }
 
       // 2. Remove any tasks whose calendar event was moved away from today or deleted
       const tasksToKeep = [];
       mergedTasks.forEach(task => {
+        if (this.getAppMode() === 'simple') {
+          tasksToKeep.push(task);
+          return;
+        }
         if (isItemDeleted(task)) {
           tasksChanged = true;
           return;
@@ -3159,6 +3167,24 @@ export class TaskStore {
    */
   setGalaxyThemeUnlocked(unlocked) {
     safeSetItem(STORAGE_KEYS.GALAXY_THEME_UNLOCKED, unlocked ? 'true' : 'false');
+    this._notify();
+  }
+
+  /**
+   * Checks whether Keep Screen Awake is enabled (default: true).
+   * @returns {boolean}
+   */
+  getKeepScreenAwake() {
+    const val = safeGetItem(STORAGE_KEYS.KEEP_AWAKE);
+    return val !== 'false';
+  }
+
+  /**
+   * Enables or disables Keep Screen Awake.
+   * @param {boolean} awake
+   */
+  setKeepScreenAwake(awake) {
+    safeSetItem(STORAGE_KEYS.KEEP_AWAKE, awake ? 'true' : 'false');
     this._notify();
   }
 }

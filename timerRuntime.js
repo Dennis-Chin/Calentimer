@@ -240,6 +240,10 @@ export class TimerRuntime {
       return this.currentSchedule;
     }
 
+    const targetActiveId = (this.currentSchedule && this.currentSchedule.tasks && this.currentSchedule.tasks[this.activeTaskIndex])
+      ? this.currentSchedule.tasks[this.activeTaskIndex].id
+      : (this.initialTasks && this.initialTasks[this.activeTaskIndex] ? this.initialTasks[this.activeTaskIndex].id : null);
+
     const schedule = calculateSchedule({
       hardStop: this.hardStop,
       startTime: referenceTime,
@@ -253,6 +257,12 @@ export class TimerRuntime {
     if (schedule.success) {
       if (this.status === TimerStatus.IDLE) {
         this.currentSchedule = schedule;
+        if (targetActiveId && this.currentSchedule && Array.isArray(this.currentSchedule.tasks)) {
+          const newActiveIndex = this.currentSchedule.tasks.findIndex(t => t.id === targetActiveId);
+          if (newActiveIndex !== -1) {
+            this.activeTaskIndex = newActiveIndex;
+          }
+        }
       } else {
         // Merge completed tasks with updated upcoming schedule, ensuring updated properties (emoji, title, category, color, completion status) are reflected
         const completedTasks = ((this.currentSchedule && this.currentSchedule.tasks) || []).slice(0, this.activeTaskIndex).map(t => {
